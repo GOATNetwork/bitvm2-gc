@@ -461,7 +461,6 @@ mod tests {
     fn test_g1p_add_montgomery() {
         let a = G1Projective::random();
         let b = G1Projective::random();
-        println!("a: {:?}, b: {:?}", a, b);
         let c = ark_bn254::G1Projective::ZERO;
         let circuit = G1Projective::add_montgomery(
             G1Projective::wires_set_montgomery(a),
