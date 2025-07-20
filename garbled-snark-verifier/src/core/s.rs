@@ -1,7 +1,7 @@
 use core::{iter::zip, ops::Add};
 
 use crate::circuits::bn254::utils::random_seed;
-use crate::core::utils::poseidon2_hash;
+use crate::core::utils::hash;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct S(pub [u8; 32]);
@@ -27,13 +27,13 @@ impl S {
     }
 
     pub fn hash(&self) -> Self {
-        Self(poseidon2_hash(&self.0))
+        Self(hash(&self.0))
     }
 
     pub fn hash_together(a: Self, b: Self) -> Self {
         let mut h = a.0.to_vec();
         h.extend(b.0.to_vec());
-        Self(poseidon2_hash(&h))
+        Self(hash(&h))
     }
 
     pub fn xor(mut a: Self, b: Self) -> Self {
