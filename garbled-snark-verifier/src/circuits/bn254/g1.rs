@@ -578,6 +578,7 @@ mod tests {
         let a: Vec<ark_bn254::G1Projective> = (0..n).map(|_| G1Projective::random()).collect();
         let s: Wires = (0..w).map(|_| new_wirex()).collect();
 
+        let mut rng = create_rng(); 
         let mut a_wires = Vec::new();
         for e in a.iter() {
             a_wires.push(G1Projective::wires_set(*e));
@@ -585,7 +586,6 @@ mod tests {
 
         let mut u = 0;
         for wire in s.iter().rev() {
-            let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
             let x = rng.r#gen();
             u = u + u + if x { 1 } else { 0 };
             wire.borrow_mut().set(x);
