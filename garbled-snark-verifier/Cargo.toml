@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-blake3 = "1.6.1"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.116"
 num-traits = "0.2.18"
@@ -20,10 +19,10 @@ ark-relations = "0.5.0"
 serial_test = "3.2.0"
 once_cell = "1.21.3"
 getrandom = { version = "0.2", features = ["custom"] }
-zkm-primitives = {git = "https://github.com/ProjectZKM/Ziren.git"}
+zkm-primitives = {git = "https://github.com/ProjectZKM/Ziren.git" }
 p3-koala-bear = { git = "https://github.com/ProjectZKM/Plonky3" }
 p3-field = { git = "https://github.com/ProjectZKM/Plonky3" }
-
+blake3 = { version = "1.6.1", optional = true }
 ark-serialize = { version = "0.5.0", default-features = false, features = [ "derive" ] }
 
 [dev-dependencies]
