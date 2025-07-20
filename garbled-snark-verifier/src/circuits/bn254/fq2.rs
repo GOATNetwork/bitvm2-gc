@@ -2,13 +2,11 @@ use crate::{
     bag::*,
     circuits::{
         bigint::U254,
-        bn254::{fp254impl::Fp254Impl, fq::Fq, utils::SEED_U64},
+        bn254::{fp254impl::Fp254Impl, fq::Fq, utils::create_rng},
     },
 };
 use ark_ff::{Field, Fp2Config, UniformRand};
 use num_traits::Zero;
-use rand_chacha::ChaCha20Rng;
-use rand_chacha::rand_core::SeedableRng;
 
 pub struct Fq2;
 
@@ -24,7 +22,7 @@ impl Fq2 {
     }
 
     pub fn random() -> ark_bn254::Fq2 {
-        let mut prng = ChaCha20Rng::seed_from_u64(SEED_U64);
+        let mut prng = create_rng();
         ark_bn254::Fq2::rand(&mut prng)
     }
 

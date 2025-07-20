@@ -2,14 +2,11 @@ use crate::{
     bag::*,
     circuits::{
         basic::multiplexer,
-        bn254::{fp254impl::Fp254Impl, fq::Fq, fr::Fr, utils::SEED_U64},
+        bn254::{fp254impl::Fp254Impl, fq::Fq, fr::Fr, utils::create_rng},
     },
 };
 use ark_ff::{AdditiveGroup, UniformRand};
 use core::{cmp::min, iter::zip};
-use rand_chacha::ChaCha20Rng;
-use rand_chacha::rand_core::SeedableRng;
-
 pub struct G1Projective;
 
 impl G1Projective {
@@ -32,7 +29,7 @@ impl G1Projective {
     }
 
     pub fn random() -> ark_bn254::G1Projective {
-        let mut prng = ChaCha20Rng::seed_from_u64(SEED_U64);
+        let mut prng = create_rng();
         ark_bn254::G1Projective::rand(&mut prng)
     }
 
@@ -327,7 +324,7 @@ impl G1Affine {
     }
 
     pub fn random() -> ark_bn254::G1Affine {
-        let mut prng = ChaCha20Rng::seed_from_u64(SEED_U64);
+        let mut prng = create_rng();
         ark_bn254::G1Affine::rand(&mut prng)
     }
 
@@ -417,10 +414,13 @@ pub fn projective_to_affine_evaluate_montgomery(p: Wires) -> (Wires, GateCount) 
 
 #[cfg(test)]
 mod tests {
+    use crate::circuits::bn254::utils::create_rng;
+
     use super::*;
     use ark_ec::{CurveGroup, scalar_mul::variable_base::VariableBaseMSM};
     use ark_ff::Field;
-    use rand::{Rng, rng};
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha20Rng;
 
     #[test]
     fn test_g1a_random() {
@@ -461,6 +461,7 @@ mod tests {
     fn test_g1p_add_montgomery() {
         let a = G1Projective::random();
         let b = G1Projective::random();
+        println!("a: {:?}, b: {:?}", a, b);
         let c = ark_bn254::G1Projective::ZERO;
         let circuit = G1Projective::add_montgomery(
             G1Projective::wires_set_montgomery(a),
@@ -551,7 +552,9 @@ mod tests {
 
         let mut u = 0;
         for wire in s.iter().rev() {
-            let x = rng().random();
+            let mut rng = create_rng();
+
+            let x = rng.r#gen();
             u = u + u + if x { 1 } else { 0 };
             wire.borrow_mut().set(x);
         }
@@ -583,7 +586,8 @@ mod tests {
 
         let mut u = 0;
         for wire in s.iter().rev() {
-            let x = rng().random();
+            let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
+            let x = rng.r#gen();
             u = u + u + if x { 1 } else { 0 };
             wire.borrow_mut().set(x);
         }

@@ -1,11 +1,9 @@
 use crate::{
     bag::*,
-    circuits::bn254::{fp254impl::Fp254Impl, fq::Fq, fq2::Fq2, fq6::Fq6, utils::SEED_U64},
+    circuits::bn254::{fp254impl::Fp254Impl, fq::Fq, fq2::Fq2, fq6::Fq6, utils::create_rng},
 };
 use ark_ff::{Field, Fp12Config, UniformRand};
 use core::iter::zip;
-use rand_chacha::ChaCha20Rng;
-use rand_chacha::rand_core::SeedableRng;
 
 pub struct Fq12;
 
@@ -21,7 +19,7 @@ impl Fq12 {
     }
 
     pub fn random() -> ark_bn254::Fq12 {
-        let mut prng = ChaCha20Rng::seed_from_u64(SEED_U64);
+        let mut prng = create_rng();
         ark_bn254::Fq12::rand(&mut prng)
     }
 
@@ -490,12 +488,13 @@ impl Fq12 {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
     use ark_ff::{CyclotomicMultSubgroup, Field};
     use num_bigint::BigUint;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha20Rng;
     use serial_test::serial;
+    use std::str::FromStr;
 
     #[test]
     fn test_fq12_random() {

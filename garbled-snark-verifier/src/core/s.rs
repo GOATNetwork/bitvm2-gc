@@ -1,7 +1,7 @@
 use blake3::hash;
 use core::{iter::zip, ops::Add};
 
-use crate::circuits::bn254::utils::random_bytes;
+use crate::circuits::bn254::utils::random_seed;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct S(pub [u8; 32]);
@@ -15,7 +15,7 @@ impl S {
 
     pub fn random() -> Self {
         //Self(rng().random::<[u8; 32]>())
-        Self(random_bytes::<32>())
+        Self(random_seed())
     }
 
     pub fn neg(&self) -> Self {

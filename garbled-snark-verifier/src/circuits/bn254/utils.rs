@@ -1,10 +1,7 @@
 use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::{One, Zero};
 use rand_chacha::ChaCha20Rng;
-use rand_chacha::rand_core::{RngCore, SeedableRng};
-
-pub const SEED_32_BYTES: [u8; 32] = [17u8; 32];
-pub const SEED_U64: u64 = 17;
+use rand_chacha::rand_core::SeedableRng;
 
 fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
     let (mut x, mut y) = (BigInt::one(), BigInt::zero());
@@ -71,9 +68,24 @@ pub mod tests {
     }
 }
 
-pub fn random_bytes<const N: usize>() -> [u8; N] {
-    let mut rng = ChaCha20Rng::from_seed([0u8; 32]); // 可换为其他 seed
-    let mut buf = [0u8; N];
-    rng.fill_bytes(&mut buf);
-    buf
+pub fn random_seed() -> [u8; 32] {
+    let mut seed = [0u8; 32];
+
+    #[cfg(feature = "std")]
+    {
+        use rand::RngCore;
+        let mut rng = rand::rngs::OsRng;
+        rng.fill_bytes(&mut seed);
+    }
+
+    #[cfg(not(feature = "std"))]
+    {
+        getrandom::getrandom(&mut seed).expect("no_std: getrandom failed");
+    }
+
+    seed
+}
+
+pub fn create_rng() -> ChaCha20Rng {
+    ChaCha20Rng::from_seed(random_seed())
 }

@@ -844,6 +844,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
 dependencies = [
+ "colored",
  "num-traits",
  "rand 0.8.5",
  "rayon",
@@ -1503,6 +1504,16 @@ name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
+
+[[package]]
+name = "colored"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
+dependencies = [
+ "lazy_static",
+ "windows-sys 0.48.0",
+]
 
 [[package]]
 name = "console"
@@ -2796,6 +2807,7 @@ dependencies = [
  "ark-groth16",
  "ark-relations",
  "ark-serialize 0.5.0",
+ "ark-std 0.5.0",
  "blake3",
  "getrandom 0.2.16",
  "itertools 0.13.0",

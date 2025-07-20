@@ -25,7 +25,9 @@ ark-serialize = { version = "0.5.0", default-features = false, features = [ "der
 
 [dev-dependencies]
 ark-groth16 = "0.5.0"
+ark-std = { version = "0.5.0", default-features = false, features = ["print-trace"] }
 
 [features]
 default = []
 garbled = []
+std = []

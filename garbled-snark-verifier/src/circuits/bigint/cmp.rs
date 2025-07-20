@@ -192,7 +192,8 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, rng};
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha20Rng;
     use std::str::FromStr;
 
     use super::*;
@@ -328,7 +329,8 @@ mod tests {
 
         let mut u = 0;
         for wire in s.iter().rev() {
-            let x = rng().random();
+            let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
+            let x = rng.r#gen();
             u = u + u + if x { 1 } else { 0 };
             wire.borrow_mut().set(x);
         }

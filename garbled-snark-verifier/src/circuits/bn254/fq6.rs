@@ -1,9 +1,6 @@
-use crate::circuits::bn254::utils::SEED_U64;
+use crate::circuits::bn254::utils::create_rng;
 use crate::{bag::*, circuits::bn254::fq2::Fq2};
 use ark_ff::{Fp6Config, UniformRand, fields::AdditiveGroup};
-//use ark_std::rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
-use rand_chacha::rand_core::SeedableRng;
 
 pub struct Fq6;
 
@@ -27,7 +24,7 @@ impl Fq6 {
     }
 
     pub fn random() -> ark_bn254::Fq6 {
-        let mut prng = ChaCha20Rng::seed_from_u64(SEED_U64);
+        let mut prng = create_rng();
         ark_bn254::Fq6::rand(&mut prng)
     }
 

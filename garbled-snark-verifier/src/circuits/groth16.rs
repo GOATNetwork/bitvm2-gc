@@ -15,29 +15,6 @@ use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::Field;
 use ark_serialize::*;
 
-//pub fn groth16_verifier(
-//    public: Vec<ark_bn254::Fr>,
-//    proof: ark_groth16::Proof<ark_bn254::Bn254>,
-//    vk: ark_groth16::VerifyingKey<ark_bn254::Bn254>,
-//) -> bool {
-//    let scalars = [vec![ark_bn254::Fr::ONE], public.clone()].concat();
-//    let msm = ark_bn254::G1Projective::msm(&vk.gamma_abc_g1, &scalars).unwrap();
-//    let qap = ark_bn254::Bn254::multi_miller_loop(
-//        [msm, proof.c.into_group(), proof.a.into_group()],
-//        [-vk.gamma_g2, -vk.delta_g2, proof.b],
-//    );
-//    let alpha_beta = ark_bn254::Bn254::final_exponentiation(ark_bn254::Bn254::multi_miller_loop(
-//        [vk.alpha_g1.into_group()],
-//        [-vk.beta_g2],
-//    ))
-//    .unwrap()
-//    .0
-//    .inverse()
-//    .unwrap();
-//    let f = ark_bn254::Bn254::final_exponentiation(qap).unwrap().0;
-//    f == alpha_beta
-//}
-
 /// A verification key in the Groth16 SNARK.
 #[derive(Clone, Debug, PartialEq, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifyingKey<E: Pairing> {
@@ -145,10 +122,31 @@ mod tests {
     use ark_groth16::Groth16;
     use ark_relations::lc;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-    use rand_chacha::{
-        rand_core::{RngCore, SeedableRng},
-        test_rng,
-    };
+    use ark_std::test_rng;
+    use rand::{RngCore, SeedableRng};
+    use rand_chacha::ChaCha12Rng;
+
+    pub fn groth16_verifier(
+        public: Vec<ark_bn254::Fr>,
+        proof: ark_groth16::Proof<ark_bn254::Bn254>,
+        vk: ark_groth16::VerifyingKey<ark_bn254::Bn254>,
+    ) -> bool {
+        let scalars = [vec![ark_bn254::Fr::ONE], public.clone()].concat();
+        let msm = ark_bn254::G1Projective::msm(&vk.gamma_abc_g1, &scalars).unwrap();
+        let qap = ark_bn254::Bn254::multi_miller_loop(
+            [msm, proof.c.into_group(), proof.a.into_group()],
+            [-vk.gamma_g2, -vk.delta_g2, proof.b],
+        );
+        let alpha_beta = ark_bn254::Bn254::final_exponentiation(
+            ark_bn254::Bn254::multi_miller_loop([vk.alpha_g1.into_group()], [-vk.beta_g2]),
+        )
+        .unwrap()
+        .0
+        .inverse()
+        .unwrap();
+        let f = ark_bn254::Bn254::final_exponentiation(qap).unwrap().0;
+        f == alpha_beta
+    }
 
     #[derive(Copy, Clone)]
     struct DummyCircuit<F: PrimeField> {
@@ -187,7 +185,7 @@ mod tests {
     #[test]
     fn test_groth16_verifier() {
         let k = 6;
-        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
         let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
             a: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
             b: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
@@ -205,7 +203,7 @@ mod tests {
     #[test]
     fn test_groth16_verifier_evaluate_montgomery() {
         let k = 6;
-        let mut rng = rand_chacha::rand_core::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
         let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
             a: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
             b: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
@@ -226,6 +224,11 @@ mod tests {
         let proof_b = G2Affine::wires_set_montgomery(proof.b);
         let proof_c = G1Affine::wires_set_montgomery(proof.c);
 
+        let mut vk_data = Vec::new();
+        vk.serialize_compressed(&mut vk_data).unwrap();
+        let vk: super::VerifyingKey<ark_bn254::Bn254> =
+            super::VerifyingKey::deserialize_compressed(&vk_data[..]).unwrap();
+
         let (result, gate_count) =
             groth16_verifier_evaluate_montgomery(public, proof_a, proof_b, proof_c, vk, false);
         gate_count.print();
@@ -235,7 +238,7 @@ mod tests {
     #[test]
     fn test_groth16_verifier_evaluate_montgomery_with_compressed_proof() {
         let k = 6;
-        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
         let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
             a: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
             b: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
@@ -271,6 +274,11 @@ mod tests {
         proof_b.push(proof_b_y_flag);
         let mut proof_c = Fq::wires_set_montgomery(proof.c.x);
         proof_c.push(proof_c_y_flag);
+
+        let mut vk_data = Vec::new();
+        vk.serialize_compressed(&mut vk_data).unwrap();
+        let vk: super::VerifyingKey<ark_bn254::Bn254> =
+            super::VerifyingKey::deserialize_compressed(&vk_data[..]).unwrap();
 
         let (result, gate_count) =
             groth16_verifier_evaluate_montgomery(public, proof_a, proof_b, proof_c, vk, true);

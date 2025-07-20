@@ -86,12 +86,15 @@ pub fn multiplexer(a: Wires, s: Wires, w: usize) -> Circuit {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, rng};
+    use rand::Rng;
 
     use crate::{
         bag::*,
-        circuits::basic::{
-            full_adder, full_subtracter, half_adder, half_subtracter, multiplexer, selector,
+        circuits::{
+            basic::{
+                full_adder, full_subtracter, half_adder, half_subtracter, multiplexer, selector,
+            },
+            bn254::utils::create_rng,
         },
     };
 
@@ -267,13 +270,14 @@ mod tests {
         let a: Wires = (0..n).map(|_| new_wirex()).collect();
         let s: Wires = (0..w).map(|_| new_wirex()).collect();
 
+        let mut rng = create_rng();
         for wire in a.iter() {
-            wire.borrow_mut().set(rng().random());
+            wire.borrow_mut().set(rng.r#gen());
         }
 
         let mut u = 0;
         for wire in s.iter().rev() {
-            let x = rng().random();
+            let x = rng.r#gen();
             u = u + u + if x { 1 } else { 0 };
             wire.borrow_mut().set(x);
         }
