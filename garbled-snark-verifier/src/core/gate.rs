@@ -303,3 +303,27 @@ impl GateCount {
         Self([4098864, 105664, 0, 0, 1374, 52832, 0, 58734, 13580727, 58734, 77179])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::circuits::bigint::U254;
+    use crate::circuits::bigint::utils::{biguint_from_wires, random_biguint_n_bits};
+
+    #[cfg(feature = "garbled")]
+    #[test]
+    fn garbled_test() {
+        let a = random_biguint_n_bits(254);
+        let mut circuit = U254::odd_part(U254::wires_set_from_number(&a));
+        circuit.gate_counts().print();
+
+        for gate in &mut circuit.1 {
+            gate.evaluate();
+        }
+        let c = biguint_from_wires(circuit.0[0..U254::N_BITS].to_vec());
+        let d = biguint_from_wires(circuit.0[U254::N_BITS..2 * U254::N_BITS].to_vec());
+        assert_eq!(a, c * d);
+
+        let garbled = circuit.garbled_gates();
+        println!("garbled gate size: {}", garbled.len());
+    }
+}
