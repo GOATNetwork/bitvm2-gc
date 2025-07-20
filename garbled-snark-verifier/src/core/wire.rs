@@ -15,13 +15,14 @@ impl Default for Wire {
 }
 
 impl Wire {
-    #[cfg(feature = "garbled")]
+    #[cfg(any(feature = "garbled", feature = "sha2"))]
     pub fn new() -> Self {
         let label0 = S::random();
         let label1 = S::random();
         Self { label0: Some(label0), label1: Some(label1), value: None, label: None }
     }
-    #[cfg(not(feature = "garbled"))]
+
+    #[cfg(all(not(feature = "garbled"), not(feature = "sha2")))]
     pub fn new() -> Self {
         Self { label0: None, label1: None, value: None, label: None }
     }

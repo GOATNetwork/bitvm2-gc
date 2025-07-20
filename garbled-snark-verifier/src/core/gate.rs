@@ -309,7 +309,7 @@ mod tests {
     use crate::circuits::bigint::U254;
     use crate::circuits::bigint::utils::{biguint_from_wires, random_biguint_n_bits};
 
-    #[cfg(feature = "garbled")]
+    #[cfg(any(feature = "garbled", feature = "sha2"))]
     #[test]
     fn garbled_test() {
         let a = random_biguint_n_bits(254);

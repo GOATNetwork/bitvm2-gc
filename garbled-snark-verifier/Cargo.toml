@@ -23,6 +23,8 @@ zkm-primitives = {git = "https://github.com/ProjectZKM/Ziren.git" }
 p3-koala-bear = { git = "https://github.com/ProjectZKM/Plonky3" }
 p3-field = { git = "https://github.com/ProjectZKM/Plonky3" }
 blake3 = { version = "1.6.1", optional = true }
+sha2 = { git = "https://github.com/ziren-patches/RustCrypto-hashes", branch = "patch-sha2-0.10.8", optional = true }
+#sha2 = { version = "0.10.9", optional = true }
 ark-serialize = { version = "0.5.0", default-features = false, features = [ "derive" ] }
 
 [dev-dependencies]
@@ -32,4 +34,5 @@ ark-std = { version = "0.5.0", default-features = false, features = ["print-trac
 [features]
 default = []
 garbled = []
-std = []
+std = ["dep:blake3"]
+sha2 = ["dep:sha2"]

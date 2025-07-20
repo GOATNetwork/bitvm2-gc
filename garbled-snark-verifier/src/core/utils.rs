@@ -11,7 +11,16 @@ pub fn hash(input: &[u8]) -> [u8; 32] {
         output = *hash(input).as_bytes();
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(feature = "sha2")]
+    {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(input);
+        let result = hasher.finalize();
+        output.copy_from_slice(&result[..32]);
+    }
+
+    #[cfg(all(not(feature = "std"), not(feature = "sha2")))]
     {
         use p3_field::{FieldAlgebra, PrimeField32};
         use p3_koala_bear::KoalaBear;
