@@ -34,7 +34,6 @@ ark-std = { version = "0.5.0", default-features = false, features = ["print-trac
 [features]
 default = []
 garbled = []
-std = []
 _sha2 = ["sha2"]
 _poseidon2 = ["zkm-primitives", "p3-koala-bear", "p3-field"]
 _blake3 = ["blake3"]
