@@ -71,16 +71,16 @@ pub mod tests {
 pub fn random_seed() -> [u8; 32] {
     let mut seed = [0u8; 32];
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "_getrandom")]
+    {
+        getrandom::getrandom(&mut seed).expect("_getrandom: getrandom failed");
+    }
+
+    #[cfg(not(feature = "_getrandom"))]
     {
         use rand::RngCore;
         let mut rng = rand::rngs::OsRng;
         rng.fill_bytes(&mut seed);
-    }
-
-    #[cfg(not(feature = "std"))]
-    {
-        getrandom::getrandom(&mut seed).expect("no_std: getrandom failed");
     }
 
     seed

@@ -6,4 +6,11 @@ publish = false
 
 [dependencies]
 zkm-zkvm = { workspace = true }
-garbled-snark-verifier = { workspace = true, features = ["garbled"] } 
+garbled-snark-verifier = { workspace = true }
+
+[features]
+sha2 = ["garbled-snark-verifier/garbled", "garbled-snark-verifier/_sha2", "garbled-snark-verifier/_getrandom"]
+poseidon2 = ["garbled-snark-verifier/garbled", "garbled-snark-verifier/_poseidon2", "garbled-snark-verifier/_getrandom"]
+blake3 = ["garbled-snark-verifier/garbled", "garbled-snark-verifier/_blake3", "garbled-snark-verifier/_getrandom"]
+
+default = ["blake3"]

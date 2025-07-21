@@ -5,13 +5,13 @@ pub fn bit_to_usize(bit: bool) -> usize {
 pub fn hash(input: &[u8]) -> [u8; 32] {
     let mut output = [0u8; 32];
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "_blake3")]
     {
         use blake3::hash;
         output = *hash(input).as_bytes();
     }
 
-    #[cfg(feature = "sha2")]
+    #[cfg(feature = "_sha2")]
     {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
@@ -20,7 +20,7 @@ pub fn hash(input: &[u8]) -> [u8; 32] {
         output.copy_from_slice(&result[..32]);
     }
 
-    #[cfg(all(not(feature = "std"), not(feature = "sha2")))]
+    #[cfg(feature = "_poseidon2")]
     {
         use p3_field::{FieldAlgebra, PrimeField32};
         use p3_koala_bear::KoalaBear;
