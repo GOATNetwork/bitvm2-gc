@@ -1,7 +1,7 @@
 //! cargo run -r --example gen-sub-circuits -- --nocapture
 use garbled_snark_verifier::circuits::bigint::{
-    utils::{biguint_from_wires, random_biguint_n_bits},
     U254,
+    utils::{biguint_from_wires, random_biguint_n_bits},
 };
 use garbled_snark_verifier::circuits::bn254::fp254impl::Fp254Impl;
 use garbled_snark_verifier::circuits::bn254::fq::Fq;
