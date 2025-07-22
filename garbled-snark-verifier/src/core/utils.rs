@@ -135,9 +135,10 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<Serializ
 }
 
 pub fn check_guest(buf: &[u8]) {
-    let sc: SerializableCircuit = serde_cbor::from_slice(buf).unwrap();
+    let sc: SerializableCircuit = bincode::deserialize(buf).unwrap();
     let circuit: Circuit = (&sc).into();
-    println!("first 10: {:?}", &circuit.1[3999]);
+    println!("first 10: {:?}", &circuit.1[0]);
     let garblings = circuit.garbled_gates();
+    println!("first 1: {:?}", &garblings[0]);
     assert!(garblings == sc.garblings);
 }

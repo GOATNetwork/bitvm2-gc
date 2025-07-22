@@ -19,11 +19,14 @@ fn split_circuit() {
     let c = Fq::from_wires(circuit.0.clone());
     assert_eq!(c + c + c + c + c + c, a);
 
-    let garbled = gen_sub_circuits(&mut circuit, 4000);
+    let garbled = gen_sub_circuits(&mut circuit, 1);
     // split the GC into sub-circuits
     println!("garbled:{:?}", garbled.len());
     garbled.iter().enumerate().for_each(|(i, c)| {
-        serde_cbor::to_writer(std::fs::File::create(format!("garbled_{i}.bin")).unwrap(), c)
+        if i > 0 {
+            return;
+        } 
+        bincode::serialize_into(std::fs::File::create(format!("garbled_{i}.bin")).unwrap(), c)
             .unwrap();
     });
 }

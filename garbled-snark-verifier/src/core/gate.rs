@@ -141,9 +141,11 @@ impl Gate {
             .iter()
             .map(|(i, j)| {
                 let k = (self.f())(*i, *j);
+                //println!("i:{i}, j:{j}, k:{k}");
                 let a = self.wire_a.borrow().select(*i);
                 let b = self.wire_b.borrow().select(*j);
                 let c = self.wire_c.borrow().select(k);
+                //println!("a:{:?}, b:{:?}, c:{:?}", a, b, c);
                 S::hash_together(a, b) + c.neg()
             })
             .collect()

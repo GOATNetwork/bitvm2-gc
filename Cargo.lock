@@ -2808,6 +2808,7 @@ dependencies = [
  "ark-relations",
  "ark-serialize 0.5.0",
  "ark-std 0.5.0",
+ "bincode",
  "blake3",
  "getrandom 0.2.16",
  "itertools 0.13.0",
@@ -2817,7 +2818,6 @@ dependencies = [
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "serde",
- "serde_cbor",
  "serde_json",
  "serial_test",
  "sha2",
@@ -2952,12 +2952,6 @@ dependencies = [
  "tokio-util",
  "tracing",
 ]
-
-[[package]]
-name = "half"
-version = "1.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b43ede17f21864e81be2fa654110bf1e793774238d86ef8555c37e6519c0403"
 
 [[package]]
 name = "halo2"
@@ -5927,16 +5921,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_cbor"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
-dependencies = [
- "half",
- "serde",
-]
-
-[[package]]
 name = "serde_derive"
 version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7175,8 +7159,8 @@ version = "0.0.1"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
+ "bincode",
  "garbled-snark-verifier",
- "serde_cbor",
  "zkm-build",
  "zkm-sdk",
 ]

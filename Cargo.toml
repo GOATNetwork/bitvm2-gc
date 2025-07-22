@@ -24,7 +24,7 @@ zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren", branch = "poseidon2" }
 #zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
 #zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }
 #zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren" }
-serde_cbor = "0.11.2"
+bincode = "1.3.3"
 
 [profile.release]
 opt-level = 3
