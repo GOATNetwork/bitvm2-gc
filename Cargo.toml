@@ -18,10 +18,12 @@ resolver = "2"
 
 [workspace.dependencies]
 garbled-snark-verifier = { path = "./garbled-snark-verifier" }
-zkm-build = { git = "https://github.com/ProjectZKM/Ziren" } 
-zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" } 
-zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren" } 
-
+zkm-build = { git = "https://github.com/ProjectZKM/Ziren", branch = "poseidon2" }
+zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren", branch = "poseidon2" }
+zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren", branch = "poseidon2" }
+#zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
+#zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }
+#zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren" }
 
 [profile.release]
 opt-level = 3

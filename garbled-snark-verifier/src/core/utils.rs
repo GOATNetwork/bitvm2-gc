@@ -22,14 +22,8 @@ pub fn hash(input: &[u8]) -> [u8; 32] {
 
     #[cfg(feature = "_poseidon2")]
     {
-        use p3_field::{FieldAlgebra, PrimeField32};
-        use p3_koala_bear::KoalaBear;
-        let koalabear_input =
-            input.iter().map(|&b| KoalaBear::from_canonical_u8(b)).collect::<Vec<_>>();
-        let hash = zkm_primitives::poseidon2_hash(koalabear_input);
-        for (i, x) in hash.iter().enumerate() {
-            output[i * 4..(i + 1) * 4].copy_from_slice(&x.as_canonical_u32().to_le_bytes());
-        }
+        use zkm_zkvm::lib::poseidon2::poseidon2;
+        output = poseidon2(input);
     }
     output
 }

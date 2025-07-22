@@ -19,9 +19,7 @@ ark-relations = "0.5.0"
 serial_test = "3.2.0"
 once_cell = "1.21.3"
 getrandom = { version = "0.2", features = ["custom"], optional = true }
-zkm-primitives = {git = "https://github.com/ProjectZKM/Ziren.git", optional = true }
-p3-koala-bear = { git = "https://github.com/ProjectZKM/Plonky3", optional = true }
-p3-field = { git = "https://github.com/ProjectZKM/Plonky3", optional = true }
+zkm-zkvm = {git = "https://github.com/ProjectZKM/Ziren.git", branch = "poseidon2", optional = true }
 blake3 = { version = "1.6.1", optional = true }
 sha2 = { git = "https://github.com/ziren-patches/RustCrypto-hashes", branch = "patch-sha2-0.10.8", optional = true }
 #sha2 = { version = "0.10.9", optional = true }
@@ -35,6 +33,6 @@ ark-std = { version = "0.5.0", default-features = false, features = ["print-trac
 default = []
 garbled = []
 _sha2 = ["sha2"]
-_poseidon2 = ["zkm-primitives", "p3-koala-bear", "p3-field"]
+_poseidon2 = ["zkm-zkvm"]
 _blake3 = ["blake3"]
 _getrandom = ["getrandom/custom"]

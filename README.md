@@ -8,12 +8,12 @@ The `garbled-snark-verifier` is modified from [garbled-snark-verifier:5a2cd4](ht
 
 **Benchmark Results**
 
-| Hash Function   | Cycles         |
-| --------------- |----------------|
-| Blake3          | 4,015,285,370  |
-| Poseidon2       | 18,136,815,540 |
-| SHA2            | 7,887,069,170  |
-| SHA2 Precompile | 3,832,397,090  |
+| Hash Function        | Cycles        |
+|----------------------|---------------|
+| Blake3               | 4,015,285,370 |
+| Poseidon2 Precompile | 3,314,475,262 |
+| SHA2                 | 7,887,069,170 |
+| SHA2 Precompile      | 3,832,397,090 |
 
 To switch between hash functions in the guest program, modify the default feature in `verifiable-circuit/Cargo.toml`:
 
