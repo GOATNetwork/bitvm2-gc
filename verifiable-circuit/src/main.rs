@@ -13,21 +13,20 @@ use garbled_snark_verifier::circuits::bigint::{
     utils::{biguint_from_wires, random_biguint_n_bits},
     U254,
 };
+use garbled_snark_verifier::circuits::bn254::fp254impl::Fp254Impl;
+use garbled_snark_verifier::circuits::bn254::fq::Fq;
 
-//#[cfg(feature = "garbled")]
 fn main() {
-    let a = random_biguint_n_bits(254);
-    let mut circuit = U254::odd_part(U254::wires_set_from_number(&a));
+    let a = Fq::random();
+    let mut circuit = Fq::div6(Fq::wires_set(a));
     circuit.gate_counts().print();
+    //for mut gate in circuit.1 {
+    //    gate.evaluate();
+    //}
 
-    for gate in &mut circuit.1 {
-        gate.evaluate();
-    }
-    let c = biguint_from_wires(circuit.0[0..U254::N_BITS].to_vec());
-    let d = biguint_from_wires(circuit.0[U254::N_BITS..2 * U254::N_BITS].to_vec());
-    assert_eq!(a, c * d);
+    //let c = Fq::from_wires(circuit.0);
+    //assert_eq!(c + c + c + c + c + c, a);
 
     let garbled = circuit.garbled_gates();
-    //println!("garbled gate size: {}", garbled.len());
     zkm_zkvm::io::commit(&garbled.len());
 }

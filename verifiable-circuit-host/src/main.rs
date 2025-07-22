@@ -28,12 +28,8 @@ fn main() {
     //
     // Note that this output is read from values committed to in the guest using
     // `zkm_zkvm::io::commit`.
-    let _ = proof.public_values.read::<u32>();
-    let a = proof.public_values.read::<u32>();
-    let b = proof.public_values.read::<u32>();
-
-    println!("a: {}", a);
-    println!("b: {}", b);
+    let gates = proof.public_values.read::<u32>();
+    println!("gates: {}", gates);
 
     // Verify proof and public values
     client.verify(&proof, &vk).expect("verification failed");

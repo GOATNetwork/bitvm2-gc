@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{bag::*, core::utils::bit_to_usize};
 use core::ops::{Add, AddAssign};
 
 // Except Xor, Xnor and Not, each enum's bitmask represent the boolean operation ((a XOR bit_2) AND (b XOR bit_1)) XOR bit_0
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GateType {
     And = 0,
     Nand = 1,

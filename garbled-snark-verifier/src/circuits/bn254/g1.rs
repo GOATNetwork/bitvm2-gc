@@ -578,7 +578,7 @@ mod tests {
         let a: Vec<ark_bn254::G1Projective> = (0..n).map(|_| G1Projective::random()).collect();
         let s: Wires = (0..w).map(|_| new_wirex()).collect();
 
-        let mut rng = create_rng(); 
+        let mut rng = create_rng();
         let mut a_wires = Vec::new();
         for e in a.iter() {
             a_wires.push(G1Projective::wires_set(*e));

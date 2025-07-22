@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use crate::core::s::S;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Wire {
     pub label0: Option<S>,
     pub label1: Option<S>,

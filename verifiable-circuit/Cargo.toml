@@ -7,6 +7,8 @@ publish = false
 [dependencies]
 zkm-zkvm = { workspace = true }
 garbled-snark-verifier = { workspace = true }
+ark-bn254 = { version = "0.5.0", features = ["curve", "scalar_field"], default-features = false }
+ark-ff = "0.5.0"
 
 [features]
 sha2 = ["garbled-snark-verifier/garbled", "garbled-snark-verifier/_sha2", "garbled-snark-verifier/_getrandom"]
