@@ -1,9 +1,16 @@
 use std::io::Read;
 
 use garbled_snark_verifier::{
-    bag::Circuit, circuits::bn254::{fp254impl::Fp254Impl, fq::Fq}, core::utils::{check_guest, gen_sub_circuits, SerializableCircuit}
+    bag::{Circuit, new_wirex},
+    circuits::{
+        basic::half_adder,
+        bn254::{fp254impl::Fp254Impl, fq::Fq},
+    },
+    core::utils::{SerializableCircuit, check_guest, gen_sub_circuits},
 };
-use zkm_sdk::{include_elf, utils, ProverClient, ZKMProofWithPublicValues, ZKMPublicValues, ZKMStdin};
+use zkm_sdk::{
+    ProverClient, ZKMProofWithPublicValues, ZKMPublicValues, ZKMStdin, include_elf, utils,
+};
 
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
@@ -19,13 +26,10 @@ fn split_circuit() {
     let c = Fq::from_wires(circuit.0.clone());
     assert_eq!(c + c + c + c + c + c, a);
 
-    let garbled = gen_sub_circuits(&mut circuit, 1);
+    let garbled = gen_sub_circuits(&mut circuit, 8000);
     // split the GC into sub-circuits
     println!("garbled:{:?}", garbled.len());
     garbled.iter().enumerate().for_each(|(i, c)| {
-        if i > 0 {
-            return;
-        } 
         bincode::serialize_into(std::fs::File::create(format!("garbled_{i}.bin")).unwrap(), c)
             .unwrap();
     });
@@ -59,13 +63,12 @@ fn main() {
 
     // Note that this output is read from values committed to in the guest using
     // `zkm_zkvm::io::commit`.
-    let gates = public_values.read::<u32>();
-    println!("gates: {}", gates);
-    let gb0 = public_values.read::<[u8; 32]>();
-    println!("gates: {:?}", gb0);
-    let gb0_ = public_values.read::<[u8; 32]>();
-    println!("gates: {:?}", gb0_);
-    return;
+    // let gates = public_values.read::<u32>();
+    // println!("gates: {}", gates);
+    // let gb0 = public_values.read::<[u8; 32]>();
+    // println!("gates: {:?}", gb0);
+    // let gb0_ = public_values.read::<[u8; 32]>();
+    // println!("gates: {:?}", gb0_);
 
     // Generate the proof for the given guest and input.
     let (pk, vk) = client.setup(ELF);

@@ -33,6 +33,7 @@ pub fn hash(input: &[u8]) -> [u8; 32] {
 
     #[cfg(feature = "_poseidon2")]
     {
+        // FIXME
         use zkm_zkvm::lib::poseidon2::poseidon2;
         output = poseidon2(input);
     }
@@ -123,10 +124,7 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<Serializ
         let chunk_size = max_gates.min(gates.len());
         let garblings: Vec<Vec<S>> = gates.drain(0..chunk_size).collect();
 
-        let sc = SerializableCircuit {
-            gates: std::mem::take(&mut serialized_gates[i]),
-            garblings,
-        };
+        let sc = SerializableCircuit { gates: std::mem::take(&mut serialized_gates[i]), garblings };
         result.push(sc);
         i = i + 1;
     }
@@ -137,8 +135,6 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<Serializ
 pub fn check_guest(buf: &[u8]) {
     let sc: SerializableCircuit = bincode::deserialize(buf).unwrap();
     let circuit: Circuit = (&sc).into();
-    println!("first 10: {:?}", &circuit.1[0]);
     let garblings = circuit.garbled_gates();
-    println!("first 1: {:?}", &garblings[0]);
     assert!(garblings == sc.garblings);
 }
