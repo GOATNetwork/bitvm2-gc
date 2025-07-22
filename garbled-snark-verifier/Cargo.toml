@@ -25,6 +25,7 @@ sha2 = { git = "https://github.com/ziren-patches/RustCrypto-hashes", branch = "p
 ark-serialize = { version = "0.5.0", default-features = false, features = [ "derive" ] }
 
 zkm-zkvm = { workspace = true, branch = "poseidon2", optional = true }
+serde_cbor = { workspace = true }
 
 [dev-dependencies]
 ark-groth16 = "0.5.0"

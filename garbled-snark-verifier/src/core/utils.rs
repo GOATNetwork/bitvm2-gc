@@ -13,6 +13,7 @@ pub fn bit_to_usize(bit: bool) -> usize {
 
 #[allow(unused_variables)]
 pub fn hash(input: &[u8]) -> [u8; 32] {
+    #[allow(unused_assignments)]
     let mut output = [0u8; 32];
 
     #[cfg(feature = "_blake3")]
@@ -46,7 +47,7 @@ pub struct SerializableGate {
     pub gate_type: GateType,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct SerializableCircuit {
     pub gates: Vec<SerializableGate>, // Must also be serializable
     pub garblings: Vec<Vec<S>>,
@@ -95,17 +96,17 @@ impl From<&SerializableCircuit> for Circuit {
 }
 
 pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<SerializableCircuit> {
-    let mut gates = circuit.garbled_gates(); // must return Vec<Vec<S>>
+    let mut gates = circuit.garbled_gates();
     let mut result = Vec::new();
 
     let size = circuit.1.len().div_ceil(max_gates);
-    let mut serialized_circuits = vec![SerializableCircuit::default(); size];
+    let mut serialized_gates: Vec<Vec<SerializableGate>> = vec![Vec::new(); size];
 
-    let _: Vec<_> = serialized_circuits
+    let _: Vec<_> = serialized_gates
         .iter_mut()
         .zip(circuit.1.chunks(max_gates))
         .map(|(out, w)| {
-            out.gates = w
+            *out = w
                 .iter()
                 .map(|w| SerializableGate {
                     wire_a: w.wire_a.borrow().clone(),
@@ -123,7 +124,7 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<Serializ
         let garblings: Vec<Vec<S>> = gates.drain(0..chunk_size).collect();
 
         let sc = SerializableCircuit {
-            gates: std::mem::take(&mut serialized_circuits[i].gates),
+            gates: std::mem::take(&mut serialized_gates[i]),
             garblings,
         };
         result.push(sc);
@@ -131,4 +132,12 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<Serializ
     }
 
     result
+}
+
+pub fn check_guest(buf: &[u8]) {
+    let sc: SerializableCircuit = serde_cbor::from_slice(buf).unwrap();
+    let circuit: Circuit = (&sc).into();
+    println!("first 10: {:?}", &circuit.1[3999]);
+    let garblings = circuit.garbled_gates();
+    assert!(garblings == sc.garblings);
 }

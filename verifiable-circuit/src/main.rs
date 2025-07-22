@@ -11,18 +11,9 @@ extern crate alloc;
 
 zkm_zkvm::entrypoint!(main);
 use garbled_snark_verifier::{
-    bag::{Circuit, S},
-    core::utils::SerializableCircuit,
+    core::utils::check_guest,
 };
 fn main() {
-    let sc: SerializableCircuit = zkm_zkvm::io::read();
-    let circuit: Circuit = (&sc).into();
-
-    let garblings = circuit.garbled_gates();
-
-    assert!(garblings == sc.garblings);
-
-    zkm_zkvm::io::commit(&garblings.len());
-    zkm_zkvm::io::commit(&garblings[0]);
-    zkm_zkvm::io::commit(&sc.garblings[0]);
+    let mut buf = zkm_zkvm::io::read_vec();
+    check_guest(&buf);
 }

@@ -42,7 +42,7 @@ impl TryFrom<u8> for GateType {
 
 const GATE_TYPE_COUNT: usize = 11;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Gate {
     pub wire_a: Wirex,
     pub wire_b: Wirex,
