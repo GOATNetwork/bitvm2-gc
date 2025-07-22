@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bag::{Circuit, Gate, Wire},
+    bag::{Circuit, Gate, S, Wire},
     core::gate::GateType,
 };
 
@@ -38,7 +38,7 @@ pub fn hash(input: &[u8]) -> [u8; 32] {
     output
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct SerializableGate {
     pub wire_a: Wire,
     pub wire_b: Wire,
@@ -46,15 +46,15 @@ pub struct SerializableGate {
     pub gate_type: GateType,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct SerializableCircuit {
-    wires: Vec<Wire>,             // Not RefCell, just the plain struct
-    gates: Vec<SerializableGate>, // Must also be serializable
+    pub gates: Vec<SerializableGate>, // Must also be serializable
+    pub garblings: Vec<Vec<S>>,
 }
 
 impl From<&Circuit> for SerializableCircuit {
     fn from(c: &Circuit) -> Self {
-        let wires = c.0.iter().map(|w| w.borrow().clone()).collect();
+        //let wires = c.0.iter().map(|w| w.borrow().clone()).collect();
         let gates =
             c.1.iter()
                 .map(|w| SerializableGate {
@@ -64,23 +64,71 @@ impl From<&Circuit> for SerializableCircuit {
                     gate_type: w.gate_type,
                 })
                 .collect();
-        Self { wires, gates }
+        Self { gates, garblings: Vec::new() }
     }
 }
 
-impl From<SerializableCircuit> for Circuit {
-    fn from(sc: SerializableCircuit) -> Self {
-        let wires = sc.wires.into_iter().map(|w| Rc::new(RefCell::new(w))).collect();
+impl From<&SerializableCircuit> for Circuit {
+    fn from(sc: &SerializableCircuit) -> Self {
+        //let wires = sc.wires.into_iter().map(|w| Rc::new(RefCell::new(w))).collect();
+        let mut wires = vec![];
         let gates = sc
             .gates
             .iter()
-            .map(|g| Gate {
-                wire_a: Rc::new(RefCell::new(g.wire_a.clone())),
-                wire_b: Rc::new(RefCell::new(g.wire_b.clone())),
-                wire_c: Rc::new(RefCell::new(g.wire_c.clone())),
-                gate_type: g.gate_type,
+            .map(|g| {
+                let a_wirex = Rc::new(RefCell::new(g.wire_a.clone()));
+                let b_wirex = Rc::new(RefCell::new(g.wire_b.clone()));
+                let c_wirex = Rc::new(RefCell::new(g.wire_c.clone()));
+                wires.push(a_wirex);
+                wires.push(b_wirex);
+                wires.push(c_wirex);
+                Gate {
+                    wire_a: wires[wires.len() - 3].clone(),
+                    wire_b: wires[wires.len() - 2].clone(),
+                    wire_c: wires[wires.len() - 1].clone(),
+                    gate_type: g.gate_type,
+                }
             })
             .collect();
         Self(wires, gates)
     }
+}
+
+pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<SerializableCircuit> {
+    let mut gates = circuit.garbled_gates(); // must return Vec<Vec<S>>
+    let mut result = Vec::new();
+
+    let size = circuit.1.len().div_ceil(max_gates);
+    let mut serialized_circuits = vec![SerializableCircuit::default(); size];
+
+    let _: Vec<_> = serialized_circuits
+        .iter_mut()
+        .zip(circuit.1.chunks(max_gates))
+        .map(|(out, w)| {
+            out.gates = w
+                .iter()
+                .map(|w| SerializableGate {
+                    wire_a: w.wire_a.borrow().clone(),
+                    wire_b: w.wire_b.borrow().clone(),
+                    wire_c: w.wire_c.borrow().clone(),
+                    gate_type: w.gate_type,
+                })
+                .collect();
+        })
+        .collect();
+
+    let mut i = 0;
+    while !gates.is_empty() {
+        let chunk_size = max_gates.min(gates.len());
+        let garblings: Vec<Vec<S>> = gates.drain(0..chunk_size).collect();
+
+        let sc = SerializableCircuit {
+            gates: std::mem::take(&mut serialized_circuits[i].gates),
+            garblings,
+        };
+        result.push(sc);
+        i = i + 1;
+    }
+
+    result
 }

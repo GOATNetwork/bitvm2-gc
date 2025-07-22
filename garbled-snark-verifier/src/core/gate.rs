@@ -5,8 +5,9 @@ use core::ops::{Add, AddAssign};
 
 // Except Xor, Xnor and Not, each enum's bitmask represent the boolean operation ((a XOR bit_2) AND (b XOR bit_1)) XOR bit_0
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub enum GateType {
+    #[default]
     And = 0,
     Nand = 1,
     Nimp = 2,

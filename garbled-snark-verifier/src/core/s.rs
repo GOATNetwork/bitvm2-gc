@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::circuits::bn254::utils::random_seed;
 use crate::core::utils::hash;
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct S(pub [u8; 32]);
 
 impl S {

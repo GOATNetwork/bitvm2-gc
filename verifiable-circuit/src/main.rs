@@ -7,26 +7,22 @@
 // inside the zkVM.
 #![no_std]
 #![no_main]
+extern crate alloc;
+
 zkm_zkvm::entrypoint!(main);
-
-use garbled_snark_verifier::circuits::bigint::{
-    utils::{biguint_from_wires, random_biguint_n_bits},
-    U254,
+use garbled_snark_verifier::{
+    bag::{Circuit, S},
+    core::utils::SerializableCircuit,
 };
-use garbled_snark_verifier::circuits::bn254::fp254impl::Fp254Impl;
-use garbled_snark_verifier::circuits::bn254::fq::Fq;
-
 fn main() {
-    let a = Fq::random();
-    let mut circuit = Fq::div6(Fq::wires_set(a));
-    circuit.gate_counts().print();
-    //for mut gate in circuit.1 {
-    //    gate.evaluate();
-    //}
+    let sc: SerializableCircuit = zkm_zkvm::io::read();
+    let circuit: Circuit = (&sc).into();
 
-    //let c = Fq::from_wires(circuit.0);
-    //assert_eq!(c + c + c + c + c + c, a);
+    let garblings = circuit.garbled_gates();
 
-    let garbled = circuit.garbled_gates();
-    zkm_zkvm::io::commit(&garbled.len());
+    assert!(garblings == sc.garblings);
+
+    zkm_zkvm::io::commit(&garblings.len());
+    zkm_zkvm::io::commit(&garblings[0]);
+    zkm_zkvm::io::commit(&sc.garblings[0]);
 }
