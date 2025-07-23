@@ -33,8 +33,7 @@ pub fn hash(input: &[u8]) -> [u8; 32] {
 
     #[cfg(feature = "_poseidon2")]
     {
-        // FIXME
-        use zkm_zkvm::lib::poseidon2::poseidon2;
+        use poseidon2::poseidon2;
         output = poseidon2(input);
     }
     output

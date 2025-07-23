@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 zkm-sdk = { workspace = true }
-garbled-snark-verifier = { workspace = true, features = ["_sha2", "garbled", "_getrandom"] }
+garbled-snark-verifier = { workspace = true, features = ["_poseidon2", "garbled", "_getrandom"] }
 ark-bn254 = { version = "0.5.0", features = ["curve", "scalar_field"], default-features = false }
 ark-ff = "0.5.0"
 bincode = { workspace = true }
