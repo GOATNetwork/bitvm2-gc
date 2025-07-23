@@ -4938,7 +4938,7 @@ dependencies = [
 [[package]]
 name = "poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/ProjectZKM/poseidon2#349f9c428857b0ffdd8f7e72c46992759fcb60ea"
+source = "git+https://github.com/ProjectZKM/poseidon2#28b12b284a6d0bd16eed4b828f22f5f55382e368"
 dependencies = [
  "cfg-if",
  "p3-field",
