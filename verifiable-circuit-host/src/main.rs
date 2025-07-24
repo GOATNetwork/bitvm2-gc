@@ -1,10 +1,12 @@
 use std::io::Read;
 
 use ark_ff::fields::Field;
+use garbled_snark_verifier::circuits::bigint::utils::biguint_from_wires;
 use garbled_snark_verifier::{
     bag::{Circuit, new_wirex},
     circuits::{
         basic::half_adder,
+        bigint::{U254, utils::random_biguint_n_bits},
         bn254::{
             fp254impl::Fp254Impl, fq::Fq, fq2::Fq2, g2::G2Affine,
             pairing::deserialize_compressed_g2_circuit,
@@ -12,6 +14,8 @@ use garbled_snark_verifier::{
     },
     core::utils::{SerializableCircuit, check_guest, gen_sub_circuits},
 };
+use num_bigint::BigUint;
+use std::str::FromStr;
 
 use zkm_sdk::{
     ProverClient, ZKMProofWithPublicValues, ZKMPublicValues, ZKMStdin, include_elf, utils,
@@ -21,24 +25,36 @@ use zkm_sdk::{
 const ELF: &[u8] = include_elf!("verifiable-circuit");
 
 fn split_circuit() {
-    let p = G2Affine::random();
-    //use ark_ec::CurveGroup;
-    //let p = (p - p).into_affine();
-    let y_flag = new_wirex();
-    let sy = (p.y.square()).sqrt().unwrap();
-    y_flag.borrow_mut().set(sy == p.y);
+    // let p = G2Affine::random();
+    // //use ark_ec::CurveGroup;
+    // //let p = (p - p).into_affine();
+    // let y_flag = new_wirex();
+    // let sy = (p.y.square()).sqrt().unwrap();
+    // y_flag.borrow_mut().set(sy == p.y);
 
-    let wires = Fq2::wires_set_montgomery(p.x);
+    // let wires = Fq2::wires_set_montgomery(p.x);
 
-    let mut circuit = deserialize_compressed_g2_circuit(wires.clone(), y_flag);
+    // println!("generate circuit");
+    // let mut circuit = deserialize_compressed_g2_circuit(wires.clone(), y_flag);
+    // circuit.gate_counts().print();
+    // println!("evaluate the circuit, size: {}", circuit.1.len());
+    // for gate in &mut circuit.1 {
+    //     gate.evaluate();
+    // }
+
+    // //let x = Fq2::from_montgomery_wires(circuit.0[0..Fq2::N_BITS].to_vec());
+    // let y = Fq2::from_montgomery_wires(circuit.0[Fq2::N_BITS..2 * Fq2::N_BITS].to_vec());
+    // assert_eq!(y, p.y);
+
+    let a = random_biguint_n_bits(254);
+    let mut circuit = U254::half(U254::wires_set_from_number(&a));
     circuit.gate_counts().print();
     for gate in &mut circuit.1 {
         gate.evaluate();
     }
-
-    //let x = Fq2::from_montgomery_wires(circuit.0[0..Fq2::N_BITS].to_vec());
-    let y = Fq2::from_montgomery_wires(circuit.0[Fq2::N_BITS..2 * Fq2::N_BITS].to_vec());
-    assert_eq!(y, p.y);
+    let c = biguint_from_wires(circuit.0.clone());
+    let d = a.clone() - c.clone() - c.clone();
+    assert!(d == BigUint::ZERO || d == BigUint::from_str("1").unwrap());
 
     println!("gen sub-circuits");
     let garbled = gen_sub_circuits(&mut circuit, 8_000_000);
@@ -64,10 +80,10 @@ fn main() {
     let mut buf = Vec::new();
     let sz = file.read_to_end(&mut buf).unwrap();
 
-    // println!("check guest");
-    // check_guest(&buf);
+    println!("Check guest");
+    check_guest(&buf);
 
-    println!("file size: {}", sz);
+    println!("File size: {}", sz);
     stdin.write_vec(buf);
     // Create a `ProverClient` method.
     let client = ProverClient::new();

@@ -11,6 +11,7 @@ garbled-snark-verifier = { workspace = true, features = ["_poseidon2", "garbled"
 ark-bn254 = { version = "0.5.0", features = ["curve", "scalar_field"], default-features = false }
 ark-ff = "0.5.0"
 bincode = { workspace = true }
+num-bigint = { version = "0.4.4", features = ["rand"] }
 
 [build-dependencies]
 zkm-build = { workspace = true } 

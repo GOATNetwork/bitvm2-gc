@@ -24,7 +24,6 @@ sha2 = { workspace = true, optional = true }
 poseidon2 = {workspace = true, optional = true }
 ark-serialize = { version = "0.5.0", default-features = false, features = [ "derive" ] }
 
-#zkm-zkvm = { workspace = true, branch = "poseidon2", optional = true }
 bincode = { workspace = true }
 
 [dev-dependencies]

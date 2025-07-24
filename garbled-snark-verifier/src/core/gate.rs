@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{bag::*, core::utils::bit_to_usize};
+use crate::{
+    bag::*,
+    core::utils::{DELTA, inc_gid},
+};
 use core::ops::{Add, AddAssign};
 
 // Except Xor, Xnor and Not, each enum's bitmask represent the boolean operation ((a XOR bit_2) AND (b XOR bit_1)) XOR bit_0
@@ -48,11 +51,12 @@ pub struct Gate {
     pub wire_b: Wirex,
     pub wire_c: Wirex,
     pub gate_type: GateType,
+    pub gid: usize,
 }
 
 impl Gate {
     pub fn new(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType) -> Self {
-        Self { wire_a, wire_b, wire_c, gate_type }
+        Self { wire_a, wire_b, wire_c, gate_type, gid: inc_gid() }
     }
 
     pub fn and(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
@@ -130,34 +134,117 @@ impl Gate {
         }
     }
 
+    // w_a^0, w_b^0, delta => w_o^0, c
+    // https://github.com/GOATNetwork/bitvm2-gc/issues/15
+    pub fn g(&self) -> fn(S, S, usize) -> (S, S) {
+        match self.gate_type {
+            GateType::And => |a0, b0, gid| -> (S, S) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                (h0, h1 ^ h0 ^ b0)
+            },
+            GateType::Nand => |a0, b0, gid| -> (S, S) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                (h0 ^ DELTA, h1 ^ h0 ^ b0)
+            },
+            GateType::Nimp => |a0, b0, gid| -> (S, S) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                let b1 = b0 ^ DELTA;
+                (h0, h1 ^ h0 ^ b1)
+            },
+            GateType::Imp => |a0, b0, gid| -> (S, S) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                let b1 = b0 ^ DELTA;
+                (h0 ^ DELTA, h1 ^ h0 ^ b1)
+            },
+            GateType::Ncimp => |a0, b0, gid| -> (S, S) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                (h1, h1 ^ h0 ^ b0)
+            },
+            GateType::Cimp => |a0, b0, gid| -> (S, S) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                let b1 = b0 ^ DELTA;
+                (h1 ^ DELTA, h1 ^ h0 ^ b1)
+            },
+            GateType::Nor => |a0, b0, gid| -> (S, S) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                let b1 = b0 ^ DELTA;
+                (h1, h1 ^ h0 ^ b1)
+            },
+            GateType::Or => |a0, b0, gid| -> (S, S) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                let b1 = b0 ^ DELTA;
+                (h1 ^ DELTA, h1 ^ h0 ^ b1)
+            },
+            GateType::Xnor => |a0, b0, _gid| -> (S, S) { (a0 ^ b0 ^ DELTA, S::one()) },
+            GateType::Xor => |a0, b0, _gid| -> (S, S) { (a0 ^ b0, S::one()) },
+            GateType::Not => |a0, _b0, _gid| -> (S, S) {
+                (a0 ^ DELTA, S::one()) // ciphertext is unused
+            },
+        }
+    }
+
+    // Evaluate on garbled circuit
+    //   input value x, y
+    //   input labels a, b
+    //   ciphertext c
+    //   gate id gid
+    pub fn e(&self) -> Box<dyn Fn(bool, bool, S, S, S, usize) -> (bool, S) + '_> {
+        match self.gate_type {
+            GateType::And | GateType::Nand | GateType::Nimp | GateType::Imp => {
+                Box::new(|x: bool, y: bool, a: S, b: S, c: S, gid: usize| -> (bool, S) {
+                    let o = if !x { a.hash_ext(gid) } else { a.hash_ext(gid) ^ c ^ b };
+                    (self.f()(x, y), o)
+                })
+            }
+
+            GateType::Ncimp | GateType::Cimp | GateType::Nor | GateType::Or => {
+                Box::new(|x: bool, y: bool, a: S, b: S, c: S, gid: usize| -> (bool, S) {
+                    let o = if x { a.hash_ext(gid) } else { a.hash_ext(gid) ^ c ^ b };
+                    (self.f()(x, y), o)
+                })
+            }
+            GateType::Xor => {
+                Box::new(|x, y, a, b, _c, _gid| -> (bool, S) { (self.f()(x, y), a ^ b) })
+            }
+            GateType::Xnor => {
+                Box::new(|x, y, a, b, _c, _gid| -> (bool, S) { (self.f()(x, y), a ^ b) })
+            }
+            GateType::Not => Box::new(|x, y, a, _b, _c, _gid| -> (bool, S) { (self.f()(x, y), a) }),
+        }
+    }
+
     pub fn evaluate(&mut self) {
         self.wire_c
             .borrow_mut()
             .set((self.f())(self.wire_a.borrow().get_value(), self.wire_b.borrow().get_value()));
     }
 
-    pub fn garbled(&self) -> Vec<S> {
-        [(false, false), (true, false), (false, true), (true, true)]
-            .iter()
-            .map(|(i, j)| {
-                let k = (self.f())(*i, *j);
-                let a = self.wire_a.borrow().select(*i);
-                let b = self.wire_b.borrow().select(*j);
-                let c = self.wire_c.borrow().select(k);
-                S::hash_together(a, b) + c.neg()
-            })
-            .collect()
-    }
+    pub fn garbled(&self) -> S {
+        let a0 = self.wire_a.borrow().select(false);
+        let b0 = self.wire_b.borrow().select(false);
 
-    pub fn check_garble(&self, garble: Vec<S>, bit: bool) -> (bool, S) {
-        let a = self.wire_a.borrow().get_label();
-        let b = self.wire_b.borrow().get_label();
-        let index = bit_to_usize(self.wire_a.borrow().get_value())
-            + 2 * bit_to_usize(self.wire_b.borrow().get_value());
-        let row = garble[index];
-        let c = S::hash_together(a, b) + row.neg();
-        let hc = c.hash();
-        (hc == self.wire_c.borrow().select_hash(bit), c)
+        println!("Garbling: {} {:?} {:?}, {:?}", self.gid, self.gate_type, a0.0, b0.0);
+
+        let (c0, ciphertext) = self.g()(a0, b0, self.gid);
+        println!("c0: {:?}",c0.0);
+        self.wire_c.borrow_mut().set_label(c0);
+        ciphertext
     }
 }
 
@@ -304,32 +391,5 @@ impl GateCount {
 
     pub fn ell_by_constant_montgomery() -> Self {
         Self([4098864, 105664, 0, 0, 1374, 52832, 0, 58734, 13580727, 58734, 77179])
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::circuits::bigint::U254;
-    use crate::circuits::bigint::utils::{biguint_from_wires, random_biguint_n_bits};
-
-    #[cfg(all(
-        feature = "garbled",
-        any(feature = "_sha2", feature = "_blake3", feature = "_poseidon2")
-    ))]
-    #[test]
-    fn garbled_test() {
-        let a = random_biguint_n_bits(254);
-        let mut circuit = U254::odd_part(U254::wires_set_from_number(&a));
-        circuit.gate_counts().print();
-
-        for gate in &mut circuit.1 {
-            gate.evaluate();
-        }
-        let c = biguint_from_wires(circuit.0[0..U254::N_BITS].to_vec());
-        let d = biguint_from_wires(circuit.0[U254::N_BITS..2 * U254::N_BITS].to_vec());
-        assert_eq!(a, c * d);
-
-        let garbled = circuit.garbled_gates();
-        println!("garbled gate size: {}", garbled.len());
     }
 }

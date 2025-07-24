@@ -1,4 +1,5 @@
 use core::{iter::zip, ops::Add};
+use std::ops::BitXor;
 
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +33,14 @@ impl S {
         Self(hash(&self.0))
     }
 
+    // FIXME: may change the S size someday
+    pub fn hash_ext(&self, gid: usize) -> Self {
+        let mut input = [0u8; 32 + std::mem::size_of::<usize>()];
+        input[..32].copy_from_slice(&self.0);
+        input[32..].copy_from_slice(&gid.to_le_bytes());
+        Self(hash(&input))
+    }
+
     pub fn hash_together(a: Self, b: Self) -> Self {
         let mut h = a.0.to_vec();
         h.extend(b.0.to_vec());
@@ -58,5 +67,16 @@ impl Add for S {
             carry = x / 256;
         }
         Self(s)
+    }
+}
+
+impl BitXor for S {
+    type Output = Self;
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        let mut a = self;
+        for i in 0..32 {
+            a.0[i] ^= rhs.0[i];
+        }
+        a
     }
 }

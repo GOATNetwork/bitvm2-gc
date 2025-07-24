@@ -1107,7 +1107,7 @@ dependencies = [
  "clang-sys",
  "itertools 0.13.0",
  "log",
- "prettyplease 0.2.35",
+ "prettyplease 0.2.36",
  "proc-macro2",
  "quote",
  "regex",
@@ -2335,7 +2335,7 @@ dependencies = [
  "ethers-core",
  "ethers-etherscan",
  "eyre",
- "prettyplease 0.2.35",
+ "prettyplease 0.2.36",
  "proc-macro2",
  "quote",
  "regex",
@@ -4938,7 +4938,7 @@ dependencies = [
 [[package]]
 name = "poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/ProjectZKM/poseidon2#28b12b284a6d0bd16eed4b828f22f5f55382e368"
+source = "git+https://github.com/ProjectZKM/poseidon2#74f9d09c4bf925402ca6b0a78035b50a1534e2b2"
 dependencies = [
  "cfg-if",
  "p3-field",
@@ -4989,9 +4989,9 @@ dependencies = [
 
 [[package]]
 name = "prettyplease"
-version = "0.2.35"
+version = "0.2.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "061c1221631e079b26479d25bbf2275bfe5917ae8419cd7e34f13bfc2aa7539a"
+checksum = "ff24dfcda44452b9816fff4cd4227e1bb73ff5a2f1bc1105aa92fb8565ce44d2"
 dependencies = [
  "proc-macro2",
  "syn 2.0.104",
@@ -7183,6 +7183,7 @@ dependencies = [
  "ark-ff 0.5.0",
  "bincode",
  "garbled-snark-verifier",
+ "num-bigint 0.4.6",
  "zkm-build",
  "zkm-sdk",
 ]
@@ -7949,7 +7950,7 @@ dependencies = [
 [[package]]
 name = "zkm-build"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -7961,7 +7962,7 @@ dependencies = [
 [[package]]
 name = "zkm-core-executor"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "anyhow",
  "bincode",
@@ -8002,7 +8003,7 @@ dependencies = [
 [[package]]
 name = "zkm-core-machine"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -8054,7 +8055,7 @@ dependencies = [
 [[package]]
 name = "zkm-curves"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "cfg-if",
  "curve25519-dalek",
@@ -8076,7 +8077,7 @@ dependencies = [
 [[package]]
 name = "zkm-derive"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -8085,7 +8086,7 @@ dependencies = [
 [[package]]
 name = "zkm-lib"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -8111,7 +8112,7 @@ dependencies = [
 [[package]]
 name = "zkm-primitives"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "bincode",
  "hex",
@@ -8147,7 +8148,7 @@ dependencies = [
 [[package]]
 name = "zkm-prover"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "anyhow",
  "bincode",
@@ -8186,7 +8187,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-circuit"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "hashbrown 0.14.5",
  "itertools 0.13.0",
@@ -8219,7 +8220,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-compiler"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "backtrace",
  "itertools 0.13.0",
@@ -8240,7 +8241,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-core"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "backtrace",
  "ff 0.13.1",
@@ -8276,7 +8277,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-derive"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -8285,7 +8286,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-gnark-ffi"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "anyhow",
  "bincode",
@@ -8310,7 +8311,7 @@ dependencies = [
 [[package]]
 name = "zkm-sdk"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "alloy-signer",
  "alloy-signer-local",
@@ -8357,7 +8358,7 @@ dependencies = [
 [[package]]
 name = "zkm-stark"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "arrayref",
  "hashbrown 0.14.5",
@@ -8399,7 +8400,7 @@ dependencies = [
 [[package]]
 name = "zkm-zkvm"
 version = "1.1.1"
-source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#e33ca572e6b6e62c804c9208a61fe55f3fabae04"
+source = "git+https://github.com/ProjectZKM/Ziren?branch=poseidon2#20c8658aac71aa69b68fd96dbf7856123e7e4151"
 dependencies = [
  "bincode",
  "cfg-if",
