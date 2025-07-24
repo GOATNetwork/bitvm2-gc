@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::time::Instant;
 
 use ark_ff::fields::Field;
 use garbled_snark_verifier::circuits::bigint::utils::biguint_from_wires;
@@ -16,7 +17,9 @@ use garbled_snark_verifier::{
 };
 use num_bigint::BigUint;
 use std::str::FromStr;
+use tracing::{info, instrument};
 
+use garbled_snark_verifier::circuits::bigint::utils::biguint_from_bits;
 use zkm_sdk::{
     ProverClient, ZKMProofWithPublicValues, ZKMPublicValues, ZKMStdin, include_elf, utils,
 };
@@ -24,7 +27,12 @@ use zkm_sdk::{
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
 
+#[instrument]
 fn split_circuit() -> Vec<SerializableCircuit> {
+    let start_total = Instant::now();
+
+    let start = Instant::now();
+
     let p = G2Affine::random();
     //use ark_ec::CurveGroup;
     //let p = (p - p).into_affine();
@@ -34,10 +42,14 @@ fn split_circuit() -> Vec<SerializableCircuit> {
 
     let wires = Fq2::wires_set_montgomery(p.x);
 
-    println!("generate circuit");
     let mut circuit = deserialize_compressed_g2_circuit(wires.clone(), y_flag);
+
+    let elapsed = start.elapsed();
+    info!(step = "generate circuit", elapsed = ?elapsed, "finish circuit generation");
+
     circuit.gate_counts().print();
-    println!("evaluate the circuit, size: {}", circuit.1.len());
+
+    let start = Instant::now();
     for gate in &mut circuit.1 {
         gate.evaluate();
     }
@@ -46,20 +58,54 @@ fn split_circuit() -> Vec<SerializableCircuit> {
     let y = Fq2::from_montgomery_wires(circuit.0[Fq2::N_BITS..2 * Fq2::N_BITS].to_vec());
     assert_eq!(y, p.y);
 
+    /*
+    let power = 133;
+    let a = random_biguint_n_bits(254);
+    let b = random_biguint_n_bits(254);
+    let mut circuit = U254::mul_by_constant_modulo_power_two(
+        U254::wires_set_from_number(&a),
+        b.clone(),
+        power,
+    );
+    let c = &a * &b % BigUint::from_str("2").unwrap().pow(power as u32);
+    circuit.gate_counts().print();
+
+    for gate in &mut circuit.1 {
+        gate.evaluate();
+    }
+
+    let result = biguint_from_bits(
+        circuit.0.iter().map(|output_wire| output_wire.borrow().get_value()).collect(),
+    );
+    assert_eq!(result, c);
+    */
+
+    let elapsed = start.elapsed();
+    info!(step = "evaluate circuit", elapsed = ?elapsed, "finish circuit evaluation");
+
+    let start = Instant::now();
     println!("gen sub-circuits");
-    let garbled = gen_sub_circuits(&mut circuit, 8_000_000);
+    let garbled = gen_sub_circuits(&mut circuit, 4_000_000);
     // split the GC into sub-circuits
-    println!("garbled:{:?}", garbled.len());
+    info!("garbled:{:?}", garbled.len());
     //garbled.iter().enumerate().for_each(|(i, c)| {
     //    bincode::serialize_into(std::fs::File::create(format!("garbled_{i}.bin")).unwrap(), c)
     //        .unwrap();
     //});
+    let elapsed = start.elapsed();
+    info!(step = "garble circuit", elapsed = ?elapsed, "finish circuit garbling");
+
+    let total_elapsed = start_total.elapsed();
+    info!(elapsed = ?total_elapsed, "total time");
+
     garbled
 }
 
 fn main() {
     // Setup logging.
     utils::setup_logger();
+
+    let start_total = Instant::now();
 
     let garbled_sub_circuits = split_circuit();
 
@@ -69,17 +115,20 @@ fn main() {
 
     let sc_0 = &garbled_sub_circuits[0];
     let ser_sc_0 = bincode::serialize(sc_0).unwrap();
-    println!("Check guest");
-    check_guest(&ser_sc_0);
+    info!("ser_sc_0 size: {:?} bytes", ser_sc_0.len());
+    // println!("Check guest");
+    // check_guest(&ser_sc_0);
 
-    println!("Write zkvm stdin");
     stdin.write_vec(ser_sc_0);
     // Create a `ProverClient` method.
     let client = ProverClient::new();
 
+    let start = Instant::now();
     // Execute the guest using the `ProverClient.execute` method, without generating a proof.
-    let (mut public_values, report) = client.execute(ELF, stdin.clone()).run().unwrap();
-    println!("executed program with {} cycles", report.total_instruction_count());
+    let (_public_values, report) = client.execute(ELF, stdin.clone()).run().unwrap();
+
+    let elapsed = start.elapsed();
+    info!(step = "execut program", elapsed = ?elapsed, "executed program with {} cycles", report.total_instruction_count());
 
     // Note that this output is read from values committed to in the guest using
     // `zkm_zkvm::io::commit`.
@@ -90,11 +139,13 @@ fn main() {
     // let gb0_ = public_values.read::<[u8; 32]>();
     // println!("gates: {:?}", gb0_);
 
+    let start = Instant::now();
     // Generate the proof for the given guest and input.
     let (pk, vk) = client.setup(ELF);
     let mut proof = client.prove(&pk, stdin).run().unwrap();
 
-    println!("generated proof");
+    let elapsed = start.elapsed();
+    info!(step = "generated proof", elapsed =? elapsed, "finish proof generation");
 
     // Verify proof and public values
     client.verify(&proof, &vk).expect("verification failed");
@@ -107,5 +158,7 @@ fn main() {
     // Verify the deserialized proof.
     client.verify(&deserialized_proof, &vk).expect("verification failed");
 
-    println!("successfully generated and verified proof for the program!")
+    info!("successfully generated and verified proof for the program!");
+    let total_elapsed = start_total.elapsed();
+    info!(elapsed = ?total_elapsed, "total time");
 }
