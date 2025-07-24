@@ -34,8 +34,8 @@ impl S {
     }
 
     // FIXME: may change the S size someday
-    pub fn hash_ext(&self, gid: usize) -> Self {
-        let mut input = [0u8; 32 + std::mem::size_of::<usize>()];
+    pub fn hash_ext(&self, gid: u32) -> Self {
+        let mut input = [0u8; 32 + 4];
         input[..32].copy_from_slice(&self.0);
         input[32..].copy_from_slice(&gid.to_le_bytes());
         Self(hash(&input))

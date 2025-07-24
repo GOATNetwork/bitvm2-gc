@@ -51,7 +51,7 @@ pub struct Gate {
     pub wire_b: Wirex,
     pub wire_c: Wirex,
     pub gate_type: GateType,
-    pub gid: usize,
+    pub gid: u32,
 }
 
 impl Gate {
@@ -136,7 +136,7 @@ impl Gate {
 
     // w_a^0, w_b^0, delta => w_o^0, c
     // https://github.com/GOATNetwork/bitvm2-gc/issues/15
-    pub fn g(&self) -> fn(S, S, usize) -> (S, S) {
+    pub fn g(&self) -> fn(S, S, u32) -> (S, S) {
         match self.gate_type {
             GateType::And => |a0, b0, gid| -> (S, S) {
                 let a1 = a0 ^ DELTA;
@@ -204,17 +204,17 @@ impl Gate {
     //   input labels a, b
     //   ciphertext c
     //   gate id gid
-    pub fn e(&self) -> Box<dyn Fn(bool, bool, S, S, S, usize) -> (bool, S) + '_> {
+    pub fn e(&self) -> Box<dyn Fn(bool, bool, S, S, S, u32) -> (bool, S) + '_> {
         match self.gate_type {
             GateType::And | GateType::Nand | GateType::Nimp | GateType::Imp => {
-                Box::new(|x: bool, y: bool, a: S, b: S, c: S, gid: usize| -> (bool, S) {
+                Box::new(|x, y, a, b, c, gid| -> (bool, S) {
                     let o = if !x { a.hash_ext(gid) } else { a.hash_ext(gid) ^ c ^ b };
                     (self.f()(x, y), o)
                 })
             }
 
             GateType::Ncimp | GateType::Cimp | GateType::Nor | GateType::Or => {
-                Box::new(|x: bool, y: bool, a: S, b: S, c: S, gid: usize| -> (bool, S) {
+                Box::new(|x, y, a, b, c, gid| -> (bool, S) {
                     let o = if x { a.hash_ext(gid) } else { a.hash_ext(gid) ^ c ^ b };
                     (self.f()(x, y), o)
                 })
@@ -238,11 +238,7 @@ impl Gate {
     pub fn garbled(&self) -> S {
         let a0 = self.wire_a.borrow().select(false);
         let b0 = self.wire_b.borrow().select(false);
-
-        println!("Garbling: {} {:?} {:?}, {:?}", self.gid, self.gate_type, a0.0, b0.0);
-
         let (c0, ciphertext) = self.g()(a0, b0, self.gid);
-        println!("c0: {:?}",c0.0);
         self.wire_c.borrow_mut().set_label(c0);
         ciphertext
     }

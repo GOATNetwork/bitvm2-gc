@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, sync::atomic::AtomicUsize};
+use std::{cell::RefCell, rc::Rc, sync::atomic::AtomicU32};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,9 +12,9 @@ use std::sync::atomic::Ordering;
 // FIXME: secret
 pub static DELTA: S = S::one();
 
-pub static GID: AtomicUsize = AtomicUsize::new(0);
+pub static GID: AtomicU32 = AtomicU32::new(0);
 
-pub fn inc_gid() -> usize {
+pub fn inc_gid() -> u32 {
     GID.fetch_add(1, Ordering::SeqCst) + 1
 }
 
@@ -56,7 +56,7 @@ pub struct SerializableGate {
     pub wire_b: Wire,
     pub wire_c: Wire,
     pub gate_type: GateType,
-    pub gid: usize,
+    pub gid: u32,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -147,24 +147,8 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<Serializ
 }
 
 pub fn check_guest(buf: &[u8]) {
-//    println!("gid : {:?}", get_gid());
     let sc: SerializableCircuit = bincode::deserialize(buf).unwrap();
     let circuit: Circuit = (&sc).into();
-    for g in &circuit.1 {
-        println!("Gate gid: {}:{:?}:{}:{}", g.gid, 
-            g.gate_type,
-            g.wire_a.borrow().label.unwrap().0[0],
-            g.wire_b.borrow().label.unwrap().0[0],
-        );
-    }
-    for w in &circuit.0 {
-        println!("Wire: {:?}", w.borrow().label.unwrap().0[0]);
-    }
-
     let garblings = circuit.garbled_gates();
-
-    for i in 0..garblings.len() {
-        println!("garblings: {:?}, {:?}", garblings[i], sc.garblings[i]);
-    }
     assert!(garblings == sc.garblings);
 }
