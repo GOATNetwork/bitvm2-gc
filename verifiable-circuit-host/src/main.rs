@@ -1,11 +1,10 @@
 mod dummy_circuit;
-use std::io::Read;
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_ec::pairing::Pairing;
 use ark_ff::fields::Field;
 use ark_groth16::Groth16;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{test_rng, UniformRand};
+use ark_std::{UniformRand, test_rng};
 use garbled_snark_verifier::{
     bag::{Circuit, new_wirex},
     circuits::{
@@ -18,11 +17,13 @@ use garbled_snark_verifier::{
     },
     core::utils::{SerializableCircuit, check_guest, gen_sub_circuits},
 };
-use rand::{SeedableRng, RngCore};
+use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
+use std::io::Read;
 use std::time::Instant;
 use tracing::{info, instrument};
 
+use crate::dummy_circuit::DummyCircuit;
 use garbled_snark_verifier::circuits::bigint::utils::biguint_from_bits;
 use garbled_snark_verifier::circuits::bn254::fr::Fr;
 use garbled_snark_verifier::circuits::bn254::g1::G1Affine;
@@ -30,7 +31,6 @@ use garbled_snark_verifier::circuits::groth16::{
     VerifyingKey, groth16_verifier_montgomery_circuit,
 };
 use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils};
-use crate::dummy_circuit::DummyCircuit;
 
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
@@ -124,7 +124,7 @@ fn main() {
 
     let start_total = Instant::now();
 
-    let start= Instant::now();
+    let start = Instant::now();
     let garbled_sub_circuits = split_circuit();
     let elapsed = start.elapsed();
     info!(elapsed = ?elapsed, "split circuit");

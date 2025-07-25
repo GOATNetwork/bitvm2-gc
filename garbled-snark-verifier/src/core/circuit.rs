@@ -13,7 +13,7 @@ impl Circuit {
     }
 
     // calculate all ciphertext, and send to evaluator
-    pub fn garbled_gates(&self) -> Vec<S> {
+    pub fn garbled_gates(&self) -> Vec<Option<S>> {
         self.1.iter().map(|gate| gate.garbled()).collect()
     }
 

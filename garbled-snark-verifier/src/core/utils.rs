@@ -62,7 +62,7 @@ pub struct SerializableGate {
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct SerializableCircuit {
     pub gates: Vec<SerializableGate>, // Must also be serializable
-    pub garblings: Vec<S>,
+    pub garblings: Vec<Option<S>>,
 }
 
 impl From<&Circuit> for SerializableCircuit {
@@ -136,7 +136,7 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) -> Vec<Serializ
     let mut i = 0;
     while !garbled_gates.is_empty() {
         let chunk_size = max_gates.min(garbled_gates.len());
-        let garblings: Vec<S> = garbled_gates.drain(0..chunk_size).collect();
+        let garblings: Vec<Option<S>> = garbled_gates.drain(0..chunk_size).collect();
 
         let sc = SerializableCircuit { gates: std::mem::take(&mut serialized_gates[i]), garblings };
         result.push(sc);

@@ -136,66 +136,64 @@ impl Gate {
 
     // w_a^0, w_b^0, delta => w_o^0, c
     // https://github.com/GOATNetwork/bitvm2-gc/issues/15
-    pub fn g(&self) -> fn(S, S, u32) -> (S, S) {
+    pub fn g(&self) -> fn(S, S, u32) -> (S, Option<S>) {
         match self.gate_type {
-            GateType::And => |a0, b0, gid| -> (S, S) {
+            GateType::And => |a0, b0, gid| -> (S, Option<S>) {
                 let a1 = a0 ^ DELTA;
                 let h1 = a1.hash_ext(gid);
                 let h0 = a0.hash_ext(gid);
-                (h0, h1 ^ h0 ^ b0)
+                (h0, Some(h1 ^ h0 ^ b0))
             },
-            GateType::Nand => |a0, b0, gid| -> (S, S) {
+            GateType::Nand => |a0, b0, gid| -> (S, Option<S>) {
                 let a1 = a0 ^ DELTA;
                 let h1 = a1.hash_ext(gid);
                 let h0 = a0.hash_ext(gid);
-                (h0 ^ DELTA, h1 ^ h0 ^ b0)
+                (h0 ^ DELTA, Some(h1 ^ h0 ^ b0))
             },
-            GateType::Nimp => |a0, b0, gid| -> (S, S) {
-                let a1 = a0 ^ DELTA;
-                let h1 = a1.hash_ext(gid);
-                let h0 = a0.hash_ext(gid);
-                let b1 = b0 ^ DELTA;
-                (h0, h1 ^ h0 ^ b1)
-            },
-            GateType::Imp => |a0, b0, gid| -> (S, S) {
+            GateType::Nimp => |a0, b0, gid| -> (S, Option<S>) {
                 let a1 = a0 ^ DELTA;
                 let h1 = a1.hash_ext(gid);
                 let h0 = a0.hash_ext(gid);
                 let b1 = b0 ^ DELTA;
-                (h0 ^ DELTA, h1 ^ h0 ^ b1)
+                (h0, Some(h1 ^ h0 ^ b1))
             },
-            GateType::Ncimp => |a0, b0, gid| -> (S, S) {
-                let a1 = a0 ^ DELTA;
-                let h1 = a1.hash_ext(gid);
-                let h0 = a0.hash_ext(gid);
-                (h1, h1 ^ h0 ^ b0)
-            },
-            GateType::Cimp => |a0, b0, gid| -> (S, S) {
+            GateType::Imp => |a0, b0, gid| -> (S, Option<S>) {
                 let a1 = a0 ^ DELTA;
                 let h1 = a1.hash_ext(gid);
                 let h0 = a0.hash_ext(gid);
                 let b1 = b0 ^ DELTA;
-                (h1 ^ DELTA, h1 ^ h0 ^ b1)
+                (h0 ^ DELTA, Some(h1 ^ h0 ^ b1))
             },
-            GateType::Nor => |a0, b0, gid| -> (S, S) {
+            GateType::Ncimp => |a0, b0, gid| -> (S, Option<S>) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                (h1, Some(h1 ^ h0 ^ b0))
+            },
+            GateType::Cimp => |a0, b0, gid| -> (S, Option<S>) {
                 let a1 = a0 ^ DELTA;
                 let h1 = a1.hash_ext(gid);
                 let h0 = a0.hash_ext(gid);
                 let b1 = b0 ^ DELTA;
-                (h1, h1 ^ h0 ^ b1)
+                (h1 ^ DELTA, Some(h1 ^ h0 ^ b1))
             },
-            GateType::Or => |a0, b0, gid| -> (S, S) {
+            GateType::Nor => |a0, b0, gid| -> (S, Option<S>) {
                 let a1 = a0 ^ DELTA;
                 let h1 = a1.hash_ext(gid);
                 let h0 = a0.hash_ext(gid);
                 let b1 = b0 ^ DELTA;
-                (h1 ^ DELTA, h1 ^ h0 ^ b1)
+                (h1, Some(h1 ^ h0 ^ b1))
             },
-            GateType::Xnor => |a0, b0, _gid| -> (S, S) { (a0 ^ b0 ^ DELTA, S::one()) },
-            GateType::Xor => |a0, b0, _gid| -> (S, S) { (a0 ^ b0, S::one()) },
-            GateType::Not => |a0, _b0, _gid| -> (S, S) {
-                (a0 ^ DELTA, S::one()) // ciphertext is unused
+            GateType::Or => |a0, b0, gid| -> (S, Option<S>) {
+                let a1 = a0 ^ DELTA;
+                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gid);
+                let b1 = b0 ^ DELTA;
+                (h1 ^ DELTA, Some(h1 ^ h0 ^ b1))
             },
+            GateType::Xnor => |a0, b0, _gid| -> (S, Option<S>) { (a0 ^ b0 ^ DELTA, None) },
+            GateType::Xor => |a0, b0, _gid| -> (S, Option<S>) { (a0 ^ b0, None) },
+            GateType::Not => |a0, _b0, _gid| -> (S, Option<S>) { (a0 ^ DELTA, None) },
         }
     }
 
@@ -235,7 +233,7 @@ impl Gate {
             .set((self.f())(self.wire_a.borrow().get_value(), self.wire_b.borrow().get_value()));
     }
 
-    pub fn garbled(&self) -> S {
+    pub fn garbled(&self) -> Option<S> {
         let a0 = self.wire_a.borrow().select(false);
         let b0 = self.wire_b.borrow().select(false);
         let (c0, ciphertext) = self.g()(a0, b0, self.gid);

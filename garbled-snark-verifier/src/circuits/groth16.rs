@@ -1,12 +1,21 @@
 use crate::bag::*;
-use crate::circuits::bn254::finalexp::{final_exponentiation_evaluate_montgomery_fast, final_exponentiation_montgomery_fast_circuit};
+use crate::circuits::bn254::finalexp::{
+    final_exponentiation_evaluate_montgomery_fast, final_exponentiation_montgomery_fast_circuit,
+};
 use crate::circuits::bn254::fp254impl::Fp254Impl;
 use crate::circuits::bn254::fq::Fq;
 use crate::circuits::bn254::fq2::Fq2;
 use crate::circuits::bn254::fq12::Fq12;
 use crate::circuits::bn254::fr::Fr;
-use crate::circuits::bn254::g1::{G1Projective, projective_to_affine_evaluate_montgomery, projective_to_affine_montgomery};
-use crate::circuits::bn254::pairing::{deserialize_compressed_g1_circuit, deserialize_compressed_g1_circuit_evaluate, deserialize_compressed_g2_circuit, deserialize_compressed_g2_circuit_evaluate, multi_miller_loop_groth16_evaluate_montgomery_fast, multi_miller_loop_groth16_montgomery_fast_circuit};
+use crate::circuits::bn254::g1::{
+    G1Projective, projective_to_affine_evaluate_montgomery, projective_to_affine_montgomery,
+};
+use crate::circuits::bn254::pairing::{
+    deserialize_compressed_g1_circuit, deserialize_compressed_g1_circuit_evaluate,
+    deserialize_compressed_g2_circuit, deserialize_compressed_g2_circuit_evaluate,
+    multi_miller_loop_groth16_evaluate_montgomery_fast,
+    multi_miller_loop_groth16_montgomery_fast_circuit,
+};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::Field;
@@ -117,7 +126,7 @@ pub fn groth16_verifier_montgomery_circuit(
     compressed: bool,
 ) -> Circuit {
     let mut circuit = Circuit::empty();
-    
+
     let mut proof_a = proof_a;
     let mut proof_b = proof_b;
     let mut proof_c = proof_c;
@@ -129,14 +138,14 @@ pub fn groth16_verifier_montgomery_circuit(
 
         proof_a = circuit.extend(proof_a_circuit);
         assert_eq!(proof_a.len(), 2 * Fq::N_BITS);
-        
+
         let proof_b_circuit = deserialize_compressed_g2_circuit(
             proof_b[..Fq2::N_BITS].to_vec(),
             proof_b[Fq2::N_BITS].clone(),
         );
         proof_b = circuit.extend(proof_b_circuit);
         assert_eq!(proof_b.len(), 2 * Fq2::N_BITS);
-        
+
         let proof_c_circuit = deserialize_compressed_g1_circuit(
             proof_c[..Fq::N_BITS].to_vec(),
             proof_c[Fq::N_BITS].clone(),
@@ -144,17 +153,19 @@ pub fn groth16_verifier_montgomery_circuit(
         proof_c = circuit.extend(proof_c_circuit);
         assert_eq!(proof_c.len(), 2 * Fq::N_BITS);
     }
-    
+
     let msm_temp_circuit = G1Projective::msm_with_constant_bases_montgomery_circuit::<10>(
-        vec![public], vec![vk.gamma_abc_g1[1].into_group()]);
+        vec![public],
+        vec![vk.gamma_abc_g1[1].into_group()],
+    );
     let msm_temp = circuit.extend(msm_temp_circuit);
-    
+
     let msm_circuit = G1Projective::add_montgomery(
         msm_temp,
-        G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group())
+        G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group()),
     );
     let msm = circuit.extend(msm_circuit);
-   
+
     let msm_affine_circuit = projective_to_affine_montgomery(msm);
     let msm_affine = circuit.extend(msm_affine_circuit);
 
@@ -172,10 +183,10 @@ pub fn groth16_verifier_montgomery_circuit(
         [vk.alpha_g1.into_group()],
         [-vk.beta_g2],
     ))
-        .unwrap()
-        .0
-        .inverse()
-        .unwrap();
+    .unwrap()
+    .0
+    .inverse()
+    .unwrap();
 
     let final_exponentiation_circuit = final_exponentiation_montgomery_fast_circuit(f);
     let f = circuit.extend(final_exponentiation_circuit);
@@ -347,7 +358,7 @@ mod tests {
             proof_b.clone(),
             proof_c.clone(),
             vk.clone(),
-            false
+            false,
         );
         gate_count.print();
         assert!(result.borrow().get_value());

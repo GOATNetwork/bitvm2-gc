@@ -305,7 +305,7 @@ impl G1Projective {
             let m = 2_usize.pow(w as u32);
             let selector = s[index..(index + w)].to_vec();
             // let (result, gc) =
-                // Self::multiplexer_evaluate(bases_wires.clone()[0..m].to_vec(), selector, w);
+            // Self::multiplexer_evaluate(bases_wires.clone()[0..m].to_vec(), selector, w);
 
             let result_circuit = Self::multiplexer(bases_wires.clone()[0..m].to_vec(), selector, w);
             let result = circuit.extend(result_circuit);
