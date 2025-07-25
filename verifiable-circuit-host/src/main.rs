@@ -18,10 +18,8 @@ use garbled_snark_verifier::{
     },
     core::utils::{SerializableCircuit, check_guest, gen_sub_circuits},
 };
-use num_bigint::BigUint;
 use rand::{SeedableRng, RngCore};
 use rand_chacha::ChaCha12Rng;
-use std::str::FromStr;
 use std::time::Instant;
 use tracing::{info, instrument};
 
@@ -82,7 +80,6 @@ fn custom_deserialize_compressed_g2_circuit() -> Circuit {
 
     circuit.gate_counts().print();
 
-    let start = Instant::now();
     for gate in &mut circuit.1 {
         gate.evaluate();
     }
@@ -127,7 +124,10 @@ fn main() {
 
     let start_total = Instant::now();
 
+    let start= Instant::now();
     let garbled_sub_circuits = split_circuit();
+    let elapsed = start.elapsed();
+    info!(elapsed = ?elapsed, "split circuit");
 
     // The input stream that the guest will read from using `zkm_zkvm::io::read`. Note that the
     // types of the elements in the input stream must match the types being read in the guest.
