@@ -6,7 +6,7 @@ use crate::circuits::bn254::fq2::Fq2;
 use crate::circuits::bn254::fq12::Fq12;
 use crate::circuits::bn254::fr::Fr;
 use crate::circuits::bn254::g1::{G1Projective, projective_to_affine_evaluate_montgomery, projective_to_affine_montgomery};
-use crate::circuits::bn254::pairing::{deserialize_compressed_g1_circuit, deserialize_compressed_g1_circuit_evaluate, deserialize_compressed_g2_circuit, deserialize_compressed_g2_circuit_evaluate, multi_miller_loop_groth16_evaluate_montgomery_fast, multi_miller_loop_groth16_montgomery_fast};
+use crate::circuits::bn254::pairing::{deserialize_compressed_g1_circuit, deserialize_compressed_g1_circuit_evaluate, deserialize_compressed_g2_circuit, deserialize_compressed_g2_circuit_evaluate, multi_miller_loop_groth16_evaluate_montgomery_fast, multi_miller_loop_groth16_montgomery_fast_circuit};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::Field;
@@ -116,7 +116,7 @@ pub fn groth16_verifier_evaluate_montgomery(
     (result[0].clone(), gate_count)
 }
 
-pub fn groth16_verifier_evaluate_montgomery_circuit(
+pub fn groth16_verifier_montgomery_circuit(
     public: Wires,
     proof_a: Wires,
     proof_b: Wires,
@@ -157,18 +157,18 @@ pub fn groth16_verifier_evaluate_montgomery_circuit(
         vec![public], vec![vk.gamma_abc_g1[1].into_group()]);
     let msm_temp = circuit.extend(msm_temp_circuit);
     
-    let mut msm_circuit = G1Projective::add_montgomery(
+    let msm_circuit = G1Projective::add_montgomery(
         msm_temp,
         G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group())
     );
-    msm_circuit.evaluate();
+    // msm_circuit.evaluate();
     let msm = circuit.extend(msm_circuit);
    
-    let mut msm_affine_circuit = projective_to_affine_montgomery(msm);
-    msm_affine_circuit.evaluate();
+    let msm_affine_circuit = projective_to_affine_montgomery(msm);
+    // msm_affine_circuit.evaluate();
     let msm_affine = circuit.extend(msm_affine_circuit);
 
-    let multi_miller_circut = multi_miller_loop_groth16_montgomery_fast(
+    let multi_miller_circut = multi_miller_loop_groth16_montgomery_fast_circuit(
         msm_affine,
         proof_c,
         proof_a,
@@ -191,7 +191,7 @@ pub fn groth16_verifier_evaluate_montgomery_circuit(
     let f = circuit.extend(final_exponentiation_circuit);
 
     let mut result_circuit = Fq12::equal_constant(f, Fq12::as_montgomery(alpha_beta));
-    result_circuit.evaluate();
+    // result_circuit.evaluate();
     let result = circuit.extend(result_circuit);
     circuit.add_wires(result.clone());
 

@@ -288,16 +288,13 @@ pub fn g2_affine_neg_evaluate(r: Wires) -> (Wires, GateCount) {
     (circuit.0, n)
 }
 
-pub fn g2_affine_neg_evaluate_circuit(r: Wires) -> Circuit {
+pub fn g2_affine_neg_circuit(r: Wires) -> Circuit {
     let mut circuit = Circuit::empty();
     let x = r[0..Fq2::N_BITS].to_vec();
     let y = r[Fq2::N_BITS..2 * Fq2::N_BITS].to_vec();
     let new_y = circuit.extend(Fq2::neg(y));
     circuit.add_wires(x);
     circuit.add_wires(new_y);
-    for mut gate in &mut circuit.1 {
-        gate.evaluate();
-    }
     circuit
 }
 
@@ -454,12 +451,11 @@ pub fn ell_coeffs_montgomery_fast(q: Wires) -> (Vec<(Wires, Wires, Wires)>, Circ
     r.extend_from_slice(&q[Fq2::N_BITS..2 * Fq2::N_BITS]);
     r.extend_from_slice(&Fq2::wires_set_montgomery(ark_bn254::Fq2::from(1)));
 
-    let neg_q_circuit = g2_affine_neg_evaluate_circuit(q.clone());
+    let neg_q_circuit = g2_affine_neg_circuit(q.clone());
     let neg_q = circuit.extend(neg_q_circuit);
 
     for bit in ark_bn254::Config::ATE_LOOP_COUNT.iter().rev().skip(1) {
-        let mut double_in_place_circuit = double_in_place_circuit_montgomery(r.clone());
-        double_in_place_circuit.evaluate();
+        let double_in_place_circuit = double_in_place_circuit_montgomery(r.clone());
         let wires = circuit.extend(double_in_place_circuit);
         ellc.push((
             wires[0..Fq2::N_BITS].to_vec(),
@@ -470,8 +466,7 @@ pub fn ell_coeffs_montgomery_fast(q: Wires) -> (Vec<(Wires, Wires, Wires)>, Circ
 
         match bit {
             1 => {
-                let mut add_in_place_circuit = add_in_place_circuit_montgomery(r.clone(), q.clone());
-                add_in_place_circuit.evaluate();
+                let add_in_place_circuit = add_in_place_circuit_montgomery(r.clone(), q.clone());
                 let wires = circuit.extend(add_in_place_circuit);
                 ellc.push((
                     wires[0..Fq2::N_BITS].to_vec(),
@@ -481,8 +476,7 @@ pub fn ell_coeffs_montgomery_fast(q: Wires) -> (Vec<(Wires, Wires, Wires)>, Circ
                 r = wires[3 * Fq2::N_BITS..6 * Fq2::N_BITS].to_vec();
             }
             -1 => {
-                let mut add_in_place_circuit = add_in_place_circuit_montgomery(r.clone(), neg_q.clone());
-                add_in_place_circuit.evaluate();
+                let add_in_place_circuit = add_in_place_circuit_montgomery(r.clone(), neg_q.clone());
                 let wires = circuit.extend(add_in_place_circuit);
                 ellc.push((
                     wires[0..Fq2::N_BITS].to_vec(),
@@ -494,19 +488,16 @@ pub fn ell_coeffs_montgomery_fast(q: Wires) -> (Vec<(Wires, Wires, Wires)>, Circ
             _ => {}
         }
     }
-    let mut q1_circuit = mul_by_char_circuit_montgomery(q.clone());
-    q1_circuit.evaluate();
+    let q1_circuit = mul_by_char_circuit_montgomery(q.clone());
     let q1 = circuit.extend(q1_circuit);
 
-    let mut q2_circuit = mul_by_char_circuit_montgomery(q1.clone());
-    q2_circuit.evaluate();
+    let q2_circuit = mul_by_char_circuit_montgomery(q1.clone());
     let mut q2 = circuit.extend(q2_circuit);
 
-    let new_q2_circuit = g2_affine_neg_evaluate_circuit(q2.clone());
+    let new_q2_circuit = g2_affine_neg_circuit(q2.clone());
     q2 = circuit.extend(new_q2_circuit);
 
-    let mut add_in_place_circuit = add_in_place_circuit_montgomery(r.clone(), q1);
-    add_in_place_circuit.evaluate();
+    let add_in_place_circuit = add_in_place_circuit_montgomery(r.clone(), q1);
     let wires = circuit.extend(add_in_place_circuit);
     ellc.push((
         wires[0..Fq2::N_BITS].to_vec(),
@@ -516,8 +507,7 @@ pub fn ell_coeffs_montgomery_fast(q: Wires) -> (Vec<(Wires, Wires, Wires)>, Circ
     r = wires[3 * Fq2::N_BITS..6 * Fq2::N_BITS].to_vec();
 
 
-    let mut add_in_place_circuit = add_in_place_circuit_montgomery(r.clone(), q2);
-    add_in_place_circuit.evaluate();
+    let add_in_place_circuit = add_in_place_circuit_montgomery(r.clone(), q2);
     let wires = circuit.extend(add_in_place_circuit);
     ellc.push((
         wires[0..Fq2::N_BITS].to_vec(),
@@ -620,18 +610,6 @@ pub fn ell_by_constant_evaluate_montgomery(
         gate.evaluate();
     }
     (circuit.0, n)
-}
-
-pub fn ell_by_constant_evaluate_montgomery_circuit(
-    f: Wires,
-    coeffs: (ark_bn254::Fq2, ark_bn254::Fq2, ark_bn254::Fq2),
-    p: Wires,
-) -> Circuit {
-    let mut circuit = ell_by_constant_circuit_montgomery(f, coeffs, p);
-    for gate in &mut circuit.1 {
-        gate.evaluate();
-    }
-    circuit
 }
 
 pub fn miller_loop(p: ark_bn254::G1Affine, q: ark_bn254::G2Affine) -> ark_bn254::Fq12 {
@@ -1250,7 +1228,7 @@ pub fn multi_miller_loop_groth16_evaluate_montgomery_fast(
 }
 
 
-pub fn multi_miller_loop_groth16_montgomery_fast(
+pub fn multi_miller_loop_groth16_montgomery_fast_circuit(
     p1: Wires,
     p2: Wires,
     p3: Wires,
@@ -1262,6 +1240,7 @@ pub fn multi_miller_loop_groth16_montgomery_fast(
     let q1ell = ell_coeffs(q1);
     let q2ell = ell_coeffs(q2);
     let (q3ell, ell_coeffs_circuit) = ell_coeffs_montgomery_fast(q3);
+    circuit.extend(ell_coeffs_circuit);
     let mut q1_ell = q1ell.iter();
     let mut q2_ell = q2ell.iter();
     let mut q3_ell = q3ell.iter();
@@ -1270,55 +1249,48 @@ pub fn multi_miller_loop_groth16_montgomery_fast(
 
     for i in (1..ark_bn254::Config::ATE_LOOP_COUNT.len()).rev() {
         if i != ark_bn254::Config::ATE_LOOP_COUNT.len() - 1 {
-            let mut circuit_square = Fq12::square_montgomery(f);
-            for gate in &mut circuit_square.1 {
-                gate.evaluate();
-            }
+            let circuit_square = Fq12::square_montgomery(f);
             f = circuit.extend(circuit_square);
         }
 
-        let ell_by_constant_circuit = ell_by_constant_evaluate_montgomery_circuit(f, q1_ell.next().unwrap().clone(), p1.clone());
+        let ell_by_constant_circuit = ell_by_constant_circuit_montgomery(f, q1_ell.next().unwrap().clone(), p1.clone());
         f = circuit.extend(ell_by_constant_circuit);
 
-        let ell_by_constant_circuit = ell_by_constant_evaluate_montgomery_circuit(f, q2_ell.next().unwrap().clone(), p2.clone());
+        let ell_by_constant_circuit = ell_by_constant_circuit_montgomery(f, q2_ell.next().unwrap().clone(), p2.clone());
         f = circuit.extend(ell_by_constant_circuit);
 
-        let mut ell_montgomery_circuit = ell_circuit_montgomery(f, q3_ell.next().unwrap().clone(), p3.clone());
-        ell_montgomery_circuit.evaluate();
+        let ell_montgomery_circuit = ell_circuit_montgomery(f, q3_ell.next().unwrap().clone(), p3.clone());
         f = circuit.extend(ell_montgomery_circuit);
 
         let bit = ark_bn254::Config::ATE_LOOP_COUNT[i - 1];
         if bit == 1 || bit == -1 {
-            let ell_by_constant_circuit = ell_by_constant_evaluate_montgomery_circuit(f, q1_ell.next().unwrap().clone(), p1.clone());
+            let ell_by_constant_circuit = ell_by_constant_circuit_montgomery(f, q1_ell.next().unwrap().clone(), p1.clone());
             f = circuit.extend(ell_by_constant_circuit);
 
-            let ell_by_constant_circuit = ell_by_constant_evaluate_montgomery_circuit(f, q2_ell.next().unwrap().clone(), p2.clone());
+            let ell_by_constant_circuit = ell_by_constant_circuit_montgomery(f, q2_ell.next().unwrap().clone(), p2.clone());
             f = circuit.extend(ell_by_constant_circuit);
 
-            let mut ell_montgomery_circuit = ell_circuit_montgomery(f, q3_ell.next().unwrap().clone(), p3.clone());
-            ell_montgomery_circuit.evaluate();
+            let ell_montgomery_circuit = ell_circuit_montgomery(f, q3_ell.next().unwrap().clone(), p3.clone());
             f = circuit.extend(ell_montgomery_circuit);
         }
     }
 
-    let ell_by_constant_circuit = ell_by_constant_evaluate_montgomery_circuit(f, q1_ell.next().unwrap().clone(), p1.clone());
+    let ell_by_constant_circuit = ell_by_constant_circuit_montgomery(f, q1_ell.next().unwrap().clone(), p1.clone());
     f = circuit.extend(ell_by_constant_circuit);
 
-    let ell_by_constant_circuit = ell_by_constant_evaluate_montgomery_circuit(f, q2_ell.next().unwrap().clone(), p2.clone());
+    let ell_by_constant_circuit = ell_by_constant_circuit_montgomery(f, q2_ell.next().unwrap().clone(), p2.clone());
     f = circuit.extend(ell_by_constant_circuit);
 
-    let mut ell_montgomery_circuit = ell_circuit_montgomery(f, q3_ell.next().unwrap().clone(), p3.clone());
-    ell_montgomery_circuit.evaluate();
+    let ell_montgomery_circuit = ell_circuit_montgomery(f, q3_ell.next().unwrap().clone(), p3.clone());
     f = circuit.extend(ell_montgomery_circuit);
 
-    let ell_by_constant_circuit = ell_by_constant_evaluate_montgomery_circuit(f, q1_ell.next().unwrap().clone(), p1.clone());
+    let ell_by_constant_circuit = ell_by_constant_circuit_montgomery(f, q1_ell.next().unwrap().clone(), p1.clone());
     f = circuit.extend(ell_by_constant_circuit);
 
-    let ell_by_constant_circuit = ell_by_constant_evaluate_montgomery_circuit(f, q2_ell.next().unwrap().clone(), p2.clone());
+    let ell_by_constant_circuit = ell_by_constant_circuit_montgomery(f, q2_ell.next().unwrap().clone(), p2.clone());
     f = circuit.extend(ell_by_constant_circuit);
 
-    let mut ell_montgomery_circuit = ell_circuit_montgomery(f, q3_ell.next().unwrap().clone(), p3.clone());
-    ell_montgomery_circuit.evaluate();
+    let ell_montgomery_circuit = ell_circuit_montgomery(f, q3_ell.next().unwrap().clone(), p3.clone());
     f = circuit.extend(ell_montgomery_circuit);
 
     circuit.add_wires(f);

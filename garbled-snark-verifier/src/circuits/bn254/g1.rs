@@ -307,8 +307,7 @@ impl G1Projective {
             // let (result, gc) =
                 // Self::multiplexer_evaluate(bases_wires.clone()[0..m].to_vec(), selector, w);
 
-            let mut result_circuit = Self::multiplexer(bases_wires.clone()[0..m].to_vec(), selector, w);
-            result_circuit.evaluate();
+            let result_circuit = Self::multiplexer(bases_wires.clone()[0..m].to_vec(), selector, w);
             let result = circuit.extend(result_circuit);
 
             to_be_added.push(result);
@@ -330,8 +329,7 @@ impl G1Projective {
 
         let mut acc = to_be_added[0].clone();
         for add in to_be_added.iter().skip(1) {
-            let mut new_acc_circuit = Self::add_montgomery(acc.clone(), add.clone());
-            new_acc_circuit.evaluate();
+            let new_acc_circuit = Self::add_montgomery(acc.clone(), add.clone());
             acc = circuit.extend(new_acc_circuit);
         }
         circuit.add_wires(acc);
@@ -376,8 +374,7 @@ impl G1Projective {
 
         let mut acc = to_be_added[0].clone();
         for add in to_be_added.iter().skip(1) {
-            let mut new_acc_circuit = Self::add_montgomery(acc.clone(), add.clone());
-            new_acc_circuit.evaluate();
+            let new_acc_circuit = Self::add_montgomery(acc.clone(), add.clone());
             acc = circuit.extend(new_acc_circuit);
         }
         circuit.add_wires(acc);
