@@ -1,15 +1,12 @@
 use crate::bag::*;
-use crate::circuits::bn254::finalexp::final_exponentiation_evaluate_montgomery_fast;
+use crate::circuits::bn254::finalexp::{final_exponentiation_evaluate_montgomery_fast, final_exponentiation_montgomery_fast_circuit};
 use crate::circuits::bn254::fp254impl::Fp254Impl;
 use crate::circuits::bn254::fq::Fq;
 use crate::circuits::bn254::fq2::Fq2;
 use crate::circuits::bn254::fq12::Fq12;
 use crate::circuits::bn254::fr::Fr;
-use crate::circuits::bn254::g1::{G1Projective, projective_to_affine_evaluate_montgomery};
-use crate::circuits::bn254::pairing::{
-    deserialize_compressed_g1_circuit_evaluate, deserialize_compressed_g2_circuit_evaluate,
-    multi_miller_loop_groth16_evaluate_montgomery_fast,
-};
+use crate::circuits::bn254::g1::{G1Projective, projective_to_affine_evaluate_montgomery, projective_to_affine_montgomery};
+use crate::circuits::bn254::pairing::{deserialize_compressed_g1_circuit, deserialize_compressed_g1_circuit_evaluate, deserialize_compressed_g2_circuit, deserialize_compressed_g2_circuit_evaluate, multi_miller_loop_groth16_evaluate_montgomery_fast, multi_miller_loop_groth16_montgomery_fast_circuit};
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::Field;
@@ -58,6 +55,7 @@ pub fn groth16_verifier_evaluate_montgomery(
         );
         gate_count += gc;
         assert_eq!(proof_b.len(), 2 * Fq2::N_BITS);
+
         (proof_c, gc) = deserialize_compressed_g1_circuit_evaluate(
             proof_c[..Fq::N_BITS].to_vec(),
             proof_c[Fq::N_BITS].clone(),
@@ -108,6 +106,85 @@ pub fn groth16_verifier_evaluate_montgomery(
     let (result, gc) = Fq12::equal_constant_evaluate(f, Fq12::as_montgomery(alpha_beta));
     gate_count += gc;
     (result[0].clone(), gate_count)
+}
+
+pub fn groth16_verifier_montgomery_circuit(
+    public: Wires,
+    proof_a: Wires,
+    proof_b: Wires,
+    proof_c: Wires,
+    vk: VerifyingKey<ark_bn254::Bn254>,
+    compressed: bool,
+) -> Circuit {
+    let mut circuit = Circuit::empty();
+    
+    let mut proof_a = proof_a;
+    let mut proof_b = proof_b;
+    let mut proof_c = proof_c;
+    if compressed {
+        let proof_a_circuit = deserialize_compressed_g1_circuit(
+            proof_a[..Fq::N_BITS].to_vec(),
+            proof_a[Fq::N_BITS].clone(),
+        );
+
+        proof_a = circuit.extend(proof_a_circuit);
+        assert_eq!(proof_a.len(), 2 * Fq::N_BITS);
+        
+        let proof_b_circuit = deserialize_compressed_g2_circuit(
+            proof_b[..Fq2::N_BITS].to_vec(),
+            proof_b[Fq2::N_BITS].clone(),
+        );
+        proof_b = circuit.extend(proof_b_circuit);
+        assert_eq!(proof_b.len(), 2 * Fq2::N_BITS);
+        
+        let proof_c_circuit = deserialize_compressed_g1_circuit(
+            proof_c[..Fq::N_BITS].to_vec(),
+            proof_c[Fq::N_BITS].clone(),
+        );
+        proof_c = circuit.extend(proof_c_circuit);
+        assert_eq!(proof_c.len(), 2 * Fq::N_BITS);
+    }
+    
+    let msm_temp_circuit = G1Projective::msm_with_constant_bases_montgomery_circuit::<10>(
+        vec![public], vec![vk.gamma_abc_g1[1].into_group()]);
+    let msm_temp = circuit.extend(msm_temp_circuit);
+    
+    let msm_circuit = G1Projective::add_montgomery(
+        msm_temp,
+        G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group())
+    );
+    let msm = circuit.extend(msm_circuit);
+   
+    let msm_affine_circuit = projective_to_affine_montgomery(msm);
+    let msm_affine = circuit.extend(msm_affine_circuit);
+
+    let multi_miller_circut = multi_miller_loop_groth16_montgomery_fast_circuit(
+        msm_affine,
+        proof_c,
+        proof_a,
+        -vk.gamma_g2,
+        -vk.delta_g2,
+        proof_b,
+    );
+    let f = circuit.extend(multi_miller_circut);
+
+    let alpha_beta = ark_bn254::Bn254::final_exponentiation(ark_bn254::Bn254::multi_miller_loop(
+        [vk.alpha_g1.into_group()],
+        [-vk.beta_g2],
+    ))
+        .unwrap()
+        .0
+        .inverse()
+        .unwrap();
+
+    let final_exponentiation_circuit = final_exponentiation_montgomery_fast_circuit(f);
+    let f = circuit.extend(final_exponentiation_circuit);
+
+    let result_circuit = Fq12::equal_constant(f, Fq12::as_montgomery(alpha_beta));
+    let result = circuit.extend(result_circuit);
+    circuit.add_wires(result.clone());
+
+    circuit
 }
 
 #[cfg(test)]
@@ -233,6 +310,52 @@ mod tests {
             groth16_verifier_evaluate_montgomery(public, proof_a, proof_b, proof_c, vk, false);
         gate_count.print();
         assert!(result.borrow().get_value());
+    }
+
+    #[test]
+    fn test_groth16_verifier_montgomery_circuit() {
+        let k = 6;
+        let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
+        let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
+            a: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
+            b: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
+            num_variables: 10,
+            num_constraints: 1 << k,
+        };
+        let (pk, vk) = Groth16::<ark_bn254::Bn254>::setup(circuit, &mut rng).unwrap();
+
+        let c = circuit.a.unwrap() * circuit.b.unwrap();
+
+        let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, circuit, &mut rng).unwrap();
+        assert!(groth16_verifier(vec![c], proof.clone(), vk.clone()));
+
+        println!("proof is correct in rust");
+
+        let public = Fr::wires_set(c);
+        let proof_a = G1Affine::wires_set_montgomery(proof.a);
+        let proof_b = G2Affine::wires_set_montgomery(proof.b);
+        let proof_c = G1Affine::wires_set_montgomery(proof.c);
+
+        let mut vk_data = Vec::new();
+        vk.serialize_compressed(&mut vk_data).unwrap();
+        let vk: super::VerifyingKey<ark_bn254::Bn254> =
+            super::VerifyingKey::deserialize_compressed(&vk_data[..]).unwrap();
+
+        let (result, gate_count) = groth16_verifier_evaluate_montgomery(
+            public.clone(),
+            proof_a.clone(),
+            proof_b.clone(),
+            proof_c.clone(),
+            vk.clone(),
+            false
+        );
+        gate_count.print();
+        assert!(result.borrow().get_value());
+
+        let circuit =
+            groth16_verifier_montgomery_circuit(public, proof_a, proof_b, proof_c, vk, false);
+        let circuit_gate_count = circuit.gate_counts();
+        assert_eq!(circuit_gate_count.total_gate_count(), gate_count.total_gate_count());
     }
 
     #[test]

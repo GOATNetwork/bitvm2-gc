@@ -131,6 +131,35 @@ pub fn cyclotomic_exp_fast_inverse_evaluate_montgomery_fast(f: Wires) -> (Wires,
     (res, gate_count)
 }
 
+pub fn cyclotomic_exp_fast_inverse_montgomery_fast_circuit(f: Wires) -> Circuit {
+    let mut res = Fq12::wires_set_montgomery(ark_bn254::Fq12::ONE);
+    let mut circuit = Circuit::empty();
+
+    let f_inverse_circuit = Fq12::inverse_montgomery(f.clone());
+    let f_inverse = circuit.extend(f_inverse_circuit);
+
+    let mut found_nonzero = false;
+    for value in ark_ff::biginteger::arithmetic::find_naf(ark_bn254::Config::X).into_iter().rev() {
+        if found_nonzero {
+            let square_circuit = Fq12::square_montgomery(res.clone());
+            res = circuit.extend(square_circuit);
+        }
+
+        if value != 0 {
+            found_nonzero = true;
+            if value > 0 {
+                let mul_circuit = Fq12::mul_montgomery(res.clone(), f.clone());
+                res = circuit.extend(mul_circuit);
+            } else {
+                let mul_circuit = Fq12::mul_montgomery(res.clone(), f_inverse.clone());
+                res = circuit.extend(mul_circuit);
+            }
+        }
+    }
+    circuit.add_wires(res);
+    circuit
+}
+
 pub fn exp_by_neg_x(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
     conjugate(cyclotomic_exp(f))
 }
@@ -142,6 +171,16 @@ pub fn exp_by_neg_x_evaluate_montgomery(f: Wires) -> (Wires, GateCount) {
     let (f3, gc) = Fq12::conjugate_evaluate(f2);
     gate_count += gc;
     (f3, gate_count)
+}
+
+pub fn exp_by_neg_x_montgomery_circuit(f: Wires) -> Circuit {
+    let mut circuit = Circuit::empty();
+    let f2_circuit = cyclotomic_exp_fast_inverse_montgomery_fast_circuit(f);
+    let f2 = circuit.extend(f2_circuit);
+    let f3_circuit = Fq12::conjugate(f2);
+    let f3 = circuit.extend(f3_circuit);
+    circuit.add_wires(f3);
+    circuit
 }
 
 pub fn final_exponentiation(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
@@ -301,6 +340,93 @@ pub fn final_exponentiation_evaluate_montgomery_fast(f: Wires) -> (Wires, GateCo
     ); // Fq12::mul_evaluate_montgomery(y19, y17);
     gate_count += gc;
     (y20, gate_count)
+}
+
+pub fn final_exponentiation_montgomery_fast_circuit(f: Wires) -> Circuit {
+    let mut circuit = Circuit::empty();
+
+    let f_inv_circuit = Fq12::inverse_montgomery(f.clone());
+    let f_inv = circuit.extend(f_inv_circuit);
+
+    let f_conjugate_circuit = Fq12::conjugate(f.clone());
+    let f_conjugate = circuit.extend(f_conjugate_circuit);
+
+    let u_circuit = Fq12::mul_montgomery(f_inv, f_conjugate);
+    let u = circuit.extend(u_circuit);
+
+    let u_frobenius_circuit = Fq12::frobenius_montgomery(u.clone(), 2);
+    let u_frobenius = circuit.extend(u_frobenius_circuit);
+
+    let r_circuit = Fq12::mul_montgomery(u_frobenius, u);
+    let r = circuit.extend(r_circuit);
+
+    let y0_circuit = exp_by_neg_x_montgomery_circuit(r.clone());
+    let y0 = circuit.extend(y0_circuit);
+
+    let y1_circuit = Fq12::square_montgomery(y0.clone());
+    let y1 = circuit.extend(y1_circuit);
+
+    let y2_circuit = Fq12::square_montgomery(y1.clone());
+    let y2 = circuit.extend(y2_circuit);
+
+    let y3_circuit = Fq12::mul_montgomery(y1.clone(), y2);
+    let y3 = circuit.extend(y3_circuit);
+
+    let y4_circuit = exp_by_neg_x_montgomery_circuit(y3.clone());
+    let y4 = circuit.extend(y4_circuit);
+
+    let y5_circuit = Fq12::square_montgomery(y4.clone());
+    let y5 = circuit.extend(y5_circuit);
+
+    let y6_circuit = exp_by_neg_x_montgomery_circuit(y5.clone());
+    let y6 = circuit.extend(y6_circuit);
+
+    let y7_circuit = Fq12::conjugate(y3);
+    let y7 = circuit.extend(y7_circuit);
+
+    let y8_circuit = Fq12::conjugate(y6);
+    let y8 = circuit.extend(y8_circuit);
+
+    let y9_circuit = Fq12::mul_montgomery(y8, y4.clone());
+    let y9 = circuit.extend(y9_circuit);
+
+    let y10_circuit = Fq12::mul_montgomery(y9, y7);
+    let y10 = circuit.extend(y10_circuit);
+
+    let y11_circuit = Fq12::mul_montgomery(y10.clone(), y1);
+    let y11 = circuit.extend(y11_circuit);
+
+    let y12_circuit = Fq12::mul_montgomery(y10.clone(), y4);
+    let y12 = circuit.extend(y12_circuit);
+
+    let y13_circuit = Fq12::mul_montgomery(y12, r.clone());
+    let y13 = circuit.extend(y13_circuit);
+
+    let y14_circuit = Fq12::frobenius_montgomery(y11.clone(), 1);
+    let y14 = circuit.extend(y14_circuit);
+
+    let y15_circuit = Fq12::mul_montgomery(y14, y13);
+    let y15 = circuit.extend(y15_circuit);
+
+    let y16_circuit = Fq12::frobenius_montgomery(y10, 2);
+    let y16 = circuit.extend(y16_circuit);
+
+    let y17_circuit = Fq12::mul_montgomery(y16, y15);
+    let y17 = circuit.extend(y17_circuit);
+
+    let r2_circuit = Fq12::conjugate(r);
+    let r2 = circuit.extend(r2_circuit);
+
+    let y18_circuit = Fq12::mul_montgomery(r2, y11);
+    let y18 = circuit.extend(y18_circuit);
+
+    let y19_circuit = Fq12::frobenius_montgomery(y18, 3);
+    let y19 = circuit.extend(y19_circuit);
+
+    let y20_circuit = Fq12::mul_montgomery(y19, y17);
+    let y20 = circuit.extend(y20_circuit);
+    circuit.add_wires(y20);
+    circuit
 }
 
 #[cfg(test)]

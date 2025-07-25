@@ -1,8 +1,11 @@
+mod dummy_circuit;
 use std::io::Read;
-use std::time::Instant;
-
+use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
+use ark_ec::pairing::Pairing;
 use ark_ff::fields::Field;
-use garbled_snark_verifier::circuits::bigint::utils::biguint_from_wires;
+use ark_groth16::Groth16;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{test_rng, UniformRand};
 use garbled_snark_verifier::{
     bag::{Circuit, new_wirex},
     circuits::{
@@ -16,16 +19,54 @@ use garbled_snark_verifier::{
     core::utils::{SerializableCircuit, check_guest, gen_sub_circuits},
 };
 use num_bigint::BigUint;
+use rand::{SeedableRng, RngCore};
+use rand_chacha::ChaCha12Rng;
 use std::str::FromStr;
+use std::time::Instant;
 use tracing::{info, instrument};
 
 use garbled_snark_verifier::circuits::bigint::utils::biguint_from_bits;
-use zkm_sdk::{
-    ProverClient, ZKMProofWithPublicValues, ZKMPublicValues, ZKMStdin, include_elf, utils,
+use garbled_snark_verifier::circuits::bn254::fr::Fr;
+use garbled_snark_verifier::circuits::bn254::g1::G1Affine;
+use garbled_snark_verifier::circuits::groth16::{
+    VerifyingKey, groth16_verifier_montgomery_circuit,
 };
+use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils};
+use crate::dummy_circuit::DummyCircuit;
 
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
+
+fn groth16_verifier_circuit() -> Circuit {
+    let k = 6;
+    let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
+    let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
+        a: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
+        b: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
+        num_variables: 10,
+        num_constraints: 1 << k,
+    };
+    let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
+    let (pk, vk) = Groth16::<ark_bn254::Bn254>::setup(circuit, &mut rng).unwrap();
+    let c = circuit.a.unwrap() * circuit.b.unwrap();
+    let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, circuit, &mut rng).unwrap();
+
+    let public = Fr::wires_set(c);
+    let proof_a = G1Affine::wires_set_montgomery(proof.a);
+    let proof_b = G2Affine::wires_set_montgomery(proof.b);
+    let proof_c = G1Affine::wires_set_montgomery(proof.c);
+
+    let mut vk_data = Vec::new();
+    vk.serialize_compressed(&mut vk_data).unwrap();
+    let vk: VerifyingKey<ark_bn254::Bn254> =
+        VerifyingKey::deserialize_compressed(&vk_data[..]).unwrap();
+    let mut circuit =
+        groth16_verifier_montgomery_circuit(public, proof_a, proof_b, proof_c, vk, false);
+    circuit.evaluate();
+    circuit.gate_counts().print();
+    assert!(circuit.0[0].borrow().get_value());
+    circuit
+}
 
 #[instrument]
 fn split_circuit() -> Vec<SerializableCircuit> {

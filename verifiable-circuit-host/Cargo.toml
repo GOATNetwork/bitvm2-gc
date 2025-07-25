@@ -15,6 +15,14 @@ num-bigint = { version = "0.4.4", features = ["rand"] }
 
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
+rand = "0.8.5"
+rand_chacha = { version = "0.3", default-features = false }
+ark-groth16 = "0.5.0"
+ark-std = { version = "0.5.0", default-features = false }
+ark-crypto-primitives = "0.5.0"
+ark-relations = "0.5.0"
+ark-ec = "0.5.0"
+ark-serialize = { version = "0.5.0", default-features = false, features = [ "derive" ] }
 
 [build-dependencies]
 zkm-build = { workspace = true } 

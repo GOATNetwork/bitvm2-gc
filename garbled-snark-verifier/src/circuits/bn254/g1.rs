@@ -278,6 +278,64 @@ impl G1Projective {
         (acc, gate_count)
     }
 
+    pub fn scalar_mul_by_constant_base_montgomery_circuit<const W: usize>(
+        s: Wires,
+        base: ark_bn254::G1Projective,
+    ) -> Circuit {
+        assert_eq!(s.len(), Fr::N_BITS);
+        let mut circuit = Circuit::empty();
+        let n = 2_usize.pow(W as u32);
+
+        let mut bases = Vec::new();
+        let mut p = ark_bn254::G1Projective::default();
+
+        for _ in 0..n {
+            bases.push(p);
+            p += base;
+        }
+
+        let mut bases_wires =
+            bases.iter().map(|p| G1Projective::wires_set_montgomery(*p)).collect::<Vec<Wires>>();
+
+        let mut to_be_added = Vec::new();
+
+        let mut index = 0;
+        while index < Fr::N_BITS {
+            let w = min(W, Fr::N_BITS - index);
+            let m = 2_usize.pow(w as u32);
+            let selector = s[index..(index + w)].to_vec();
+            // let (result, gc) =
+                // Self::multiplexer_evaluate(bases_wires.clone()[0..m].to_vec(), selector, w);
+
+            let result_circuit = Self::multiplexer(bases_wires.clone()[0..m].to_vec(), selector, w);
+            let result = circuit.extend(result_circuit);
+
+            to_be_added.push(result);
+            index += W;
+            let mut new_bases = Vec::new();
+            for b in bases {
+                let mut new_b = b;
+                for _ in 0..w {
+                    new_b = new_b + new_b;
+                }
+                new_bases.push(new_b);
+            }
+            bases = new_bases;
+            bases_wires = bases
+                .iter()
+                .map(|p| G1Projective::wires_set_montgomery(*p))
+                .collect::<Vec<Wires>>();
+        }
+
+        let mut acc = to_be_added[0].clone();
+        for add in to_be_added.iter().skip(1) {
+            let new_acc_circuit = Self::add_montgomery(acc.clone(), add.clone());
+            acc = circuit.extend(new_acc_circuit);
+        }
+        circuit.add_wires(acc);
+        circuit
+    }
+
     pub fn msm_with_constant_bases_evaluate_montgomery<const W: usize>(
         scalars: Vec<Wires>,
         bases: Vec<ark_bn254::G1Projective>,
@@ -299,6 +357,28 @@ impl G1Projective {
         }
 
         (acc, gate_count)
+    }
+
+    pub fn msm_with_constant_bases_montgomery_circuit<const W: usize>(
+        scalars: Vec<Wires>,
+        bases: Vec<ark_bn254::G1Projective>,
+    ) -> Circuit {
+        assert_eq!(scalars.len(), bases.len());
+        let mut to_be_added = Vec::new();
+        let mut circuit = Circuit::empty();
+        for (s, base) in zip(scalars, bases) {
+            let result_circuit = Self::scalar_mul_by_constant_base_montgomery_circuit::<W>(s, base);
+            let result = circuit.extend(result_circuit);
+            to_be_added.push(result);
+        }
+
+        let mut acc = to_be_added[0].clone();
+        for add in to_be_added.iter().skip(1) {
+            let new_acc_circuit = Self::add_montgomery(acc.clone(), add.clone());
+            acc = circuit.extend(new_acc_circuit);
+        }
+        circuit.add_wires(acc);
+        circuit
     }
 }
 
@@ -600,7 +680,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_g1p_scalar_mul_with_constant_base_evaluate_montgomery() {
         let base = G1Projective::random();
         let s = Fr::random();
