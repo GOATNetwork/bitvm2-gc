@@ -125,7 +125,7 @@ fn split_circuit() -> Vec<SerializableCircuit> {
     info!(step = "evaluate circuit", elapsed = ?elapsed, "finish circuit evaluation");
 
     let start = Instant::now();
-    let garbled = gen_sub_circuits(&mut circuit, 6_000_000);
+    let garbled = gen_sub_circuits(&mut circuit, 7_000_000);
     // split the GC into sub-circuits
     info!("garbled:{:?}", garbled.len());
     //garbled.iter().enumerate().for_each(|(i, c)| {
