@@ -908,9 +908,6 @@ pub fn deserialize_compressed_g1_circuit(p_c: Wires, y_flag: Wirex) -> Circuit {
     circuit.add_wires(x);
     circuit.add_wires(final_y);
 
-    for gate in &mut circuit.1 {
-        gate.evaluate();
-    }
     circuit
 }
 
@@ -975,9 +972,6 @@ pub fn deserialize_compressed_g2_circuit(p_c: Wires, y_flag: Wirex) -> Circuit {
     circuit.add_wires(final_y_0);
     circuit.add_wires(final_y_1);
 
-    for gate in &mut circuit.1 {
-        gate.evaluate();
-    }
     circuit
 }
 

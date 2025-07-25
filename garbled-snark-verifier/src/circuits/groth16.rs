@@ -1,5 +1,5 @@
 use crate::bag::*;
-use crate::circuits::bn254::finalexp::{final_exponentiation_evaluate_montgomery_fast, final_exponentiation_evaluate_montgomery_fast_circuit};
+use crate::circuits::bn254::finalexp::{final_exponentiation_evaluate_montgomery_fast, final_exponentiation_montgomery_fast_circuit};
 use crate::circuits::bn254::fp254impl::Fp254Impl;
 use crate::circuits::bn254::fq::Fq;
 use crate::circuits::bn254::fq2::Fq2;
@@ -153,7 +153,7 @@ pub fn groth16_verifier_montgomery_circuit(
         assert_eq!(proof_c.len(), 2 * Fq::N_BITS);
     }
     
-    let msm_temp_circuit = G1Projective::msm_with_constant_bases_evaluate_montgomery_circuit::<10>(
+    let msm_temp_circuit = G1Projective::msm_with_constant_bases_montgomery_circuit::<10>(
         vec![public], vec![vk.gamma_abc_g1[1].into_group()]);
     let msm_temp = circuit.extend(msm_temp_circuit);
     
@@ -185,7 +185,7 @@ pub fn groth16_verifier_montgomery_circuit(
         .inverse()
         .unwrap();
 
-    let final_exponentiation_circuit = final_exponentiation_evaluate_montgomery_fast_circuit(f);
+    let final_exponentiation_circuit = final_exponentiation_montgomery_fast_circuit(f);
     let f = circuit.extend(final_exponentiation_circuit);
 
     let result_circuit = Fq12::equal_constant(f, Fq12::as_montgomery(alpha_beta));

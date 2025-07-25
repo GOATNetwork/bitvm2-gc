@@ -278,7 +278,7 @@ impl G1Projective {
         (acc, gate_count)
     }
 
-    pub fn scalar_mul_by_constant_base_evaluate_montgomery_circuit<const W: usize>(
+    pub fn scalar_mul_by_constant_base_montgomery_circuit<const W: usize>(
         s: Wires,
         base: ark_bn254::G1Projective,
     ) -> Circuit {
@@ -359,7 +359,7 @@ impl G1Projective {
         (acc, gate_count)
     }
 
-    pub fn msm_with_constant_bases_evaluate_montgomery_circuit<const W: usize>(
+    pub fn msm_with_constant_bases_montgomery_circuit<const W: usize>(
         scalars: Vec<Wires>,
         bases: Vec<ark_bn254::G1Projective>,
     ) -> Circuit {
@@ -367,7 +367,7 @@ impl G1Projective {
         let mut to_be_added = Vec::new();
         let mut circuit = Circuit::empty();
         for (s, base) in zip(scalars, bases) {
-            let result_circuit = Self::scalar_mul_by_constant_base_evaluate_montgomery_circuit::<W>(s, base);
+            let result_circuit = Self::scalar_mul_by_constant_base_montgomery_circuit::<W>(s, base);
             let result = circuit.extend(result_circuit);
             to_be_added.push(result);
         }

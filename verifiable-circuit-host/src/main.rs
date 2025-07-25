@@ -1,3 +1,4 @@
+mod dummy_circuit;
 use std::io::Read;
 
 use ark_ff::fields::Field;
@@ -20,13 +21,15 @@ use garbled_snark_verifier::{
 };
 use num_bigint::BigUint;
 use std::str::FromStr;
+use std::time::Instant;
+use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
+use ark_ec::pairing::Pairing;
 use tracing::{info, instrument};
 
 use garbled_snark_verifier::circuits::bigint::utils::biguint_from_bits;
 use zkm_sdk::{
     ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils,
 };
-use tracing::{info, instrument};
 use garbled_snark_verifier::circuits::bn254::fr::Fr;
 use garbled_snark_verifier::circuits::bn254::g1::G1Affine;
 use garbled_snark_verifier::circuits::groth16::{groth16_verifier_montgomery_circuit, VerifyingKey};
