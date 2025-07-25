@@ -20,25 +20,17 @@ impl Wire {
     #[cfg(feature = "garbled")]
     pub fn new() -> Self {
         let label = Some(S::random());
-        //let label1 = S::random();
-        //Self { label0: Some(label0), label1: Some(label1) }
         Self { label, value: None }
     }
 
     #[cfg(not(feature = "garbled"))]
     pub fn new() -> Self {
-        //Self { label0: None, label1: None, value: None, label: None }
         Self { label: None, value: None }
     }
 
     pub fn select(&self, selector: bool) -> S {
-        //if selector { self.label1.unwrap() } else { self.label0.unwrap() }
         if selector { self.label.unwrap() } else { self.label.unwrap() ^ DELTA }
     }
-
-    //pub fn select_hash(&self, selector: bool) -> S {
-    //    if selector { (self.label.unwrap() ^ DELTA).hash() } else { self.label.unwrap().hash() }
-    //}
 
     pub fn get_value(&self) -> bool {
         assert!(self.value.is_some());
@@ -58,10 +50,4 @@ impl Wire {
         assert!(self.value.is_none());
         self.value = Some(bit);
     }
-
-    //pub fn set2(&mut self, bit: bool, label: S) {
-    //    assert!(self.value.is_none());
-    //    self.value = Some(bit);
-    //    self.label = Some(label);
-    //}
 }
