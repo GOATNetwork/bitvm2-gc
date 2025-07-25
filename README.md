@@ -33,7 +33,7 @@ cargo run -r
 
 |Program| gates | Cycles | Peak memory |
 |---|---| ---|---|
-| deserialize_compressed_g2_circuit | and variants:    122185357, xor variants: 350864003, not: 550724, total:473600084 | 11619308053 | 150G | 
+| deserialize_compressed_g2_circuit | and variants:    122185357, xor variants: 350864003, not: 550724, total:473600084 | 11619308053 * 237  | 150G | 
 |  | | | |
 
 Proving efficiency:  100M/mins on 5 GPU cards.
