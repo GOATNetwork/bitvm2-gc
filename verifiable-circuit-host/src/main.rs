@@ -1,12 +1,11 @@
 mod dummy_circuit;
 use std::io::Read;
-
+use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
+use ark_ec::pairing::Pairing;
 use ark_ff::fields::Field;
 use ark_groth16::Groth16;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{test_rng, UniformRand};
-use rand::{SeedableRng, RngCore};
-use rand_chacha::ChaCha12Rng;
 use garbled_snark_verifier::{
     bag::{Circuit, new_wirex},
     circuits::{
@@ -20,25 +19,25 @@ use garbled_snark_verifier::{
     core::utils::{SerializableCircuit, check_guest, gen_sub_circuits},
 };
 use num_bigint::BigUint;
+use rand::{SeedableRng, RngCore};
+use rand_chacha::ChaCha12Rng;
 use std::str::FromStr;
 use std::time::Instant;
-use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
-use ark_ec::pairing::Pairing;
 use tracing::{info, instrument};
 
 use garbled_snark_verifier::circuits::bigint::utils::biguint_from_bits;
-use zkm_sdk::{
-    ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils,
-};
 use garbled_snark_verifier::circuits::bn254::fr::Fr;
 use garbled_snark_verifier::circuits::bn254::g1::G1Affine;
-use garbled_snark_verifier::circuits::groth16::{groth16_verifier_montgomery_circuit, VerifyingKey};
+use garbled_snark_verifier::circuits::groth16::{
+    VerifyingKey, groth16_verifier_montgomery_circuit,
+};
+use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils};
 use crate::dummy_circuit::DummyCircuit;
 
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
 
-fn groth16_verifier_circuit() -> Circuit{
+fn groth16_verifier_circuit() -> Circuit {
     let k = 6;
     let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
     let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
@@ -61,7 +60,8 @@ fn groth16_verifier_circuit() -> Circuit{
     vk.serialize_compressed(&mut vk_data).unwrap();
     let vk: VerifyingKey<ark_bn254::Bn254> =
         VerifyingKey::deserialize_compressed(&vk_data[..]).unwrap();
-    let mut circuit = groth16_verifier_montgomery_circuit(public, proof_a, proof_b, proof_c, vk, false);
+    let mut circuit =
+        groth16_verifier_montgomery_circuit(public, proof_a, proof_b, proof_c, vk, false);
     circuit.evaluate();
     circuit.gate_counts().print();
     assert!(circuit.0[0].borrow().get_value());

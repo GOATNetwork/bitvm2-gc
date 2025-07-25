@@ -45,7 +45,6 @@ impl Circuit {
         }
         gc
     }
-    
     pub fn evaluate(&mut self) {
         for gate in self.1.iter_mut() {
             gate.evaluate();

@@ -286,7 +286,7 @@ mod tests {
     }
 
     #[test]
-    fn test_groth16_verifier_evaluate_montgomery_v() {
+    fn test_groth16_verifier_evaluate_montgomery() {
         let k = 6;
         let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
         let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
@@ -315,13 +315,53 @@ mod tests {
             super::VerifyingKey::deserialize_compressed(&vk_data[..]).unwrap();
 
         let (result, gate_count) =
-            groth16_verifier_evaluate_montgomery(public.clone(), proof_a.clone(), proof_b.clone(), proof_c.clone(), vk.clone(), false);
+            groth16_verifier_evaluate_montgomery(public, proof_a, proof_b, proof_c, vk, false);
+        gate_count.print();
+        assert!(result.borrow().get_value());
+    }
+
+    #[test]
+    fn test_groth16_verifier_montgomery_circuit() {
+        let k = 6;
+        let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
+        let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
+            a: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
+            b: Some(<ark_bn254::Bn254 as Pairing>::ScalarField::rand(&mut rng)),
+            num_variables: 10,
+            num_constraints: 1 << k,
+        };
+        let (pk, vk) = Groth16::<ark_bn254::Bn254>::setup(circuit, &mut rng).unwrap();
+
+        let c = circuit.a.unwrap() * circuit.b.unwrap();
+
+        let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, circuit, &mut rng).unwrap();
+        assert!(groth16_verifier(vec![c], proof.clone(), vk.clone()));
+
+        println!("proof is correct in rust");
+
+        let public = Fr::wires_set(c);
+        let proof_a = G1Affine::wires_set_montgomery(proof.a);
+        let proof_b = G2Affine::wires_set_montgomery(proof.b);
+        let proof_c = G1Affine::wires_set_montgomery(proof.c);
+
+        let mut vk_data = Vec::new();
+        vk.serialize_compressed(&mut vk_data).unwrap();
+        let vk: super::VerifyingKey<ark_bn254::Bn254> =
+            super::VerifyingKey::deserialize_compressed(&vk_data[..]).unwrap();
+
+        let (result, gate_count) = groth16_verifier_evaluate_montgomery(
+            public.clone(),
+            proof_a.clone(),
+            proof_b.clone(),
+            proof_c.clone(),
+            vk.clone(),
+            false
+        );
         gate_count.print();
         assert!(result.borrow().get_value());
 
-        let circuit = groth16_verifier_montgomery_circuit(
-            public, proof_a, proof_b, proof_c, vk, false,
-        );
+        let circuit =
+            groth16_verifier_montgomery_circuit(public, proof_a, proof_b, proof_c, vk, false);
         let circuit_gate_count = circuit.gate_counts();
         assert_eq!(circuit_gate_count.total_gate_count(), gate_count.total_gate_count());
     }
