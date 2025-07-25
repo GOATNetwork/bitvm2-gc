@@ -84,8 +84,7 @@ fn split_circuit() -> Vec<SerializableCircuit> {
     info!(step = "evaluate circuit", elapsed = ?elapsed, "finish circuit evaluation");
 
     let start = Instant::now();
-    println!("gen sub-circuits");
-    let garbled = gen_sub_circuits(&mut circuit, 4_000_000);
+    let garbled = gen_sub_circuits(&mut circuit, 2_000_000);
     // split the GC into sub-circuits
     info!("garbled:{:?}", garbled.len());
     //garbled.iter().enumerate().for_each(|(i, c)| {
@@ -93,7 +92,7 @@ fn split_circuit() -> Vec<SerializableCircuit> {
     //        .unwrap();
     //});
     let elapsed = start.elapsed();
-    info!(step = "garble circuit", elapsed = ?elapsed, "finish circuit garbling");
+    info!(step = "gen sub-circuits", elapsed = ?elapsed, "finish circuit garbling");
 
     let total_elapsed = start_total.elapsed();
     info!(elapsed = ?total_elapsed, "total time");
@@ -116,7 +115,7 @@ fn main() {
     let sc_0 = &garbled_sub_circuits[0];
     let ser_sc_0 = bincode::serialize(sc_0).unwrap();
     info!("ser_sc_0 size: {:?} bytes", ser_sc_0.len());
-    // println!("Check guest");
+    // info!("Check guest");
     // check_guest(&ser_sc_0);
 
     stdin.write_vec(ser_sc_0);
@@ -128,8 +127,9 @@ fn main() {
     let (_public_values, report) = client.execute(ELF, stdin.clone()).run().unwrap();
 
     let elapsed = start.elapsed();
-    info!(step = "execut program", elapsed = ?elapsed, "executed program with {} cycles", report.total_instruction_count());
+    info!(elapsed = ?elapsed, "executed program with {} cycles", report.total_instruction_count());
 
+    return;
     // Note that this output is read from values committed to in the guest using
     // `zkm_zkvm::io::commit`.
     // let gates = public_values.read::<u32>();
