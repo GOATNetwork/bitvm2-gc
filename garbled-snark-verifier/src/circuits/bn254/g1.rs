@@ -684,7 +684,7 @@ mod tests {
         let base = G1Projective::random();
         let s = Fr::random();
         let (result_wires, gate_count) =
-            G1Projective::scalar_mul_by_constant_base_evaluate_montgomery::<5>(
+            G1Projective::scalar_mul_by_constant_base_evaluate_montgomery::<10>(
                 Fr::wires_set(s),
                 base,
             );

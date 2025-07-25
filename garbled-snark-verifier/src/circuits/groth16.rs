@@ -73,19 +73,11 @@ pub fn groth16_verifier_evaluate_montgomery(
     );
     // let (msm_temp, gc) = G1Projective::msm_with_constant_bases_evaluate_montgomery::<10>(vec![public], vec![vk.gamma_abc_g1[1].into_group()]);
     gate_count += gc;
-    // let (msm, gc) = G1Projective::add_evaluate_montgomery(
-    //     msm_temp,
-    //     G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group()),
-    // );
-    // gate_count += gc;
-    let mut circuit = Circuit::empty();
-    let mut msm_circuit = G1Projective::add_montgomery(
+    let (msm, gc) = G1Projective::add_evaluate_montgomery(
         msm_temp,
-        G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group())
+        G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group()),
     );
-    // msm_circuit.evaluate();
-    gate_count += msm_circuit.gate_counts();
-    let msm = circuit.extend(msm_circuit);
+    gate_count += gc;
 
     let (msm_affine, gc) = projective_to_affine_evaluate_montgomery(msm);
     gate_count += gc;

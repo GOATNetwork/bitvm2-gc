@@ -481,7 +481,7 @@ mod tests {
         let cyclotomic_f = f.pow(u.to_u64_digits());
         let c = cyclotomic_f.cyclotomic_exp(ark_bn254::Config::X);
         let (d, gate_count) = cyclotomic_exp_fast_inverse_evaluate_montgomery_fast(
-            Fq12::wires_set_montgomery(cyclotomic_f.clone()),
+            Fq12::wires_set_montgomery(cyclotomic_f),
         );
         gate_count.print();
         assert_eq!(c, Fq12::from_montgomery_wires(d));
