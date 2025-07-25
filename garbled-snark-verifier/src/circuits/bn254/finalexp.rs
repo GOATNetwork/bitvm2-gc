@@ -141,7 +141,7 @@ pub fn cyclotomic_exp_fast_inverse_montgomery_fast_circuit(f: Wires) -> Circuit 
     let mut found_nonzero = false;
     for value in ark_ff::biginteger::arithmetic::find_naf(ark_bn254::Config::X).into_iter().rev() {
         if found_nonzero {
-            let square_circuit = Fq12::square_montgomery(res.clone());
+            let square_circuit = Fq12::cyclotomic_square_montgomery(res.clone());
             res = circuit.extend(square_circuit);
         }
 

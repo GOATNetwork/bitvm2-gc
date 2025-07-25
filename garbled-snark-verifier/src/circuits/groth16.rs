@@ -154,22 +154,34 @@ pub fn groth16_verifier_montgomery_circuit(
         assert_eq!(proof_c.len(), 2 * Fq::N_BITS);
     }
 
-    let msm_temp_circuit = G1Projective::msm_with_constant_bases_montgomery_circuit::<10>(
-        vec![public],
-        vec![vk.gamma_abc_g1[1].into_group()],
+    // let msm_temp_circuit = G1Projective::msm_with_constant_bases_montgomery_circuit::<10>(
+    //     vec![public],
+    //     vec![vk.gamma_abc_g1[1].into_group()],
+    // );
+    // let msm_temp = circuit.extend(msm_temp_circuit);
+    let (msm_temp, _) = (
+        G1Projective::wires_set_montgomery(
+            ark_bn254::G1Projective::msm(&[vk.gamma_abc_g1[1]], &[Fr::from_wires(public.clone())])
+                .unwrap(),
+        ),
+        GateCount::msm_montgomery(),
     );
-    let msm_temp = circuit.extend(msm_temp_circuit);
 
-    let msm_circuit = G1Projective::add_montgomery(
+    // let msm_circuit = G1Projective::add_montgomery(
+    //     msm_temp,
+    //     G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group()),
+    // );
+    // let msm = circuit.extend(msm_circuit);
+    let (msm, _) = G1Projective::add_evaluate_montgomery(
         msm_temp,
         G1Projective::wires_set_montgomery(vk.gamma_abc_g1[0].into_group()),
     );
-    let msm = circuit.extend(msm_circuit);
 
-    let msm_affine_circuit = projective_to_affine_montgomery(msm);
-    let msm_affine = circuit.extend(msm_affine_circuit);
+    // let msm_affine_circuit = projective_to_affine_montgomery(msm);
+    // let msm_affine = circuit.extend(msm_affine_circuit);
+    let (msm_affine, _) = projective_to_affine_evaluate_montgomery(msm);
 
-    let multi_miller_circut = multi_miller_loop_groth16_montgomery_fast_circuit(
+    let multi_miller_circuit = multi_miller_loop_groth16_montgomery_fast_circuit(
         msm_affine,
         proof_c,
         proof_a,
@@ -177,7 +189,7 @@ pub fn groth16_verifier_montgomery_circuit(
         -vk.delta_g2,
         proof_b,
     );
-    let f = circuit.extend(multi_miller_circut);
+    let f = circuit.extend(multi_miller_circuit);
 
     let alpha_beta = ark_bn254::Bn254::final_exponentiation(ark_bn254::Bn254::multi_miller_loop(
         [vk.alpha_g1.into_group()],
