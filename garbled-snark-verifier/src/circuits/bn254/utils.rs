@@ -68,8 +68,8 @@ pub mod tests {
     }
 }
 
-pub fn random_seed() -> [u8; 32] {
-    let mut seed = [0u8; 32];
+pub fn random_seed<const D: usize>() -> [u8; D] {
+    let mut seed = [0u8; D];
 
     #[cfg(feature = "_getrandom")]
     {
@@ -82,10 +82,9 @@ pub fn random_seed() -> [u8; 32] {
         let mut rng = rand::rngs::OsRng;
         rng.fill_bytes(&mut seed);
     }
-
     seed
 }
 
 pub fn create_rng() -> ChaCha20Rng {
-    ChaCha20Rng::from_seed(random_seed())
+    ChaCha20Rng::from_seed(random_seed::<32>())
 }

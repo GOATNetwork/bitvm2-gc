@@ -1,6 +1,7 @@
 use crate::{bag::*, core::gate::GateCount};
 
 // wires, gates
+#[derive(Debug)]
 pub struct Circuit(pub Wires, pub Vec<Gate>);
 
 impl Circuit {
@@ -13,8 +14,13 @@ impl Circuit {
     }
 
     // calculate all ciphertext, and send to evaluator
-    pub fn garbled_gates(&self) -> Vec<S> {
-        self.1.iter().map(|gate| gate.garbled()).filter_map(|x| x).collect()
+    pub fn garbled_gates(&self) -> Vec<Option<S>> {
+        self.1.iter().enumerate().map(|(i, gate)| {
+            if i.is_multiple_of(100000) {
+                println!("Garble batch: {}/{}", i, self.1.len());
+            }
+            gate.garbled()
+        }).collect()
     }
 
     pub fn extend(&mut self, circuit: Self) -> Wires {

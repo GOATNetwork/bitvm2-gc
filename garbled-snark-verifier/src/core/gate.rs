@@ -53,6 +53,7 @@ pub struct Gate {
     pub gate_type: GateType,
     pub gid: u32,
 }
+unsafe impl Sync for Gate {}
 
 impl Gate {
     pub fn new(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType) -> Self {

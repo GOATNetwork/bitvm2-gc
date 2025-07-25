@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 mod dummy_circuit;
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_ec::pairing::Pairing;
@@ -7,24 +8,15 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{UniformRand, test_rng};
 use garbled_snark_verifier::{
     bag::{Circuit, new_wirex},
-    circuits::{
-        basic::half_adder,
-        bigint::{U254, utils::random_biguint_n_bits},
-        bn254::{
-            fp254impl::Fp254Impl, fq::Fq, fq2::Fq2, g2::G2Affine,
-            pairing::deserialize_compressed_g2_circuit,
-        },
-    },
-    core::utils::{SerializableCircuit, check_guest, gen_sub_circuits},
+    circuits::bn254::{fq2::Fq2, g2::G2Affine, pairing::deserialize_compressed_g2_circuit},
+    core::utils::{SerializableCircuit, SerializableGate},
 };
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
-use std::io::Read;
-use std::time::Instant;
+use std::{ascii::escape_default, time::Instant};
 use tracing::{info, instrument};
 
 use crate::dummy_circuit::DummyCircuit;
-use garbled_snark_verifier::circuits::bigint::utils::biguint_from_bits;
 use garbled_snark_verifier::circuits::bn254::fr::Fr;
 use garbled_snark_verifier::circuits::bn254::g1::G1Affine;
 use garbled_snark_verifier::circuits::groth16::{
@@ -59,11 +51,20 @@ fn custom_groth16_verifier_circuit() -> Circuit {
     vk.serialize_compressed(&mut vk_data).unwrap();
     let vk: VerifyingKey<ark_bn254::Bn254> =
         VerifyingKey::deserialize_compressed(&vk_data[..]).unwrap();
+    let start = Instant::now();
     let mut circuit =
         groth16_verifier_montgomery_circuit(public, proof_a, proof_b, proof_c, vk, false);
+    let elapsed = start.elapsed();
+    info!(step = "Gen circuit", elapsed = ?elapsed);
+
+    let start = Instant::now();
     circuit.evaluate();
     circuit.gate_counts().print();
     assert!(circuit.0[0].borrow().get_value());
+
+    let elapsed = start.elapsed();
+    info!(step = "Eval circuit", elapsed = ?elapsed);
+
     circuit
 }
 
@@ -90,32 +91,52 @@ fn custom_deserialize_compressed_g2_circuit() -> Circuit {
     circuit
 }
 
+fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
+    let start = Instant::now();
+    let mut garbled_gates = circuit.garbled_gates();
+    let elapsed = start.elapsed();
+    info!(step = "garble gates", elapsed =? elapsed, "garbled gates: {}", garbled_gates.len());
+
+    let size = circuit.1.len().div_ceil(max_gates);
+
+    let start = Instant::now();
+    let _: Vec<_> = circuit
+        .1
+        .chunks(max_gates)
+        .enumerate()
+        .zip(garbled_gates.chunks_mut(max_gates))
+        .map(|((i, w), garblings)| {
+            if i.is_multiple_of(10000) {
+                info!(step = "gen_sub_circuits", "Split batch {i}/{size}");
+            }
+            let out = SerializableCircuit {
+                gates: w
+                    .iter()
+                    .map(|w| SerializableGate {
+                        wire_a: w.wire_a.borrow().clone(),
+                        wire_b: w.wire_b.borrow().clone(),
+                        wire_c: w.wire_c.borrow().clone(),
+                        gate_type: w.gate_type,
+                        gid: w.gid,
+                    })
+                    .collect(),
+                garblings: garblings.to_vec(),
+            };
+            bincode::serialize_into(
+                std::fs::File::create(format!("garbled_{i}.bin")).unwrap(),
+                &out,
+            )
+            .unwrap();
+        })
+        .collect();
+    let elapsed = start.elapsed();
+    info!(step = "split gates", elapsed =? elapsed);
+}
+
 #[instrument]
-fn split_circuit() -> Vec<SerializableCircuit> {
-    let start_total = Instant::now();
-
-    let start = Instant::now();
-
+fn split_circuit() {
     let mut circuit = custom_groth16_verifier_circuit();
-
-    let elapsed = start.elapsed();
-    info!(step = "evaluate circuit", elapsed = ?elapsed, "finish circuit evaluation");
-
-    let start = Instant::now();
-    let garbled = gen_sub_circuits(&mut circuit, 7_000_000);
-    // split the GC into sub-circuits
-    info!("garbled:{:?}", garbled.len());
-    //garbled.iter().enumerate().for_each(|(i, c)| {
-    //    bincode::serialize_into(std::fs::File::create(format!("garbled_{i}.bin")).unwrap(), c)
-    //        .unwrap();
-    //});
-    let elapsed = start.elapsed();
-    info!(step = "gen sub-circuits", elapsed = ?elapsed, "finish circuit garbling");
-
-    let total_elapsed = start_total.elapsed();
-    info!(elapsed = ?total_elapsed, "total time");
-
-    garbled
+    gen_sub_circuits(&mut circuit, 7_000_000);
 }
 
 fn main() {
@@ -125,7 +146,7 @@ fn main() {
     let start_total = Instant::now();
 
     let start = Instant::now();
-    let garbled_sub_circuits = split_circuit();
+    split_circuit();
     let elapsed = start.elapsed();
     info!(elapsed = ?elapsed, "split circuit");
 
@@ -133,9 +154,9 @@ fn main() {
     // types of the elements in the input stream must match the types being read in the guest.
     let mut stdin = ZKMStdin::new();
 
-    let sc_0 = &garbled_sub_circuits[0];
-    let ser_sc_0 = bincode::serialize(sc_0).unwrap();
+    let ser_sc_0 = std::fs::read("garbled_0.bin").unwrap();
     info!("ser_sc_0 size: {:?} bytes", ser_sc_0.len());
+
     // info!("Check guest");
     // check_guest(&ser_sc_0);
 

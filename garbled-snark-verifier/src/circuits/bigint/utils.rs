@@ -14,13 +14,14 @@ pub fn biguint_two_pow_254() -> BigUint {
 
 pub fn random_biguint() -> BigUint {
     //BigUint::from_bytes_le(&rng().random::<[u8; 32]>())
-    BigUint::from_bytes_le(&random_seed())
+    BigUint::from_bytes_le(&random_seed::<32>())
 }
 
 pub fn random_biguint_n_bits(n_bits: usize) -> BigUint {
     //BigUint::from_bytes_le(&rand::rng().random::<[u8; 32]>())
     //    % BigUint::from_str("2").unwrap().pow(n_bits as u32)
-    BigUint::from_bytes_le(&random_seed()) % BigUint::from_str("2").unwrap().pow(n_bits as u32)
+    BigUint::from_bytes_le(&random_seed::<32>())
+        % BigUint::from_str("2").unwrap().pow(n_bits as u32)
 }
 
 pub fn bits_from_biguint(u: &BigUint) -> Vec<bool> {
