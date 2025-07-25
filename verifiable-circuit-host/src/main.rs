@@ -1,8 +1,11 @@
 use std::io::Read;
-use std::time::Instant;
 
 use ark_ff::fields::Field;
-use garbled_snark_verifier::circuits::bigint::utils::biguint_from_wires;
+use ark_groth16::Groth16;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use ark_std::{test_rng, UniformRand};
+use rand::{SeedableRng, RngCore};
+use rand_chacha::ChaCha12Rng;
 use garbled_snark_verifier::{
     bag::{Circuit, new_wirex},
     circuits::{
@@ -21,8 +24,9 @@ use tracing::{info, instrument};
 
 use garbled_snark_verifier::circuits::bigint::utils::biguint_from_bits;
 use zkm_sdk::{
-    ProverClient, ZKMProofWithPublicValues, ZKMPublicValues, ZKMStdin, include_elf, utils,
+    ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils,
 };
+use tracing::{info, instrument};
 use garbled_snark_verifier::circuits::bn254::fr::Fr;
 use garbled_snark_verifier::circuits::bn254::g1::G1Affine;
 use garbled_snark_verifier::circuits::groth16::{groth16_verifier_montgomery_circuit, VerifyingKey};
