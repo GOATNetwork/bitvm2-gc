@@ -37,7 +37,8 @@ use crate::dummy_circuit::DummyCircuit;
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
 
-fn groth16_verifier_circuit() -> Circuit {
+#[instrument]
+fn custom_groth16_verifier_circuit() -> Circuit {
     let k = 6;
     let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
     let circuit = DummyCircuit::<<ark_bn254::Bn254 as Pairing>::ScalarField> {
@@ -69,14 +70,8 @@ fn groth16_verifier_circuit() -> Circuit {
 }
 
 #[instrument]
-fn split_circuit() -> Vec<SerializableCircuit> {
-    let start_total = Instant::now();
-
-    let start = Instant::now();
-
+fn custom_deserialize_compressed_g2_circuit() -> Circuit {
     let p = G2Affine::random();
-    //use ark_ec::CurveGroup;
-    //let p = (p - p).into_affine();
     let y_flag = new_wirex();
     let sy = (p.y.square()).sqrt().unwrap();
     y_flag.borrow_mut().set(sy == p.y);
@@ -84,9 +79,6 @@ fn split_circuit() -> Vec<SerializableCircuit> {
     let wires = Fq2::wires_set_montgomery(p.x);
 
     let mut circuit = deserialize_compressed_g2_circuit(wires.clone(), y_flag);
-
-    let elapsed = start.elapsed();
-    info!(step = "generate circuit", elapsed = ?elapsed, "finish circuit generation");
 
     circuit.gate_counts().print();
 
@@ -98,28 +90,16 @@ fn split_circuit() -> Vec<SerializableCircuit> {
     //let x = Fq2::from_montgomery_wires(circuit.0[0..Fq2::N_BITS].to_vec());
     let y = Fq2::from_montgomery_wires(circuit.0[Fq2::N_BITS..2 * Fq2::N_BITS].to_vec());
     assert_eq!(y, p.y);
+    circuit
+}
 
-    /*
-    let power = 133;
-    let a = random_biguint_n_bits(254);
-    let b = random_biguint_n_bits(254);
-    let mut circuit = U254::mul_by_constant_modulo_power_two(
-        U254::wires_set_from_number(&a),
-        b.clone(),
-        power,
-    );
-    let c = &a * &b % BigUint::from_str("2").unwrap().pow(power as u32);
-    circuit.gate_counts().print();
+#[instrument]
+fn split_circuit() -> Vec<SerializableCircuit> {
+    let start_total = Instant::now();
 
-    for gate in &mut circuit.1 {
-        gate.evaluate();
-    }
+    let start = Instant::now();
 
-    let result = biguint_from_bits(
-        circuit.0.iter().map(|output_wire| output_wire.borrow().get_value()).collect(),
-    );
-    assert_eq!(result, c);
-    */
+    let mut circuit = custom_groth16_verifier_circuit();
 
     let elapsed = start.elapsed();
     info!(step = "evaluate circuit", elapsed = ?elapsed, "finish circuit evaluation");
@@ -170,7 +150,6 @@ fn main() {
     let elapsed = start.elapsed();
     info!(elapsed = ?elapsed, "executed program with {} cycles", report.total_instruction_count());
 
-    return;
     // Note that this output is read from values committed to in the guest using
     // `zkm_zkvm::io::commit`.
     // let gates = public_values.read::<u32>();
