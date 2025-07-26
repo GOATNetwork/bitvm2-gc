@@ -33,17 +33,9 @@ cargo run -r
 Server configuration: 32 core, 480G RAM
 
 |Program| Gates | Cycles | Peak memory | Garbling(s) | Spliting(s) | Single Execution(s) |
-|---|---| ---|---| --- | --- |
+|---|---| ---|---| --- | --- | --- |
 | deserialize_compressed_g2_circuit | and variants: 122185357, xor variants: 350864003, not: 550724, total:473600084 |  4268330910 * 68 | 102G | 255 | 480M/(IOPS) = 188 |  178 |
 | groth16_verifier_circuit | and variants: 2718558275, xor variants: 7617087185, not: 62381441, total: 10398026901 |  |  |  |  |   
 
 
-Proving efficiency:  100M/mins on 5 GPU cards.
-
-
-### Memory
-Total Circuit: 10g * (1 + 4 + 8 * 3) = 290g, 1: gate type, 4: gid, 8: wire reference 
-Garblings: 2.7g * 16 = 43g, 2.7g: non-free gates 
-
-Opt 1: change the RefCell to u32, will save 10g * 12 = 120g
-
+Proving efficiency:  300k Poseidon2 hashes/s on a single RTX 4090 card.

@@ -116,7 +116,7 @@ impl Gate {
         let gate_index = (f[0] << 2) | (f[1] << 1) | f[2];
         let gate_type = match GateType::try_from(gate_index) {
             Ok(gt) => gt,
-            Err(_) => panic!("Invalid gate type index: {}", gate_index),
+            Err(_) => panic!("Invalid gate type index: {gate_index}"),
         };
         Self::new(wire_a, wire_b, wire_c, gate_type)
     }

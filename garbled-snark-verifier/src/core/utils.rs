@@ -27,7 +27,7 @@ pub fn bit_to_usize(bit: bool) -> usize {
 
 #[allow(unused_variables)]
 pub fn hash(input: &[u8]) -> [u8; LABLE_SIZE] {
-    #[allow(unused_assignments)]
+    #[allow(unused_assignments, unused_mut)]
     let mut output = [0u8; 32];
 
     #[cfg(feature = "_blake3")]

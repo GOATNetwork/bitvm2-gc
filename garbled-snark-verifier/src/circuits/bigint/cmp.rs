@@ -194,8 +194,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, SeedableRng};
-    use rand_chacha::ChaCha20Rng;
+    use rand::Rng;
     use std::str::FromStr;
 
     use super::*;

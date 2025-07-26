@@ -1242,11 +1242,11 @@ pub fn multi_miller_loop_groth16_montgomery_fast_circuit(
         }
 
         let ell_by_constant_circuit =
-            ell_by_constant_circuit_montgomery(f, q1_ell.next().unwrap().clone(), p1.clone());
+            ell_by_constant_circuit_montgomery(f, *q1_ell.next().unwrap(), p1.clone());
         f = circuit.extend(ell_by_constant_circuit);
 
         let ell_by_constant_circuit =
-            ell_by_constant_circuit_montgomery(f, q2_ell.next().unwrap().clone(), p2.clone());
+            ell_by_constant_circuit_montgomery(f, *q2_ell.next().unwrap(), p2.clone());
         f = circuit.extend(ell_by_constant_circuit);
 
         let ell_montgomery_circuit =
@@ -1256,11 +1256,11 @@ pub fn multi_miller_loop_groth16_montgomery_fast_circuit(
         let bit = ark_bn254::Config::ATE_LOOP_COUNT[i - 1];
         if bit == 1 || bit == -1 {
             let ell_by_constant_circuit =
-                ell_by_constant_circuit_montgomery(f, q1_ell.next().unwrap().clone(), p1.clone());
+                ell_by_constant_circuit_montgomery(f, *q1_ell.next().unwrap(), p1.clone());
             f = circuit.extend(ell_by_constant_circuit);
 
             let ell_by_constant_circuit =
-                ell_by_constant_circuit_montgomery(f, q2_ell.next().unwrap().clone(), p2.clone());
+                ell_by_constant_circuit_montgomery(f, *q2_ell.next().unwrap(), p2.clone());
             f = circuit.extend(ell_by_constant_circuit);
 
             let ell_montgomery_circuit =
@@ -1270,11 +1270,11 @@ pub fn multi_miller_loop_groth16_montgomery_fast_circuit(
     }
 
     let ell_by_constant_circuit =
-        ell_by_constant_circuit_montgomery(f, q1_ell.next().unwrap().clone(), p1.clone());
+        ell_by_constant_circuit_montgomery(f, *q1_ell.next().unwrap(), p1.clone());
     f = circuit.extend(ell_by_constant_circuit);
 
     let ell_by_constant_circuit =
-        ell_by_constant_circuit_montgomery(f, q2_ell.next().unwrap().clone(), p2.clone());
+        ell_by_constant_circuit_montgomery(f, *q2_ell.next().unwrap(), p2.clone());
     f = circuit.extend(ell_by_constant_circuit);
 
     let ell_montgomery_circuit =
@@ -1282,11 +1282,11 @@ pub fn multi_miller_loop_groth16_montgomery_fast_circuit(
     f = circuit.extend(ell_montgomery_circuit);
 
     let ell_by_constant_circuit =
-        ell_by_constant_circuit_montgomery(f, q1_ell.next().unwrap().clone(), p1.clone());
+        ell_by_constant_circuit_montgomery(f, *q1_ell.next().unwrap(), p1.clone());
     f = circuit.extend(ell_by_constant_circuit);
 
     let ell_by_constant_circuit =
-        ell_by_constant_circuit_montgomery(f, q2_ell.next().unwrap().clone(), p2.clone());
+        ell_by_constant_circuit_montgomery(f, *q2_ell.next().unwrap(), p2.clone());
     f = circuit.extend(ell_by_constant_circuit);
 
     let ell_montgomery_circuit =

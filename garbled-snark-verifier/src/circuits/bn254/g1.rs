@@ -499,8 +499,7 @@ mod tests {
     use super::*;
     use ark_ec::{CurveGroup, scalar_mul::variable_base::VariableBaseMSM};
     use ark_ff::Field;
-    use rand::{Rng, SeedableRng};
-    use rand_chacha::ChaCha20Rng;
+    use rand::Rng;
 
     #[test]
     fn test_g1a_random() {
