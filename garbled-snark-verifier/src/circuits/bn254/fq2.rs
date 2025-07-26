@@ -83,11 +83,12 @@ impl Fq2 {
     }
 
     pub fn add_evaluate(a: Wires, b: Wires) -> (Wires, GateCount) {
-        let circuit = Self::add(a, b);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::add(a, b);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     pub fn add_constant(a: Wires, b: ark_bn254::Fq2) -> Circuit {
@@ -119,11 +120,12 @@ impl Fq2 {
     }
 
     pub fn neg_evaluate(a: Wires) -> (Wires, GateCount) {
-        let circuit = Self::neg(a);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::neg(a);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     pub fn sub(a: Wires, b: Wires) -> Circuit {
@@ -204,11 +206,12 @@ impl Fq2 {
     }
 
     pub fn mul_montgomery_evaluate(a: Wires, b: Wires) -> (Wires, GateCount) {
-        let circuit = Self::mul_montgomery(a, b);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::mul_montgomery(a, b);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     pub fn mul_by_constant_montgomery(a: Wires, b: ark_bn254::Fq2) -> Circuit {
@@ -315,11 +318,12 @@ impl Fq2 {
     }
 
     pub fn square_montgomery_evaluate(a: Wires) -> (Wires, GateCount) {
-        let circuit = Self::square_montgomery(a);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::square_montgomery(a);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     pub fn inverse_montgomery(a: Wires) -> Circuit {
@@ -390,11 +394,12 @@ impl Fq2 {
     }
 
     fn norm_montgomery_evaluate(c0: Wires, c1: Wires) -> (Wires, GateCount) {
-        let circuit = Self::norm_montgomery(c0, c1);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::norm_montgomery(c0, c1);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     // Square root based on the complex method. See paper https://eprint.iacr.org/2012/685.pdf (Algorithm 8, page 15).

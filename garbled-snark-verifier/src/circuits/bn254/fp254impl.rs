@@ -86,11 +86,12 @@ pub trait Fp254Impl {
     }
 
     fn add_evaluate(a: Wires, b: Wires) -> (Wires, GateCount) {
-        let circuit = Self::add(a, b);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::add(a, b);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..){
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     fn add_constant(a: Wires, b: ark_bn254::Fq) -> Circuit {
@@ -136,11 +137,12 @@ pub trait Fp254Impl {
 
     fn neg_evaluate(a: Wires) -> (Wires, GateCount) {
         assert_eq!(a.len(), Self::N_BITS);
-        let circuit = Self::neg(a);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::neg(a);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     fn sub(a: Wires, b: Wires) -> Circuit {
@@ -155,11 +157,12 @@ pub trait Fp254Impl {
     }
 
     fn sub_eval(a: Wires, b: Wires) -> (Wires, GateCount) {
-        let circuit = Self::sub(a, b);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::sub(a, b);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     fn double(a: Wires) -> Circuit {
@@ -207,11 +210,12 @@ pub trait Fp254Impl {
 
     fn half_evaluate(a: Wires) -> (Wires, GateCount) {
         assert_eq!(a.len(), Self::N_BITS);
-        let circuit = Self::half(a);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::half(a);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     fn triple(a: Wires) -> Circuit {
@@ -326,11 +330,12 @@ pub trait Fp254Impl {
     }
 
     fn mul_montgomery_evaluate(a: Wires, b: Wires) -> (Wires, GateCount) {
-        let circuit = Self::mul_montgomery(a, b);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::mul_montgomery(a, b);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     fn mul_by_constant_montgomery(a: Wires, b: ark_bn254::Fq) -> Circuit {
@@ -550,11 +555,12 @@ pub trait Fp254Impl {
     }
 
     fn inverse_montgomery_evaluate(a: Wires) -> (Wires, GateCount) {
-        let circuit = Self::inverse_montgomery(a);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::inverse_montgomery(a);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     fn div6(a: Wires) -> Circuit {

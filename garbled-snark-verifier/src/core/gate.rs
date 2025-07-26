@@ -57,7 +57,14 @@ unsafe impl Sync for Gate {}
 
 impl Gate {
     pub fn new(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType) -> Self {
-        Self { wire_a, wire_b, wire_c, gate_type, gid: inc_gid() }
+        Self { wire_a, wire_b, wire_c, gate_type, gid: {
+            let gid = inc_gid() - 1;
+            if gid.is_multiple_of(1000000) {
+                println!("gid: {gid}")
+            }
+            gid
+        }
+        }
     }
 
     pub fn and(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
@@ -114,6 +121,7 @@ impl Gate {
         Self::new(wire_a, wire_b, wire_c, gate_type)
     }
 
+    #[inline(always)]
     pub fn f(&self) -> fn(bool, bool) -> bool {
         match self.gate_type {
             GateType::And => |a, b| a & b,

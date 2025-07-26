@@ -104,9 +104,9 @@ impl Fq12 {
     }
 
     pub fn equal_constant_evaluate(a: Wires, b: ark_bn254::Fq12) -> (Wires, GateCount) {
-        let circuit = Fq12::equal_constant(a, b);
+        let mut circuit = Fq12::equal_constant(a, b);
         let n = circuit.gate_counts();
-        for mut gate in circuit.1 {
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
         (circuit.0, n)
@@ -199,9 +199,9 @@ impl Fq12 {
     }
 
     pub fn mul_evaluate_montgomery(a: Wires, b: Wires) -> (Wires, GateCount) {
-        let circuit = Fq12::mul_montgomery(a, b);
+        let mut circuit = Fq12::mul_montgomery(a, b);
         let n = circuit.gate_counts();
-        for mut gate in circuit.1 {
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
         (circuit.0, n)
@@ -454,9 +454,9 @@ impl Fq12 {
     }
 
     pub fn frobenius_evaluate_montgomery(a: Wires, i: usize) -> (Wires, GateCount) {
-        let circuit = Fq12::frobenius_montgomery(a, i);
+        let mut circuit = Fq12::frobenius_montgomery(a, i);
         let n = circuit.gate_counts();
-        for mut gate in circuit.1 {
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
         (circuit.0, n)
@@ -477,9 +477,9 @@ impl Fq12 {
     }
 
     pub fn conjugate_evaluate(a: Wires) -> (Wires, GateCount) {
-        let circuit = Fq12::conjugate(a);
+        let mut circuit = Fq12::conjugate(a);
         let n = circuit.gate_counts();
-        for mut gate in circuit.1 {
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
         (circuit.0, n)

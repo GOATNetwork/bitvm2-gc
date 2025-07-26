@@ -18,7 +18,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b2e69442aa5628ea6951fa33e24efe8313f4321a91bd729fc2f75bdfc858570"
 dependencies = [
- "num-bigint 0.3.3",
+ "num-bigint 0.3.3"par_,
  "num-integer",
  "num-traits",
 ]

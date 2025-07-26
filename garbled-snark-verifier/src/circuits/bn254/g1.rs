@@ -149,9 +149,9 @@ impl G1Projective {
     }
 
     pub fn add_evaluate_montgomery(p: Wires, q: Wires) -> (Wires, GateCount) {
-        let circuit = Self::add_montgomery(p, q);
+        let mut circuit = Self::add_montgomery(p, q);
         let n = circuit.gate_counts();
-        for mut gate in circuit.1 {
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
         (circuit.0, n)
@@ -214,9 +214,9 @@ impl G1Projective {
     }
 
     pub fn multiplexer_evaluate(a: Vec<Wires>, s: Wires, w: usize) -> (Wires, GateCount) {
-        let circuit = Self::multiplexer(a, s, w);
+        let mut circuit = Self::multiplexer(a, s, w);
         let n = circuit.gate_counts();
-        for mut gate in circuit.1 {
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
         (circuit.0, n)
@@ -484,9 +484,9 @@ pub fn projective_to_affine_montgomery(p: Wires) -> Circuit {
 }
 
 pub fn projective_to_affine_evaluate_montgomery(p: Wires) -> (Wires, GateCount) {
-    let circuit = projective_to_affine_montgomery(p);
+    let mut circuit = projective_to_affine_montgomery(p);
     let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
+    for mut gate in circuit.1.drain(..) {
         gate.evaluate();
     }
     (circuit.0, n)

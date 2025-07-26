@@ -48,11 +48,12 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     }
 
     pub fn equal_evaluate(a: Wires, b: Wires) -> (Wires, GateCount) {
-        let circuit = Self::equal(a, b);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::equal(a, b);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     pub fn equal_constant(a: Wires, b: &BigUint) -> Circuit {
@@ -144,11 +145,12 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn select_evaluate(a: Wires, b: Wires, s: Wirex) -> (Wires, GateCount) {
         assert_eq!(a.len(), N_BITS);
         assert_eq!(b.len(), N_BITS);
-        let circuit = Self::select(a, b, s);
-        for mut gate in circuit.1.clone() {
+        let mut circuit = Self::select(a, b, s);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
-        (circuit.0.clone(), circuit.gate_counts())
+        (circuit.0, n)
     }
 
     pub fn self_or_zero(a: Wires, s: Wirex) -> Circuit {

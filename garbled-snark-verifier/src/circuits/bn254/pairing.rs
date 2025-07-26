@@ -114,9 +114,9 @@ pub fn double_in_place_circuit_montgomery(r: Wires) -> Circuit {
 }
 
 pub fn double_in_place_evaluate_montgomery(r: Wires) -> ((Wires, Wires, Wires), Wires, GateCount) {
-    let circuit = double_in_place_circuit_montgomery(r);
+    let mut circuit = double_in_place_circuit_montgomery(r);
     let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
+    for mut gate in circuit.1.drain(..) {
         gate.evaluate();
     }
     let c0 = circuit.0[0..Fq2::N_BITS].to_vec();
@@ -224,9 +224,9 @@ pub fn add_in_place_evaluate_montgomery(
     r: Wires,
     q: Wires,
 ) -> ((Wires, Wires, Wires), Wires, GateCount) {
-    let circuit = add_in_place_circuit_montgomery(r, q);
+    let mut circuit = add_in_place_circuit_montgomery(r, q);
     let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
+    for mut gate in circuit.1.drain(..) {
         gate.evaluate();
     }
     let c0 = circuit.0[0..Fq2::N_BITS].to_vec();
@@ -266,9 +266,9 @@ pub fn mul_by_char_circuit_montgomery(r: Wires) -> Circuit {
 }
 
 pub fn mul_by_char_evaluate_montgomery(r: Wires) -> (Wires, GateCount) {
-    let circuit = mul_by_char_circuit_montgomery(r);
+    let mut circuit = mul_by_char_circuit_montgomery(r);
     let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
+    for mut gate in circuit.1.drain(..) {
         gate.evaluate();
     }
     (circuit.0, n)
@@ -282,7 +282,7 @@ pub fn g2_affine_neg_evaluate(r: Wires) -> (Wires, GateCount) {
     circuit.add_wires(x);
     circuit.add_wires(new_y);
     let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
+    for mut gate in circuit.1.drain(..) {
         gate.evaluate();
     }
     (circuit.0, n)
@@ -570,9 +570,9 @@ pub fn ell_evaluate_montgomery(
     coeffs: (Wires, Wires, Wires),
     p: Wires,
 ) -> (Wires, GateCount) {
-    let circuit = ell_circuit_montgomery(f, coeffs, p);
+    let mut circuit = ell_circuit_montgomery(f, coeffs, p);
     let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
+    for mut gate in circuit.1.drain(..) {
         gate.evaluate();
     }
     (circuit.0, n)
@@ -604,9 +604,9 @@ pub fn ell_by_constant_evaluate_montgomery(
     coeffs: (ark_bn254::Fq2, ark_bn254::Fq2, ark_bn254::Fq2),
     p: Wires,
 ) -> (Wires, GateCount) {
-    let circuit = ell_by_constant_circuit_montgomery(f, coeffs, p);
+    let mut circuit = ell_by_constant_circuit_montgomery(f, coeffs, p);
     let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
+    for mut gate in circuit.1.drain(..) {
         gate.evaluate();
     }
     (circuit.0, n)

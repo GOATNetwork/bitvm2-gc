@@ -13,7 +13,7 @@ use garbled_snark_verifier::{
 };
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
-use std::{ascii::escape_default, time::Instant};
+use std::time::Instant;
 use tracing::{info, instrument};
 
 use crate::dummy_circuit::DummyCircuit;
@@ -58,7 +58,9 @@ fn custom_groth16_verifier_circuit() -> Circuit {
     info!(step = "Gen circuit", elapsed = ?elapsed);
 
     let start = Instant::now();
-    circuit.evaluate();
+    for gate in &mut circuit.1 {
+        gate.evaluate();
+    }
     circuit.gate_counts().print();
     assert!(circuit.0[0].borrow().get_value());
 
@@ -91,6 +93,7 @@ fn custom_deserialize_compressed_g2_circuit() -> Circuit {
     circuit
 }
 
+#[instrument]
 fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
     let start = Instant::now();
     let mut garbled_gates = circuit.garbled_gates();

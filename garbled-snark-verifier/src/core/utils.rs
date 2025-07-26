@@ -13,16 +13,12 @@ pub const LABLE_SIZE: usize = 16;
 // FIXME: set up a private global difference
 pub static DELTA: S = S::one();
 
+// u32 is not enough for current gates scale. 
 pub static GID: AtomicU32 = AtomicU32::new(0);
 
+#[inline(always)]
 pub fn inc_gid() -> u32 {
     GID.fetch_add(1, Ordering::SeqCst) + 1
-}
-
-pub static WID: AtomicU32 = AtomicU32::new(0);
-
-pub fn inc_wid() -> u32 {
-    WID.fetch_add(1, Ordering::SeqCst) + 1
 }
 
 pub fn bit_to_usize(bit: bool) -> usize {
@@ -91,18 +87,14 @@ impl From<&Circuit> for SerializableCircuit {
 
 impl From<&SerializableCircuit> for Circuit {
     fn from(sc: &SerializableCircuit) -> Self {
-        //let wires = sc.wires.into_iter().map(|w| Rc::new(RefCell::new(w))).collect();
         let mut wires = vec![];
         let gates = sc
             .gates
             .iter()
             .map(|g| {
-                let a_wirex = Rc::new(RefCell::new(g.wire_a.clone()));
-                let b_wirex = Rc::new(RefCell::new(g.wire_b.clone()));
-                let c_wirex = Rc::new(RefCell::new(g.wire_c.clone()));
-                wires.push(a_wirex);
-                wires.push(b_wirex);
-                wires.push(c_wirex);
+                wires.push(Rc::new(RefCell::new(g.wire_a.clone())));
+                wires.push(Rc::new(RefCell::new(g.wire_b.clone())));
+                wires.push(Rc::new(RefCell::new(g.wire_c.clone())));
                 Gate {
                     wire_a: wires[wires.len() - 3].clone(),
                     wire_b: wires[wires.len() - 2].clone(),
