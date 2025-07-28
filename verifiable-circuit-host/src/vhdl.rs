@@ -71,7 +71,6 @@ pub fn write_vhdl(circuit: &Circuit, inputs: &[Wires], outputs: &[Wires], filena
     Ok(())
 }
 
-/// 你可以按 wire 地址顺序分配 ID
 fn wire_id(w: &Wirex) -> usize {
     Rc::as_ptr(w) as usize
 }
