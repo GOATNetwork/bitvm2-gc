@@ -13,7 +13,7 @@ use garbled_snark_verifier::{
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 use std::time::Instant;
-use tracing::{info, instrument};
+use tracing::info;
 
 use garbled_snark_verifier::circuits::bn254::fr::Fr;
 use garbled_snark_verifier::circuits::bn254::g1::G1Affine;
@@ -26,11 +26,13 @@ mod dummy_circuit;
 use crate::dummy_circuit::DummyCircuit;
 mod mem_fs;
 use mem_fs::*;
+mod bristol;
+use bristol::*;
+mod vhdl;
 
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
 
-#[instrument]
 fn custom_groth16_verifier_circuit() -> Circuit {
     let k = 6;
     let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());
@@ -72,7 +74,6 @@ fn custom_groth16_verifier_circuit() -> Circuit {
     circuit
 }
 
-#[instrument]
 fn custom_deserialize_compressed_g2_circuit() -> Circuit {
     let p = G2Affine::random();
     let y_flag = new_wirex();
@@ -136,7 +137,7 @@ fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
 }
 
 fn split_circuit() {
-    let mut circuit = custom_deserialize_compressed_g2_circuit();
+    let mut circuit = custom_groth16_verifier_circuit();
 
     circuit.gate_counts().print();
     println!("Wires: {}", circuit.0.len());

@@ -2,3 +2,6 @@
 /*/target
 /*/proof-with-pis.bin
 /*/garbled*.bin
+/*/nohup.out
+/*/*.vhdl
+*.sh
