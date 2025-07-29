@@ -52,14 +52,12 @@ impl Circuit {
         gc
     }
 
-    // garbled_evaluate evaluates the circuit with garbled gates
-    // return a vector of (output_value, output_label, garbled_c)
-    pub fn garbled_evaluate(&mut self) -> Vec<(bool, S, Option<S>)> {
+    pub fn garbled_evaluate(&mut self) {
         let garbled = self.garbled_gates();
         for gate in self.1.iter_mut() {
             gate.evaluate();
         }
-        let mut res = vec![];
+        let mut garbled_evaluate = vec![];
         for (i, gate) in self.1.iter_mut().enumerate() {
             let (output, output_label) = gate.e()(
                 gate.wire_a.borrow().get_value(),
@@ -69,9 +67,13 @@ impl Circuit {
                 garbled[i],
                 gate.gid,
             );
-            res.push((output, output_label, garbled[i]));
+            garbled_evaluate.push((output, output_label));
         }
-        res
+
+        for (i, gate) in self.1.iter_mut().enumerate() {
+            let check = gate.check_garbled_circuit(garbled_evaluate[i].1);
+            assert!(check);
+        }
     }
 }
 
@@ -88,47 +90,10 @@ mod tests {
         let mut wire_b = new_wirex();
         wire_b.borrow_mut().set(true);
 
-        // let mut wire_c = new_wirex();
-        // wire_c.borrow_mut().set(false);
-        //
-        // let mut circuit = selector(wire_a, wire_b, wire_c);
-        // let garbled_evaluate = circuit.garbled_evaluate();
+        let mut wire_c = new_wirex();
+        wire_c.borrow_mut().set(false);
 
-        let d = new_wirex();
-        let gate_1 = Gate::cimp(wire_a, wire_b, d.clone());
-        let mut circuit = Circuit::new(vec![d], vec![gate_1]);
-
-        let garbled = circuit.garbled_gates();
-        let o_1 = circuit.1[0].wire_a.borrow().select(true).hash_ext(circuit.1[0].gid);
-
-        let o_2 = circuit.1[0].wire_a.borrow().select(false).hash_ext(circuit.1[0].gid)
-            ^ garbled[0].unwrap()
-            ^ circuit.1[0].wire_b.borrow().select(true);
-
-        // println!("wire_a_0: {:?}", circuit.1[0].wire_a.borrow().select(false));
-        // println!("wire_a_1: {:?}", circuit.1[0].wire_a.borrow().select(true));
-        // println!("h0 = o_1 = : {:?}", o_1);
-        // println!("h_")
-
-        assert_eq!(o_1, o_2);
-
-        // let garbled_evaluate = circuit.garbled_evaluate();
-
-        // // check x values
-        // for (i, gate) in circuit.1.iter_mut().enumerate() {
-        //     println!("Garbled gate: {:?}", gate.gate_type);
-        //     let gate_x = gate.get_garbled_evaluation_x(&garbled_evaluate[i]);
-        //     println!("i: {:?}", i);
-        //     assert_eq!(gate_x, gate.wire_a.borrow().get_value());
-        // }
-        //
-        // // hand compute output label
-        // let gate1_c0 = circuit.1[0].wire_a.borrow().select(false).hash_ext(circuit.1[0].gid);
-        // assert_eq!(gate1_c0, circuit.1[0].wire_c.borrow().select(true));
-        //
-        // let gate2_c0 = circuit.1[1].wire_a.borrow().select(false).hash_ext(circuit.1[1].gid)
-        //     ^ garbled_evaluate[1].2.unwrap()
-        //     ^ circuit.1[1].wire_b.borrow().select(true);
-        // assert_eq!(gate2_c0, circuit.1[1].wire_c.borrow().select(true));
+        let mut circuit = selector(wire_a, wire_b, wire_c);
+        circuit.garbled_evaluate();
     }
 }

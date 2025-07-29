@@ -252,57 +252,12 @@ impl Gate {
         ciphertext
     }
 
-    pub fn get_garbled_evaluation_x(&self, garbled_evaluation: &(bool, S, Option<S>)) -> bool {
-        let h0 = self.wire_a.borrow().select(false).hash_ext(self.gid);
-        let h1 = self.wire_a.borrow().select(true).hash_ext(self.gid);
-        let w_b_y = self.wire_b.borrow().select(self.wire_b.borrow().get_value());
-        let result = match self.gate_type {
-            GateType::And | GateType::Nimp=> {
-                assert!(garbled_evaluation.2.is_some());
-                if garbled_evaluation.1 == self.wire_c.borrow().select(false) { // O_0
-                    false
-                } else if garbled_evaluation.1 == h1 ^ garbled_evaluation.2.unwrap() ^ w_b_y { // O_1
-                    true
-                } else {
-                    panic!("Garbled gate And/Nimp evaluation is invalid");
-                }
-            },
-            GateType::Nand | GateType::Imp => {
-                assert!(garbled_evaluation.2.is_some());
-                if garbled_evaluation.1 == self.wire_c.borrow().select(true) { // x = 0, O_0
-                    false
-                } else if garbled_evaluation.1 == h1 ^ garbled_evaluation.2.unwrap() ^ w_b_y { // O_1
-                    true
-                } else {
-                    panic!("Garbled gate Nand/Imp evaluation is invalid");
-                }
-            },
-
-            GateType::Ncimp | GateType::Nor => {
-                assert!(garbled_evaluation.2.is_some());
-                if garbled_evaluation.1 == self.wire_c.borrow().select(false) { // O_1
-                    true
-                } else if garbled_evaluation.1 == h0 ^ garbled_evaluation.2.unwrap() ^ w_b_y { // O_0
-                    false
-                } else {
-                    panic!("Garbled gate Ncimp/Nor evaluation is invalid");
-                }
-            },
-            GateType::Cimp | GateType::Or => {
-                if garbled_evaluation.1 == self.wire_c.borrow().select(true) { // O_1
-                    true
-                } else if garbled_evaluation.1 == h0 ^ garbled_evaluation.2.unwrap() ^ w_b_y { // O_0
-                    false
-                } else {
-                    panic!("Garbled gate Ncimp/Nor evaluation is invalid");
-                }
-            },
-
-            GateType::Not | GateType::Xnor | GateType::Xor => {
-                self.wire_a.borrow().get_value()
-            },
-        };
-        result
+    pub fn check_garbled_circuit(&self, garbled_evaluation: S) -> bool {
+        if garbled_evaluation != self.wire_c.borrow().select(false)
+            && garbled_evaluation != self.wire_c.borrow().select(true) {
+            return false;
+        }
+        true
     }
 }
 
