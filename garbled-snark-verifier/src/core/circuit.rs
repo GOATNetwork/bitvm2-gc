@@ -52,38 +52,43 @@ impl Circuit {
         gc
     }
 
-    pub fn garbled_evaluate(&mut self) {
-        let garbled = self.garbled_gates();
-        for gate in self.1.iter_mut() {
-            gate.evaluate();
-        }
-        let mut garbled_evaluate = vec![];
+    pub fn garbled_evaluate(&mut self, garblings: &[Option<S>]) -> S{
+        let mut garbled_evaluations = vec![];
         for (i, gate) in self.1.iter_mut().enumerate() {
             let (output, output_label) = gate.e()(
                 gate.wire_a.borrow().get_value(),
                 gate.wire_b.borrow().get_value(),
                 gate.wire_a.borrow().select(gate.wire_a.borrow().get_value()),
                 gate.wire_b.borrow().select(gate.wire_b.borrow().get_value()),
-                garbled[i],
+                garblings[i],
                 gate.gid,
             );
-            garbled_evaluate.push((output, output_label));
+            // check the output is correct
+            assert_eq!(output, gate.wire_c.borrow().get_value());
+            garbled_evaluations.push((output, output_label));
         }
 
         for (i, gate) in self.1.iter_mut().enumerate() {
-            let check = gate.check_garbled_circuit(garbled_evaluate[i].1);
+            let check = gate.check_garbled_circuit(garbled_evaluations[i].1);
             assert!(check);
         }
+
+        garbled_evaluations.last().unwrap().1
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ark_ec::CurveGroup;
+    use ark_ff::{AdditiveGroup, Field};
     use crate::bag::{new_wirex, Circuit, Gate};
     use crate::circuits::basic::selector;
+    use crate::circuits::bn254::fq6::Fq6;
+    use crate::circuits::bn254::g1::{projective_to_affine_montgomery, G1Projective};
+    use crate::core::utils::DELTA;
 
     #[test]
-    fn test_garbled_selector_circuit() {
+    fn test_selector_circuit_garbled_evaluation() {
         let mut wire_a = new_wirex();
         wire_a.borrow_mut().set(false);
 
@@ -94,6 +99,54 @@ mod tests {
         wire_c.borrow_mut().set(false);
 
         let mut circuit = selector(wire_a, wire_b, wire_c);
-        circuit.garbled_evaluate();
+
+        for gate in &mut circuit.1 {
+            gate.evaluate();
+        }
+        let garblings = circuit.garbled_gates();
+        let output_label = circuit.garbled_evaluate(&garblings);
+
+        // hand-computing output label
+        let g1_output_label = circuit.1[0].wire_a.borrow().select(false).hash_ext(circuit.1[0].gid);
+        let g2_output_label = circuit.1[1].wire_a.borrow().select(false).hash_ext(circuit.1[1].gid)
+            ^ garblings[1].unwrap()
+            ^ circuit.1[1].wire_b.borrow().select(true);
+        let computed_output_label = (g1_output_label).hash_ext(circuit.1[2].gid)
+            ^ garblings[2].unwrap()
+            ^ (g2_output_label ^ DELTA);
+
+        assert_eq!(output_label, computed_output_label);
     }
+
+    #[test]
+    fn test_fq6_mul_montgomery_circuit_garbled_evaluation() {
+        let a = Fq6::random();
+        let b = Fq6::random();
+        let mut circuit = Fq6::mul_montgomery(
+            Fq6::wires_set(Fq6::as_montgomery(a)),
+            Fq6::wires_set(Fq6::as_montgomery(b)),
+        );
+        circuit.gate_counts().print();
+        for gate in &mut circuit.1 {
+            gate.evaluate();
+        }
+        let garblings = circuit.garbled_gates();
+        let _ = circuit.garbled_evaluate(&garblings);
+    }
+
+    #[test]
+    fn test_g1_projective_to_affine_montgomery_circuit_garbled_evaluation() {
+        let p_projective = G1Projective::random().double();
+        assert_ne!(p_projective.z, ark_bn254::Fq::ONE);
+        let p_affine = p_projective.into_affine();
+        let mut circuit =
+            projective_to_affine_montgomery(G1Projective::wires_set_montgomery(p_projective));
+        circuit.gate_counts().print();
+        for gate in &mut circuit.1 {
+            gate.evaluate();
+        }
+        let garblings = circuit.garbled_gates();
+        let _ = circuit.garbled_evaluate(&garblings);
+    }
+
 }

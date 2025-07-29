@@ -211,6 +211,7 @@ impl Gate {
     //   input labels a, b
     //   ciphertext c
     //   gate id gid
+    #[allow(clippy::type_complexity)]
     pub fn e(&self) -> Box<dyn Fn(bool, bool, S, S, Option<S>, u32) -> (bool, S) + '_> {
         match self.gate_type {
             GateType::And | GateType::Nand | GateType::Nimp | GateType::Imp => {
