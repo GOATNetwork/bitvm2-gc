@@ -67,6 +67,10 @@ impl Gate {
         }
     }
 
+    pub fn new_with_gid(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType, gid: u32) -> Self {
+        Self { wire_a, wire_b, wire_c, gate_type, gid }
+    }
+
     pub fn and(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
         Self::new(wire_a, wire_b, wire_c, GateType::And)
     }
