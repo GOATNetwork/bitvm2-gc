@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use crate::bag::{new_wirex, Circuit, Gate, Wires};
 use crate::core::gate::GateType;
 use crate::core::s::S;
@@ -108,6 +110,48 @@ pub fn parser(filename: &str) -> (Circuit, Vec<Wires>, Vec<Wires>) {
     (c, inputs, outputs)
 }
 
+pub fn write_bristol(
+    circuit: &Circuit,
+    input_sizes: &[usize],
+    output_sizes: &[usize],
+    filename: &str,
+) -> Result<(), std::io::Error> {
+    let mut file = fs::File::create(filename)?;
+    writeln!(file, "{} {}", circuit.gate_count(), circuit.0.len())?;
+    let mut wire_map = HashMap::new();
+    for (i, wire) in circuit.0.iter().enumerate() {
+        wire_map.insert(wire.borrow().get_label(), i);
+    }
+
+    write!(file, "{}", input_sizes.len())?;
+    for size in input_sizes {
+        write!(file, " {}", size)?;
+    }
+    writeln!(file)?;
+
+    write!(file, "{}", output_sizes.len())?;
+    for size in output_sizes {
+        write!(file, " {}", size)?;
+    }
+    writeln!(file)?;
+    writeln!(file)?;
+
+    for gate in &circuit.1 {
+        writeln!(
+            file,
+            "{} {} {} {} {} {} {}",
+            gate.gid,
+            2,
+            1,
+            wire_map[&gate.wire_a.borrow().get_label()],
+            wire_map[&gate.wire_b.borrow().get_label()],
+            wire_map[&gate.wire_c.borrow().get_label()],
+            gate.gate_type.to_string().to_uppercase(),
+        )?;
+    }
+    Ok(())
+}
+
 pub fn evaluator(
     circuit_file: &str,
     garblings: &[Option<S>],
@@ -169,5 +213,25 @@ mod tests {
             &input_tuples,
             expected_output_label
         );
+    }
+
+    #[test]
+    fn test_bristol_writer() {
+        let a = new_wirex();
+        let b = new_wirex();
+        let c = new_wirex();
+        let d = new_wirex();
+        let f = new_wirex();
+        let g = new_wirex();
+        let gate_1 = Gate::nand(a.clone(), c.clone(), d.clone());
+        let gate_2 = Gate::and_variant(c.clone(), b.clone(), f.clone(), [1, 0, 1]);
+        let gate_3 = Gate::nand(d.clone(), f.clone(), g.clone());
+        let circuit = Circuit::new(vec![a, b, c, d, f, g], vec![gate_1, gate_2, gate_3]);
+        write_bristol(
+            &circuit,
+            &[1, 1, 1],
+            &[1],
+            "test_bristol_writer.txt",
+        ).unwrap();
     }
 }

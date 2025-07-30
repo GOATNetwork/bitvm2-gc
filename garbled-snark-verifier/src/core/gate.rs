@@ -1,3 +1,4 @@
+use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -22,6 +23,25 @@ pub enum GateType {
     Xor,
     Xnor,
     Not,
+}
+
+impl fmt::Display for GateType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            GateType::And => "And",
+            GateType::Nand => "Nand",
+            GateType::Nimp => "Nimp",
+            GateType::Imp => "Imp",
+            GateType::Ncimp => "Ncimp",
+            GateType::Cimp => "Cimp",
+            GateType::Nor => "Nor",
+            GateType::Or => "Or",
+            GateType::Xor => "Xor",
+            GateType::Xnor => "Xnor",
+            GateType::Not => "Not",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 // only for AND variants

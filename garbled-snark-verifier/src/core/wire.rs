@@ -38,7 +38,7 @@ impl Wire {
     }
 
     pub fn get_label(&self) -> S {
-        assert!(self.value.is_some());
+        assert!(self.label.is_some());
         self.label.unwrap()
     }
 
