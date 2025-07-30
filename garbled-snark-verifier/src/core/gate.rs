@@ -87,7 +87,13 @@ impl Gate {
         }
     }
 
-    pub fn new_with_gid(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType, gid: u32) -> Self {
+    pub fn new_with_gid(
+        wire_a: Wirex,
+        wire_b: Wirex,
+        wire_c: Wirex,
+        gate_type: GateType,
+        gid: u32,
+    ) -> Self {
         Self { wire_a, wire_b, wire_c, gate_type, gid }
     }
 
@@ -279,7 +285,8 @@ impl Gate {
 
     pub fn check_garbled_circuit(&self, garbled_evaluation: S) -> bool {
         if garbled_evaluation != self.wire_c.borrow().select(false)
-            && garbled_evaluation != self.wire_c.borrow().select(true) {
+            && garbled_evaluation != self.wire_c.borrow().select(true)
+        {
             return false;
         }
         true

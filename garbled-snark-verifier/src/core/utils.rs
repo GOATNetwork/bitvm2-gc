@@ -13,7 +13,7 @@ pub const LABLE_SIZE: usize = 16;
 // FIXME: set up a private global difference
 pub static DELTA: S = S::one();
 
-// u32 is not enough for current gates scale. 
+// u32 is not enough for current gates scale.
 pub static GID: AtomicU32 = AtomicU32::new(0);
 
 #[inline(always)]

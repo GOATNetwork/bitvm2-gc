@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use crate::bag::{new_wirex, Circuit, Gate, Wires};
+use std::rc::Rc;
+use crate::bag::{new_wirex, Circuit, Gate, Wires, Wirex};
 use crate::core::gate::GateType;
 use crate::core::s::S;
 
@@ -110,6 +111,10 @@ pub fn parser(filename: &str) -> (Circuit, Vec<Wires>, Vec<Wires>) {
     (c, inputs, outputs)
 }
 
+fn wire_id(w: &Wirex) -> usize {
+    Rc::as_ptr(w) as usize
+}
+
 pub fn write_bristol(
     circuit: &Circuit,
     input_sizes: &[usize],
@@ -120,7 +125,7 @@ pub fn write_bristol(
     writeln!(file, "{} {}", circuit.gate_count(), circuit.0.len())?;
     let mut wire_map = HashMap::new();
     for (i, wire) in circuit.0.iter().enumerate() {
-        wire_map.insert(wire.borrow().get_label(), i);
+        wire_map.insert(wire_id(&wire), i);
     }
 
     write!(file, "{}", input_sizes.len())?;
@@ -143,9 +148,9 @@ pub fn write_bristol(
             gate.gid,
             2,
             1,
-            wire_map[&gate.wire_a.borrow().get_label()],
-            wire_map[&gate.wire_b.borrow().get_label()],
-            wire_map[&gate.wire_c.borrow().get_label()],
+            wire_map[&wire_id(&gate.wire_a)],
+            wire_map[&wire_id(&gate.wire_b)],
+            wire_map[&wire_id(&gate.wire_c)],
             gate.gate_type.to_string().to_uppercase(),
         )?;
     }
