@@ -5,6 +5,7 @@ use std::rc::Rc;
 use crate::bag::{new_wirex, Circuit, Gate, Wires, Wirex};
 use crate::core::gate::GateType;
 use crate::core::s::S;
+use crate::core::utils::DELTA;
 
 /// Parses a circuit from a Bristol format file.
 pub fn parser(filename: &str) -> (Circuit, Vec<Wires>, Vec<Wires>) {
@@ -168,7 +169,12 @@ pub fn evaluator(
     for (i, input_wires) in input_wires.iter().enumerate() {
         for (j, wire) in input_wires.iter().enumerate() {
             let (label, bit) = input_tuples[i][j];
-            wire.borrow_mut().set_label(label);
+            if !bit {
+                wire.borrow_mut().set_label(label);
+            } else {
+                wire.borrow_mut().set_label(label ^ DELTA);
+            }
+
             wire.borrow_mut().set(bit);
         }
     }
@@ -186,6 +192,7 @@ pub fn evaluator(
 
 #[cfg(test)]
 mod tests {
+    use rand::Rng;
     use crate::bag::new_wirex;
     use crate::circuits::basic::selector;
     use super::*;
@@ -207,13 +214,45 @@ mod tests {
         let garblings = circuit.garbled_gates();
         let expected_output_label = circuit.garbled_evaluate(&garblings);
 
-        let input_tuples = vec![vec![(wire_a.borrow().get_label(), wire_a.borrow().get_value())],
-                                vec![(wire_b.borrow().get_label(), wire_b.borrow().get_value())],
-                                vec![(wire_c.borrow().get_label(), wire_c.borrow().get_value())]];
+        let input_tuples = vec![vec![(wire_a.borrow().select(false), false)],
+                                vec![(wire_b.borrow().select(true), true)],
+                                vec![(wire_c.borrow().select(false), false)]];
 
 
         evaluator(
             "bristol-examples/selector.txt",
+            &garblings,
+            &input_tuples,
+            expected_output_label
+        );
+    }
+
+    #[test]
+    fn test_adder64_circuit_evaluator() {
+        let (mut circuit, inputs, outputs) = parser("bristol-examples/adder64.txt");
+        let mut rng = rand::thread_rng();
+        let a: u64 = rng.r#gen();
+        let b: u64 = rng.r#gen();
+        for (i, wire) in inputs[0].iter().enumerate() {
+            wire.borrow_mut().set((a >> i) & 1 == 1);
+        }
+        for (i, wire) in inputs[1].iter().enumerate() {
+            wire.borrow_mut().set((b >> i) & 1 == 1);
+        }
+        for gate in &mut circuit.1 {
+            gate.evaluate();
+        }
+        let garblings = circuit.garbled_gates();
+        let expected_output_label = circuit.garbled_evaluate(&garblings);
+
+        let input_tuples: Vec<Vec<(S, bool)>> = inputs.iter()
+            .map(|input_wires| input_wires.iter()
+                .map(|wire| (wire.borrow().select(wire.borrow().get_value()), wire.borrow().get_value()))
+                .collect())
+            .collect();
+
+        evaluator(
+            "bristol-examples/adder64.txt",
             &garblings,
             &input_tuples,
             expected_output_label
