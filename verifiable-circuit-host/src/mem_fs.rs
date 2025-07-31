@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     io::{Read, Result, Write, Error, ErrorKind},
-    sync::{Mutex, Once, OnceLock},
+    sync::{Mutex, OnceLock},
     cell::RefCell,
 };
 
@@ -170,41 +170,41 @@ mod tests {
         assert_eq!(&buf[..read_bytes], b"abcdefgh");
     }
     #[test]
-fn test_1gb_read_write() {
-    use std::io::{Read, Write};
+    fn test_1gb_read_write() {
+        use std::io::{Read, Write};
 
-    // 1GB = 1024 * 1024 * 1024 bytes
-    const ONE_GB: usize = 1024 * 1024 * 1024;
+        // 1GB = 1024 * 1024 * 1024 bytes
+        const ONE_GB: usize = 1024 * 1024 * 1024;
 
-    // Create file
-    let mut file = MemFile::create("bigfile.bin").expect("create failed");
+        // Create file
+        let mut file = MemFile::create("bigfile.bin").expect("create failed");
 
-    // Write 1GB of zero bytes
-    let chunk = vec![0u8; 1024 * 1024]; // 1 MB chunk
-    let mut written = 0;
-    while written < ONE_GB {
-        let write_size = std::cmp::min(chunk.len(), ONE_GB - written);
-        file.write_all(&chunk[..write_size]).expect("write failed");
-        written += write_size;
-    }
-    file.flush().expect("flush failed");
-
-    // Read back and verify size
-    let mut file2 = MemFile::open("bigfile.bin").expect("open failed");
-    let mut read_bytes = 0;
-    let mut buffer = vec![0u8; 1024 * 1024]; // 1MB buffer
-
-    while read_bytes < ONE_GB {
-        let read_size = file2.read(&mut buffer).expect("read failed");
-        if read_size == 0 {
-            break;
+        // Write 1GB of zero bytes
+        let chunk = vec![0u8; 1024 * 1024]; // 1 MB chunk
+        let mut written = 0;
+        while written < ONE_GB {
+            let write_size = std::cmp::min(chunk.len(), ONE_GB - written);
+            file.write_all(&chunk[..write_size]).expect("write failed");
+            written += write_size;
         }
-        // Check all zeros in the buffer read
-        assert!(buffer[..read_size].iter().all(|&b| b == 0));
-        read_bytes += read_size;
-    }
+        file.flush().expect("flush failed");
 
-    assert_eq!(read_bytes, ONE_GB);
-}
+        // Read back and verify size
+        let mut file2 = MemFile::open("bigfile.bin").expect("open failed");
+        let mut read_bytes = 0;
+        let mut buffer = vec![0u8; 1024 * 1024]; // 1MB buffer
+
+        while read_bytes < ONE_GB {
+            let read_size = file2.read(&mut buffer).expect("read failed");
+            if read_size == 0 {
+                break;
+            }
+            // Check all zeros in the buffer read
+            assert!(buffer[..read_size].iter().all(|&b| b == 0));
+            read_bytes += read_size;
+        }
+
+        assert_eq!(read_bytes, ONE_GB);
+    }
 
 }

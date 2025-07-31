@@ -52,9 +52,9 @@ impl Circuit {
         gc
     }
 
-    pub fn garbled_evaluate(&mut self, garblings: &[Option<S>]) -> S{
+    pub fn garbled_evaluate(&self, garblings: &[Option<S>]) -> S{
         let mut garbled_evaluations = vec![];
-        for (i, gate) in self.1.iter_mut().enumerate() {
+        for (i, gate) in self.1.iter().enumerate() {
             let (output, output_label) = gate.e()(
                 gate.wire_a.borrow().get_value(),
                 gate.wire_b.borrow().get_value(),
@@ -68,7 +68,7 @@ impl Circuit {
             garbled_evaluations.push((output, output_label));
         }
 
-        for (i, gate) in self.1.iter_mut().enumerate() {
+        for (i, gate) in self.1.iter().enumerate() {
             let check = gate.check_garbled_circuit(garbled_evaluations[i].1);
             assert!(check);
         }
@@ -148,5 +148,4 @@ mod tests {
         let garblings = circuit.garbled_gates();
         let _ = circuit.garbled_evaluate(&garblings);
     }
-
 }

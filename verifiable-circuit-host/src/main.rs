@@ -25,10 +25,6 @@ use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, uti
 mod dummy_circuit;
 use crate::dummy_circuit::DummyCircuit;
 mod mem_fs;
-use mem_fs::*;
-mod bristol;
-use bristol::*;
-mod vhdl;
 
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");

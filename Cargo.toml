@@ -9,6 +9,7 @@ categories = ["cryptography"]
 
 [workspace]
 members = [
+    "bristol",
     "garbled-snark-verifier",
     "verifiable-circuit",
     "verifiable-circuit-host",
@@ -18,6 +19,7 @@ resolver = "2"
 
 [workspace.dependencies]
 garbled-snark-verifier = { path = "./garbled-snark-verifier" }
+bristol = { path = "./bristol" }
 zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
 zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }
 zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren" }

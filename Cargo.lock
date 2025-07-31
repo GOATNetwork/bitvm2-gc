@@ -1238,6 +1238,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bristol"
+version = "0.0.1"
+dependencies = [
+ "garbled-snark-verifier",
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "bs58"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

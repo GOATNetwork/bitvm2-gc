@@ -1,0 +1,13 @@
+[package]
+name = "bristol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+garbled-snark-verifier = { workspace = true, features = ["garbled", "_poseidon2", "_getrandom"] }
+rand = "0.8.5"
