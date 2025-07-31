@@ -88,7 +88,7 @@ pub trait Fp254Impl {
     fn add_evaluate(a: Wires, b: Wires) -> (Wires, GateCount) {
         let mut circuit = Self::add(a, b);
         let n = circuit.gate_counts();
-        for mut gate in circuit.1.drain(..){
+        for mut gate in circuit.1.drain(..) {
             gate.evaluate();
         }
         (circuit.0, n)

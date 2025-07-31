@@ -134,10 +134,8 @@ fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
 
 fn split_circuit() {
     let mut circuit = custom_groth16_verifier_circuit();
-
     circuit.gate_counts().print();
     println!("Wires: {}", circuit.0.len());
-    
     gen_sub_circuits(&mut circuit, 7_000_000);
 }
 

@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::io::Write;
 use garbled_snark_verifier::bag::*;
 use garbled_snark_verifier::core::gate::GateType;
+use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::rc::Rc;
 
 pub fn parser(filename: &str) -> (Circuit, Vec<Wires>, Vec<Wires>) {
@@ -158,9 +158,8 @@ pub fn write_bristol(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::Rng;
-    use garbled_snark_verifier::circuits::basic::selector;
     use garbled_snark_verifier::core::utils::DELTA;
+    use rand::Rng;
 
     pub fn evaluator(
         circuit_file: &str,
@@ -284,12 +283,7 @@ mod tests {
         let gate_2 = Gate::and_variant(c.clone(), b.clone(), f.clone(), [1, 0, 1]);
         let gate_3 = Gate::nand(d.clone(), f.clone(), g.clone());
         let circuit = Circuit::new(vec![a, b, c, d, f, g], vec![gate_1, gate_2, gate_3]);
-        write_bristol(
-            &circuit,
-            &[1, 1, 1],
-            &[1],
-            "test_bristol_writer.txt",
-        ).unwrap();
+        write_bristol(&circuit, &[1, 1, 1], &[1], "test_bristol_writer.txt").unwrap();
     }
 
     #[test]
@@ -304,16 +298,17 @@ mod tests {
         let garblings = circuit.garbled_gates();
         let expected_output_label = circuit.garbled_evaluate(&garblings);
 
-        let input_tuples = vec![vec![(inputs[0][0].borrow().select(false), false)],
-                                vec![(inputs[1][0].borrow().select(true), true)],
-                                vec![(inputs[2][0].borrow().select(false), false)]];
-
+        let input_tuples = vec![
+            vec![(inputs[0][0].borrow().select(false), false)],
+            vec![(inputs[1][0].borrow().select(true), true)],
+            vec![(inputs[2][0].borrow().select(false), false)],
+        ];
 
         evaluator(
             "src/bristol-examples/selector.txt",
             &garblings,
             &input_tuples,
-            expected_output_label
+            expected_output_label,
         );
     }
 
@@ -335,17 +330,23 @@ mod tests {
         let garblings = circuit.garbled_gates();
         let expected_output_label = circuit.garbled_evaluate(&garblings);
 
-        let input_tuples: Vec<Vec<(S, bool)>> = inputs.iter()
-            .map(|input_wires| input_wires.iter()
-                .map(|wire| (wire.borrow().select(wire.borrow().get_value()), wire.borrow().get_value()))
-                .collect())
+        let input_tuples: Vec<Vec<(S, bool)>> = inputs
+            .iter()
+            .map(|input_wires| {
+                input_wires
+                    .iter()
+                    .map(|wire| {
+                        (wire.borrow().select(wire.borrow().get_value()), wire.borrow().get_value())
+                    })
+                    .collect()
+            })
             .collect();
 
         evaluator(
             "src/bristol-examples/adder64.txt",
             &garblings,
             &input_tuples,
-            expected_output_label
+            expected_output_label,
         );
     }
 }

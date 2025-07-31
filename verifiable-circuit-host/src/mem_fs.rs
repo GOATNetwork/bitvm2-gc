@@ -1,8 +1,8 @@
 use std::{
-    collections::HashMap,
-    io::{Read, Result, Write, Error, ErrorKind},
-    sync::{Mutex, OnceLock},
     cell::RefCell,
+    collections::HashMap,
+    io::{Error, ErrorKind, Read, Result, Write},
+    sync::{Mutex, OnceLock},
 };
 
 static GLOBAL_FS: OnceLock<Mutex<HashMap<String, RefCell<Vec<u8>>>>> = OnceLock::new();
@@ -68,8 +68,8 @@ impl Read for MemFile {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         let fs = get_fs();
         let map = fs.lock().unwrap();
-        let content = map.get(&self.name)
-            .ok_or_else(|| Error::new(ErrorKind::NotFound, "File not found"))?;
+        let content =
+            map.get(&self.name).ok_or_else(|| Error::new(ErrorKind::NotFound, "File not found"))?;
         let content = content.borrow();
         if self.cursor >= content.len() {
             return Ok(0);
@@ -85,8 +85,8 @@ impl Write for MemFile {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         let fs = get_fs();
         let map = fs.lock().unwrap();
-        let content_cell = map.get(&self.name)
-            .ok_or_else(|| Error::new(ErrorKind::NotFound, "File not found"))?;
+        let content_cell =
+            map.get(&self.name).ok_or_else(|| Error::new(ErrorKind::NotFound, "File not found"))?;
         let mut content = content_cell.borrow_mut();
 
         if self.cursor > content.len() {
@@ -206,5 +206,4 @@ mod tests {
 
         assert_eq!(read_bytes, ONE_GB);
     }
-
 }

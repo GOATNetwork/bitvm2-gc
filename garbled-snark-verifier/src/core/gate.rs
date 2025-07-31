@@ -1,5 +1,5 @@
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::{
     bag::*,
@@ -77,13 +77,18 @@ unsafe impl Sync for Gate {}
 
 impl Gate {
     pub fn new(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType) -> Self {
-        Self { wire_a, wire_b, wire_c, gate_type, gid: {
-            let gid = inc_gid() - 1;
-            if gid.is_multiple_of(1000000) {
-                println!("gid: {gid}")
-            }
-            gid
-        }
+        Self {
+            wire_a,
+            wire_b,
+            wire_c,
+            gate_type,
+            gid: {
+                let gid = inc_gid() - 1;
+                if gid.is_multiple_of(1000000) {
+                    println!("gid: {gid}")
+                }
+                gid
+            },
         }
     }
 
