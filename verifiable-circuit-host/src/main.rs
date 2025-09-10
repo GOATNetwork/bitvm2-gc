@@ -20,11 +20,12 @@ use garbled_snark_verifier::circuits::bn254::g1::G1Affine;
 use garbled_snark_verifier::circuits::groth16::{
     VerifyingKey, groth16_verifier_montgomery_circuit,
 };
-use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils};
+use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils as sdk_utils};
 
 mod dummy_circuit;
 use crate::dummy_circuit::DummyCircuit;
 mod mem_fs;
+mod utils;
 
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
@@ -88,60 +89,16 @@ fn custom_deserialize_compressed_g2_circuit() -> Circuit {
     circuit
 }
 
-fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
-    let start = Instant::now();
-    let mut garbled_gates = circuit.garbled_gates();
-    let elapsed = start.elapsed();
-    info!(step = "garble gates", elapsed =? elapsed, "garbled gates: {}", garbled_gates.len());
-
-    let size = circuit.1.len().div_ceil(max_gates);
-
-    let start = Instant::now();
-    let _: Vec<_> = circuit
-        .1
-        .chunks(max_gates)
-        .enumerate()
-        .zip(garbled_gates.chunks_mut(max_gates))
-        .map(|((i, w), garblings)| {
-            info!(step = "gen_sub_circuits", "Split batch {i}/{size}");
-            let out = SerializableCircuit {
-                gates: w
-                    .iter()
-                    .map(|w| SerializableGate {
-                        wire_a: w.wire_a.borrow().clone(),
-                        wire_b: w.wire_b.borrow().clone(),
-                        wire_c: w.wire_c.borrow().clone(),
-                        gate_type: w.gate_type,
-                        gid: w.gid,
-                    })
-                    .collect(),
-                garblings: garblings.to_vec(),
-            };
-            let start = Instant::now();
-            bincode::serialize_into(
-                //std::fs::File::create(format!("garbled_{i}.bin")).unwrap(),
-                mem_fs::MemFile::create(format!("garbled_{i}.bin")).unwrap(),
-                &out,
-            )
-            .unwrap();
-            let elapsed = start.elapsed();
-            info!(step = "gen_sub_circuits", elapsed = ?elapsed, "Writing garbled_{i}.bin");
-        })
-        .collect();
-    let elapsed = start.elapsed();
-    info!(step = "gen_sub_circuits", elapsed =? elapsed, "total time");
-}
-
 fn split_circuit() {
     let mut circuit = custom_groth16_verifier_circuit();
     circuit.gate_counts().print();
     println!("Wires: {}", circuit.0.len());
-    gen_sub_circuits(&mut circuit, 7_000_000);
+    utils::gen_sub_circuits(&mut circuit, 7_000_000);
 }
 
 fn main() {
     // Setup logging.
-    utils::setup_logger();
+    sdk_utils::setup_logger();
 
     let start_total = Instant::now();
 

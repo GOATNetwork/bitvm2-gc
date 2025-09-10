@@ -91,7 +91,6 @@ mod tests {
     use ark_ec::CurveGroup;
     use ark_ff::{AdditiveGroup, Field};
 
-
     #[cfg(feature = "garbled")]
     #[test]
     fn test_selector_circuit_garbled_evaluation() {
