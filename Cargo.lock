@@ -1098,29 +1098,6 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.65.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfdf7b466f9a4903edc73f95d6d2bcd5baf8ae620638762244d3f60143643cc5"
-dependencies = [
- "bitflags 1.3.2",
- "cexpr",
- "clang-sys",
- "lazy_static",
- "lazycell",
- "log",
- "peeking_take_while",
- "prettyplease 0.2.37",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash 1.1.0",
- "shlex",
- "syn 2.0.106",
- "which",
-]
-
-[[package]]
-name = "bindgen"
 version = "0.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
@@ -2884,7 +2861,6 @@ dependencies = [
  "serde_json",
  "serial_test",
  "sha2",
- "xs233-sys",
 ]
 
 [[package]]
@@ -3850,12 +3826,6 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
  "spin 0.9.8",
 ]
-
-[[package]]
-name = "lazycell"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
@@ -4844,12 +4814,6 @@ dependencies = [
  "digest 0.10.7",
  "hmac",
 ]
-
-[[package]]
-name = "peeking_take_while"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
 
 [[package]]
 name = "pem"
@@ -7893,16 +7857,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "xs233-sys"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c69193ec17ee413f676e700b6b98b795e0e87f1b36099bcc8e786efe552288c1"
-dependencies = [
- "bindgen 0.65.1",
- "cc",
-]
-
-[[package]]
 name = "yansi"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8212,7 +8166,7 @@ dependencies = [
 [[package]]
 name = "zkm-lib"
 version = "1.1.4"
-source = "git+https://github.com/ProjectZKM/Ziren#b08c6f04754aa02b63a5dc65f558f88f5bd72d04"
+source = "git+https://github.com/ProjectZKM/Ziren#be93b18172ba779032078eb8eaae9f84882badd1"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -8225,7 +8179,7 @@ dependencies = [
 [[package]]
 name = "zkm-primitives"
 version = "1.1.4"
-source = "git+https://github.com/ProjectZKM/Ziren#b08c6f04754aa02b63a5dc65f558f88f5bd72d04"
+source = "git+https://github.com/ProjectZKM/Ziren#be93b18172ba779032078eb8eaae9f84882badd1"
 dependencies = [
  "bincode",
  "hex",
@@ -8385,7 +8339,7 @@ source = "git+https://github.com/ProjectZKM/Ziren#b08c6f04754aa02b63a5dc65f558f8
 dependencies = [
  "anyhow",
  "bincode",
- "bindgen 0.70.1",
+ "bindgen",
  "cc",
  "cfg-if",
  "hex",

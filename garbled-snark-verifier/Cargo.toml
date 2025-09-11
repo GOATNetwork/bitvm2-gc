@@ -25,7 +25,7 @@ poseidon2 = { workspace = true, optional = true }
 ark-serialize = { version = "0.5.0", default-features = false, features = ["derive"] }
 
 bincode = { workspace = true }
-xs233-sys = "0.2.0"
+#xs233-sys = "0.2.0"
 rayon = "1.10.0"
 
 [dev-dependencies]
