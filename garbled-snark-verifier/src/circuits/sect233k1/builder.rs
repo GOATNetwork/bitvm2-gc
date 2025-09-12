@@ -150,9 +150,17 @@ impl CircuitAdapter {
     pub(crate) fn build(&self, witness: [bool; WITNESS_BIT_LEN]) -> Circuit {
         let n_wires = self.next_wire;
         println!("wires: {n_wires}");
+
         let start = Instant::now();
-        let wires: Vec<_> = (0..n_wires).map(|_| new_wirex()).collect();
-        println!("init wires time:{:?}", start.elapsed());
+
+        let mut wires = Vec::with_capacity(n_wires);
+        for i in 0..n_wires {
+            if i.is_multiple_of(10_000_000) {
+                println!("wires: {} M", i / 1_000_000);
+            }
+            wires.push(new_wirex());
+        }
+        println!("init wires took:{:?}", start.elapsed());
 
         // Set constant and witness wire values.
         // This is an efficient way to initialize the first few wires.
@@ -161,65 +169,62 @@ impl CircuitAdapter {
             wirex.borrow_mut().set(*bit);
         });
 
-        // Unroll all gates (base and custom) into a flat list of basic operations.
-        // This uses a fold-reduce pattern to build the Vec in parallel,
-        // which is more efficient than `flat_map` with `vec!` allocations for base gates.
-        // It reduces allocator pressure and improves speed.
-        let basic_ops: Vec<Operation<bool>> = self
+        let start = Instant::now();
+        // To reduce peak memory usage, we avoid creating the large intermediate `basic_ops` vector.
+        // Instead, we iterate through the top-level gates, unroll them one by one,
+        // and immediately convert the resulting basic operations into `Gate` objects.
+        // This trades the top-level parallelism of the unrolling step for lower memory consumption,
+        // while retaining internal parallelism within `unroll_custom_gate`.
+        let gates: Vec<Gate> = self
             .gates
-            .par_iter()
-            .fold(
-                || Vec::new(),
-                |mut acc, g| {
-                    match g {
-                        GateOperation::Base(op) => acc.push(*op),
-                        GateOperation::Custom(params) => {
-                            // Correctly select the template based on the gate type, improving robustness.
-                            let templ = self.get_template(params.gate_type).unwrap_or_else(|| {
-                                panic!(
-                                    "Template for custom gate {:?} not initialized",
-                                    params.gate_type
-                                )
-                            });
-                            let ops = templ.unroll_custom_gate(
-                                self.zero,
-                                self.one,
-                                params.internal_wire_start_index,
-                                &params.input_wire_index,
-                            );
-                            acc.extend(ops);
-                        }
+            .iter()
+            .enumerate()
+            .flat_map(|(i, g)| {
+                // Unroll the current gate `g` into a temporary list of basic operations.
+                // This temporary list is much smaller than the full `basic_ops` vector would be.
+                let ops_for_this_gate = match g {
+                    GateOperation::Base(op) => vec![*op],
+                    GateOperation::Custom(params) => {
+                        let templ = self.get_template(params.gate_type).unwrap_or_else(|| {
+                            panic!(
+                                "Template for custom gate {:?} not initialized",
+                                params.gate_type
+                            )
+                        });
+                        templ.unroll_custom_gate(
+                            self.zero,
+                            self.one,
+                            params.internal_wire_start_index,
+                            &params.input_wire_index,
+                        )
                     }
-                    acc
-                },
-            )
-            .reduce(
-                || Vec::new(),
-                |mut a, b| {
-                    a.extend(b);
-                    a
-                },
-            );
+                };
 
-        // Convert basic operations to `Gate` objects in parallel.
-        // `basic_ops` can be very large, so parallelization is crucial here.
-        let gates: Vec<Gate> = basic_ops
-            .iter() // Changed from .iter() to .par_iter() for significant speedup.
-            .filter_map(|op| match op {
-                Operation::Add(d, x, y) => {
-                    Some(Gate::xor(wires[*x].clone(), wires[*y].clone(), wires[*d].clone()))
+                // Immediately convert these basic operations to `Gate` objects.
+                // This consumes `ops_for_this_gate`, and its memory is freed after this block.
+                // This creates an iterator that `flat_map` will process.
+                ops_for_this_gate.into_iter()
+            })
+            .enumerate()
+            .filter_map(|(i, op)| {
+                if i.is_multiple_of(10_000_000) {
+                    println!("processing II {} M", i / 1_000_000);
                 }
-                Operation::Mul(d, x, y) => {
-                    Some(Gate::and(wires[*x].clone(), wires[*y].clone(), wires[*d].clone()))
+                match op {
+                    Operation::Add(d, x, y) => {
+                        Some(Gate::xor(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                    }
+                    Operation::Mul(d, x, y) => {
+                        Some(Gate::and(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                    }
+                    Operation::Or(d, x, y) => {
+                        Some(Gate::or(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                    }
+                    Operation::Const(_, _) => None,
                 }
-                Operation::Or(d, x, y) => {
-                    Some(Gate::or(wires[*x].clone(), wires[*y].clone(), wires[*d].clone()))
-                }
-                // Const operations are not converted to Gates. Their values are already set on the wires.
-                // This fixes a potential panic from the original `unreachable!()`.
-                Operation::Const(_, _) => None,
             })
             .collect();
+        println!("gates to circuit took:{:?}", start.elapsed());
 
         // The circuit output is assumed to be the last wire.
         // Using `expect` for a clearer error message if `wires` is empty.
@@ -379,7 +384,7 @@ pub fn xor_vec<T: CircuitTrait>(bld: &mut T, a: &[usize], b: &[usize]) -> Vec<us
         .collect()
 }
 
-pub fn xor_many<T: CircuitTrait>(bld: &mut T, items: impl IntoIterator<Item = usize>) -> usize {
+pub fn xor_many<T: CircuitTrait>(bld: &mut T, items: impl IntoIterator<Item=usize>) -> usize {
     let mut it = items.into_iter();
     let first = match it.next() {
         Some(w) => w,

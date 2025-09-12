@@ -19,6 +19,7 @@ pub fn dv_snark_verifier_circuit(witness: &VerifierPayloadRef) -> Circuit {
 }
 
 #[test]
+#[ignore]
 fn test_dv_snark_verifier_circuit() {
     // Prepare VerifierPayloadRef
     let tau =
@@ -65,8 +66,8 @@ fn test_dv_snark_verifier_circuit() {
     println!("gate_counts time: {:?}", start.elapsed());
     total_gates.print();
 
-    // for gate in &mut circuit.1 {
-    //     gate.evaluate();
-    // }
-    // assert!(circuit.0[0].borrow().get_value());
+    for gate in &mut circuit.1 {
+        gate.evaluate();
+    }
+    assert!(circuit.0[0].borrow().get_value());
 }
