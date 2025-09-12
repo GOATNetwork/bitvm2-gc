@@ -1,15 +1,18 @@
-use crate::{bag::*, core::gate::GateCount};
+use crate::{
+    bag::*,
+    core::gate::{GateCount, GateTrait},
+};
 
 // wires, gates
 #[derive(Debug)]
-pub struct Circuit(pub Wires, pub Vec<Gate>);
+pub struct Circuit(pub Wires, pub Vec<Gate<Wirex>>);
 
 impl Circuit {
     pub fn empty() -> Self {
         Self(Vec::new(), Vec::new())
     }
 
-    pub fn new(wires: Wires, gates: Vec<Gate>) -> Self {
+    pub fn new(wires: Wires, gates: Vec<Gate<Wirex>>) -> Self {
         Self(wires, gates)
     }
 
@@ -32,7 +35,7 @@ impl Circuit {
         circuit.0
     }
 
-    pub fn add(&mut self, gate: Gate) {
+    pub fn add(&mut self, gate: Gate<Wirex>) {
         self.1.push(gate);
     }
 

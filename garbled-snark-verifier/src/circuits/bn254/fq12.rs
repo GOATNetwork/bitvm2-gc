@@ -1,6 +1,7 @@
 use crate::{
     bag::*,
     circuits::bn254::{fp254impl::Fp254Impl, fq::Fq, fq2::Fq2, fq6::Fq6, utils::create_rng},
+    core::gate::GateTrait,
 };
 use ark_ff::{Field, Fp12Config, UniformRand};
 use core::iter::zip;

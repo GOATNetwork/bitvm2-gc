@@ -1,4 +1,5 @@
 use crate::bag::*;
+use crate::core::gate::GateTrait;
 
 pub fn half_adder(a: Wirex, b: Wirex) -> Circuit {
     let result = new_wirex();

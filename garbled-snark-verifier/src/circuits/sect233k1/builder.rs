@@ -2,7 +2,7 @@
 use crate::bag::*;
 use crate::circuits::sect233k1::curve_ckt::{CurvePoint, template_emit_point_add};
 use crate::circuits::sect233k1::gf_ckt::GF_LEN;
-use crate::core::gate::Gate;
+use crate::core::gate::{Gate, GateTrait};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -110,8 +110,8 @@ pub trait CircuitTrait {
 pub struct CircuitAdapter {
     // // Original circuit from the first implementation
     // inner_circuit: Circuit,
-    // // Wire mapping: usize -> Wirex
-    // wire_map: HashMap<usize, Wirex>,
+    // // Wire mapping: usize -> Wire
+    // wire_map: HashMap<usize, Wire>,
     // Next wire index
     next_wire: usize,
     // Constant wire index
@@ -175,7 +175,7 @@ impl CircuitAdapter {
         // and immediately convert the resulting basic operations into `Gate` objects.
         // This trades the top-level parallelism of the unrolling step for lower memory consumption,
         // while retaining internal parallelism within `unroll_custom_gate`.
-        let gates: Vec<Gate> = self
+        let gates: Vec<Gate<Wirex>> = self
             .gates
             .iter()
             .enumerate()

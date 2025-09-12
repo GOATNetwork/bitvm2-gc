@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+use crate::core::wire::WireId;
 use crate::{
     bag::*,
     core::utils::{DELTA, inc_gid},
@@ -65,89 +66,99 @@ impl TryFrom<u8> for GateType {
 
 const GATE_TYPE_COUNT: usize = 11;
 
-#[derive(Clone, Debug)]
-pub struct Gate {
-    pub wire_a: Wirex,
-    pub wire_b: Wirex,
-    pub wire_c: Wirex,
-    pub gate_type: GateType,
-    pub gid: u32,
-}
-unsafe impl Sync for Gate {}
+pub(crate) trait GateTrait<T: Clone> {
+    fn new(wire_a: T, wire_b: T, wire_c: T, gate_type: GateType) -> Self
+    where
+        Self: Sized;
 
-impl Gate {
-    pub fn new(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType) -> Self {
-        Self {
-            wire_a,
-            wire_b,
-            wire_c,
-            gate_type,
-            gid: {
-                let gid = inc_gid() - 1;
-                if gid.is_multiple_of(1_000_000) {
-                    println!("gid: {} M", gid / 1_000_000)
-                }
-                gid
-            },
-        }
-    }
+    fn new_with_gid(wire_a: T, wire_b: T, wire_c: T, gate_type: GateType, gid: u32) -> Self
+    where
+        Self: Sized;
 
-    pub fn new_with_gid(
-        wire_a: Wirex,
-        wire_b: Wirex,
-        wire_c: Wirex,
-        gate_type: GateType,
-        gid: u32,
-    ) -> Self {
-        Self { wire_a, wire_b, wire_c, gate_type, gid }
-    }
+    fn gate_type(&self) -> GateType;
 
-    pub fn and(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn and(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::And)
     }
 
-    pub fn nand(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn nand(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Nand)
     }
 
-    pub fn nimp(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn nimp(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Nimp)
     }
 
-    pub fn imp(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn imp(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Imp)
     }
 
-    pub fn ncimp(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn ncimp(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Ncimp)
     }
 
-    pub fn cimp(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn cimp(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Cimp)
     }
 
-    pub fn nor(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn nor(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Nor)
     }
 
-    pub fn or(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn or(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Or)
     }
 
-    pub fn xor(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn xor(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Xor)
     }
 
-    pub fn xnor(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    fn xnor(wire_a: T, wire_b: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a, wire_b, wire_c, GateType::Xnor)
     }
 
-    pub fn not(wire_a: Wirex, wire_c: Wirex) -> Self {
+    fn not(wire_a: T, wire_c: T) -> Self
+    where
+        Self: Sized,
+    {
         Self::new(wire_a.clone(), wire_a, wire_c, GateType::Not)
     }
 
     //((a XOR f_0) AND (b XOR f_1)) XOR f_2
-    pub fn and_variant(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, f: [u8; 3]) -> Self {
+    fn and_variant(wire_a: T, wire_b: T, wire_c: T, f: [u8; 3]) -> Self
+    where
+        Self: Sized,
+    {
         let gate_index = (f[0] << 2) | (f[1] << 1) | f[2];
         let gate_type = match GateType::try_from(gate_index) {
             Ok(gt) => gt,
@@ -157,8 +168,8 @@ impl Gate {
     }
 
     #[inline(always)]
-    pub fn f(&self) -> fn(bool, bool) -> bool {
-        match self.gate_type {
+    fn f(&self) -> fn(bool, bool) -> bool {
+        match self.gate_type() {
             GateType::And => |a, b| a & b,
             GateType::Nand => |a, b| !(a & b),
 
@@ -180,8 +191,8 @@ impl Gate {
 
     // w_a^0, w_b^0, delta => w_o^0, c
     // https://github.com/GOATNetwork/bitvm2-gc/issues/15
-    pub fn g(&self) -> fn(S, S, u32) -> (S, Option<S>) {
-        match self.gate_type {
+    fn g(&self) -> fn(S, S, u32) -> (S, Option<S>) {
+        match self.gate_type() {
             GateType::And => |a0, b0, gid| -> (S, Option<S>) {
                 let a1 = a0 ^ DELTA;
                 let h1 = a1.hash_ext(gid);
@@ -247,8 +258,8 @@ impl Gate {
     //   ciphertext c
     //   gate id gid
     #[allow(clippy::type_complexity)]
-    pub fn e(&self) -> Box<dyn Fn(bool, bool, S, S, Option<S>, u32) -> (bool, S) + '_> {
-        match self.gate_type {
+    fn e(&self) -> Box<dyn Fn(bool, bool, S, S, Option<S>, u32) -> (bool, S) + '_> {
+        match self.gate_type() {
             GateType::And | GateType::Nand | GateType::Nimp | GateType::Imp => {
                 Box::new(|x, y, a, b, c, gid| -> (bool, S) {
                     assert!(c.is_some());
@@ -273,7 +284,51 @@ impl Gate {
             GateType::Not => Box::new(|x, y, a, _b, _c, _gid| -> (bool, S) { (self.f()(x, y), a) }),
         }
     }
+}
 
+#[derive(Clone, Debug)]
+pub struct Gate<T: Clone> {
+    pub wire_a: T,
+    pub wire_b: T,
+    pub wire_c: T,
+    pub gate_type: GateType,
+    pub gid: u32,
+}
+unsafe impl Sync for Gate<Wirex> {}
+
+impl GateTrait<Wirex> for Gate<Wirex> {
+    fn new(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType) -> Self {
+        Self {
+            wire_a,
+            wire_b,
+            wire_c,
+            gate_type,
+            gid: {
+                let gid = inc_gid() - 1;
+                if gid.is_multiple_of(1_000_000) {
+                    println!("gid: {} M", gid / 1_000_000)
+                }
+                gid
+            },
+        }
+    }
+
+    fn new_with_gid(
+        wire_a: Wirex,
+        wire_b: Wirex,
+        wire_c: Wirex,
+        gate_type: GateType,
+        gid: u32,
+    ) -> Self {
+        Self { wire_a, wire_b, wire_c, gate_type, gid }
+    }
+
+    fn gate_type(&self) -> GateType {
+        self.gate_type
+    }
+}
+
+impl Gate<Wirex> {
     pub fn evaluate(&mut self) {
         self.wire_c
             .borrow_mut()
@@ -291,6 +346,64 @@ impl Gate {
     pub fn check_garbled_circuit(&self, garbled_evaluation: S) -> bool {
         if garbled_evaluation != self.wire_c.borrow().select(false)
             && garbled_evaluation != self.wire_c.borrow().select(true)
+        {
+            return false;
+        }
+        true
+    }
+}
+
+impl GateTrait<WireId> for Gate<WireId> {
+    fn new(wire_a: WireId, wire_b: WireId, wire_c: WireId, gate_type: GateType) -> Self {
+        Self {
+            wire_a,
+            wire_b,
+            wire_c,
+            gate_type,
+            gid: {
+                let gid = inc_gid() - 1;
+                if gid.is_multiple_of(1_000_000) {
+                    println!("gid: {} M", gid / 1_000_000)
+                }
+                gid
+            },
+        }
+    }
+
+    fn new_with_gid(
+        wire_a: WireId,
+        wire_b: WireId,
+        wire_c: WireId,
+        gate_type: GateType,
+        gid: u32,
+    ) -> Self {
+        Self { wire_a, wire_b, wire_c, gate_type, gid }
+    }
+
+    fn gate_type(&self) -> GateType {
+        self.gate_type
+    }
+}
+
+impl Gate<WireId> {
+    pub fn evaluate(&mut self, wires: &mut Vec<Wire>) {
+        let a = wires[self.wire_a].get_value();
+        let b = wires[self.wire_b].get_value();
+        wires[self.wire_c].set(self.f()(a, b));
+    }
+
+    pub fn garbled(&self, wires: &mut Vec<Wire>) -> Option<S> {
+        let a0 = wires[self.wire_a].select(false);
+        let b0 = wires[self.wire_b].select(false);
+        let (c0, ciphertext) = self.g()(a0, b0, self.gid);
+        wires[self.wire_c].set_label(c0);
+
+        ciphertext
+    }
+
+    pub fn check_garbled_circuit(&self, garbled_evaluation: S, wires: &mut Vec<Wire>) -> bool {
+        if garbled_evaluation != wires[self.wire_c].select(false)
+            && garbled_evaluation != wires[self.wire_c].select(true)
         {
             return false;
         }

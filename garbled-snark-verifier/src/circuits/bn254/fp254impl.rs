@@ -5,6 +5,7 @@ use crate::{
         bigint::{U254, utils::bits_from_biguint},
         bn254::fq::Fq,
     },
+    core::gate::GateTrait,
 };
 use ark_ff::{AdditiveGroup, Field};
 use core::str::FromStr;

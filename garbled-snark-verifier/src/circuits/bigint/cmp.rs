@@ -1,7 +1,7 @@
 use super::BigIntImpl;
 use crate::circuits::basic::multiplexer;
 use crate::circuits::bigint::utils::bits_from_biguint;
-use crate::{bag::*, circuits::basic::selector};
+use crate::{bag::*, circuits::basic::selector, core::gate::GateTrait};
 use ark_ff::Zero;
 use num_bigint::BigUint;
 

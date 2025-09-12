@@ -5,6 +5,7 @@ use crate::{
         basic::{full_adder, full_subtracter, half_adder, half_subtracter},
         bigint::utils::bits_from_biguint,
     },
+    core::gate::GateTrait,
 };
 use num_bigint::BigUint;
 
