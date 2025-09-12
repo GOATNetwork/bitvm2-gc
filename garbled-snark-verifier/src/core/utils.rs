@@ -50,6 +50,31 @@ pub fn hash(input: &[u8]) -> [u8; LABLE_SIZE] {
         use poseidon2::poseidon2;
         output = poseidon2(input);
     }
+    #[cfg(feature = "_aes")]
+    {
+        use std::cmp::min;
+        use aes::Aes128;
+        use aes::cipher::{
+            BlockEncrypt, KeyInit, generic_array::GenericArray,
+        };
+
+        // hardcoded AES key
+        let key = GenericArray::from_slice(&[0u8; 16]);
+        let cipher = Aes128::new(&key);
+
+        // using Cipher Block Chaining
+        // hardcoded IV
+        let mut block = GenericArray::clone_from_slice(&[0u8; 16]);
+
+        // using Cipher Block Chaining
+        for chunk in input.chunks(16) {
+            for i in 0..min(chunk.len(), 16) {
+                block[i] ^= chunk[i];
+            }
+            cipher.encrypt_block(&mut block);
+        }
+        output[..16].copy_from_slice(&block);
+    }
     unsafe { *(output.as_ptr() as *const [u8; LABLE_SIZE]) }
 }
 

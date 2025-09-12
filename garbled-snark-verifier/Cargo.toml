@@ -21,8 +21,9 @@ once_cell = "1.21.3"
 getrandom = { version = "0.2", features = ["custom"], optional = true }
 blake3 = "1.6.1"
 sha2 = { workspace = true, optional = true }
-poseidon2 = { workspace = true, optional = true }
-ark-serialize = { version = "0.5.0", default-features = false, features = ["derive"] }
+poseidon2 = {workspace = true, optional = true }
+aes = {version = "0.8.4", optional = true}
+ark-serialize = { version = "0.5.0", default-features = false, features = [ "derive" ] }
 
 bincode = { workspace = true }
 #xs233-sys = "0.2.0"
@@ -38,4 +39,5 @@ garbled = []
 _sha2 = ["sha2"]
 _poseidon2 = ["poseidon2"]
 _blake3 = []
+_aes = ["aes"]
 _getrandom = ["getrandom/custom"]
