@@ -20,7 +20,7 @@ const ELF: &[u8] = include_elf!("verifiable-circuit");
 
 fn custom_dv_snark_circuit() -> Circuit {
     //read witness from files
-    let witness = load_witness_from_files("proof.bin", "public_inputs.bin", "trapdoor.bin");
+    let witness = load_witness_from_files("src/data/dv-proof", "src/data/public_inputs.bin", "src/data/trapdoor.bin");
 
     let start = Instant::now();
     let mut circuit = dv_snark_verifier_circuit(&witness);
