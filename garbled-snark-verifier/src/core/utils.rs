@@ -52,11 +52,9 @@ pub fn hash(input: &[u8]) -> [u8; LABLE_SIZE] {
     }
     #[cfg(feature = "_aes")]
     {
-        use std::cmp::min;
         use aes::Aes128;
-        use aes::cipher::{
-            BlockEncrypt, KeyInit, generic_array::GenericArray,
-        };
+        use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
+        use std::cmp::min;
 
         // hardcoded AES key
         let key = GenericArray::from_slice(&[0u8; 16]);

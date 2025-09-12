@@ -384,7 +384,7 @@ pub fn xor_vec<T: CircuitTrait>(bld: &mut T, a: &[usize], b: &[usize]) -> Vec<us
         .collect()
 }
 
-pub fn xor_many<T: CircuitTrait>(bld: &mut T, items: impl IntoIterator<Item=usize>) -> usize {
+pub fn xor_many<T: CircuitTrait>(bld: &mut T, items: impl IntoIterator<Item = usize>) -> usize {
     let mut it = items.into_iter();
     let first = match it.next() {
         Some(w) => w,

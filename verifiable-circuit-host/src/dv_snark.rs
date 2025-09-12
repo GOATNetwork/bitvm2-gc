@@ -20,7 +20,11 @@ const ELF: &[u8] = include_elf!("verifiable-circuit");
 
 fn custom_dv_snark_circuit() -> Circuit {
     //read witness from files
-    let witness = load_witness_from_files("src/data/dv-proof", "src/data/public_inputs.bin", "src/data/trapdoor.bin");
+    let witness = load_witness_from_files(
+        "src/data/dv-proof",
+        "src/data/public_inputs.bin",
+        "src/data/trapdoor.bin",
+    );
 
     let start = Instant::now();
     let mut circuit = dv_snark_verifier_circuit(&witness);
@@ -64,6 +68,11 @@ fn main() {
     //let ser_sc_0 = std::fs::read("garbled_0.bin").unwrap();
     let ser_sc_0 = mem_fs::MemFile::read("garbled_0.bin").unwrap();
     info!("ser_sc_0 size: {:?} bytes", ser_sc_0.len());
+
+    // Write the read sub-circuit to a file for inspection or later use.
+    std::fs::write("garbled_0.bin", &ser_sc_0)
+        .expect("Failed to write sub-circuit to garbled_0.bin");
+    info!("Saved sub-circuit to garbled_0.bin");
 
     // info!("Check guest");
     // check_guest(&ser_sc_0);

@@ -18,6 +18,8 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
         .chunks(max_gates)
         .enumerate()
         .zip(garbled_gates.chunks_mut(max_gates))
+        // only for test, just take one
+        .take(1)
         .map(|((i, w), garblings)| {
             info!(step = "gen_sub_circuits", "Split batch {i}/{size}");
             let out = SerializableCircuit {
