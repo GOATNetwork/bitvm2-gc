@@ -266,6 +266,15 @@ impl CircuitTrait for CircuitAdapter {
     }
 
     fn xor_wire(&mut self, x: usize, y: usize) -> usize {
+        if x == y {
+            return self.zero();
+        }
+        if x == self.zero() {
+            return y;
+        }
+        if y == self.zero() {
+            return x;
+        }
         let output = self.fresh_one();
         self.gates.push(GateOperation::Base(Operation::Add(output, x, y)));
 
@@ -273,6 +282,23 @@ impl CircuitTrait for CircuitAdapter {
     }
 
     fn or_wire(&mut self, x: usize, y: usize) -> usize {
+        if x == y {
+            return x;
+        }
+
+        let one = self.one();
+        if x == one || y == one {
+            return one;
+        }
+
+        let zero = self.zero();
+        if x == zero {
+            return y;
+        }
+        if y == zero {
+            return x;
+        }
+
         let output = self.fresh_one();
         self.gates.push(GateOperation::Base(Operation::Or(output, x, y)));
 
@@ -280,6 +306,23 @@ impl CircuitTrait for CircuitAdapter {
     }
 
     fn and_wire(&mut self, x: usize, y: usize) -> usize {
+        if x == y {
+            return x;
+        }
+
+        let zero = self.zero();
+        if x == zero || y == zero {
+            return zero;
+        }
+
+        let one = self.one();
+        if x == one {
+            return y;
+        }
+        if y == one {
+            return x;
+        }
+
         let output = self.fresh_one();
         self.gates.push(GateOperation::Base(Operation::Mul(output, x, y)));
 
