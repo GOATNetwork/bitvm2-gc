@@ -15,10 +15,17 @@ pub static DELTA: S = S::one();
 
 // u32 is not enough for current gates scale.
 pub static GID: AtomicU32 = AtomicU32::new(0);
+// Start from 2, as 0,1 are reserved for const wires
+pub static WIRE_ID: AtomicU32 = AtomicU32::new(2);
 
 #[inline(always)]
 pub fn inc_gid() -> u32 {
     GID.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+#[inline(always)]
+pub fn inc_wire_id() -> u32 {
+    WIRE_ID.fetch_add(1, Ordering::SeqCst) + 1
 }
 
 pub fn bit_to_usize(bit: bool) -> usize {

@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::core::{s::S, utils::DELTA};
 
 // 0,1 are reserved for const wires, so actual wires start from 2
-// TODO: It could be u32 possibly. Let’s first use uszie to check the memory usage.
-pub type WireId = usize;
+pub type WireId = u32;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Wire {

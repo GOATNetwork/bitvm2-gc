@@ -387,23 +387,23 @@ impl GateTrait<WireId> for Gate<WireId> {
 
 impl Gate<WireId> {
     pub fn evaluate(&mut self, wires: &mut Vec<Wire>) {
-        let a = wires[self.wire_a].get_value();
-        let b = wires[self.wire_b].get_value();
-        wires[self.wire_c].set(self.f()(a, b));
+        let a = wires[self.wire_a as usize].get_value();
+        let b = wires[self.wire_b as usize].get_value();
+        wires[self.wire_c as usize].set(self.f()(a, b));
     }
 
     pub fn garbled(&self, wires: &mut Vec<Wire>) -> Option<S> {
-        let a0 = wires[self.wire_a].select(false);
-        let b0 = wires[self.wire_b].select(false);
+        let a0 = wires[self.wire_a as usize].select(false);
+        let b0 = wires[self.wire_b as usize].select(false);
         let (c0, ciphertext) = self.g()(a0, b0, self.gid);
-        wires[self.wire_c].set_label(c0);
+        wires[self.wire_c as usize].set_label(c0);
 
         ciphertext
     }
 
     pub fn check_garbled_circuit(&self, garbled_evaluation: S, wires: &mut Vec<Wire>) -> bool {
-        if garbled_evaluation != wires[self.wire_c].select(false)
-            && garbled_evaluation != wires[self.wire_c].select(true)
+        if garbled_evaluation != wires[self.wire_c as usize].select(false)
+            && garbled_evaluation != wires[self.wire_c as usize].select(true)
         {
             return false;
         }
