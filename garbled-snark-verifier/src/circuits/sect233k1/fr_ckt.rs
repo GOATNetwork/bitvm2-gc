@@ -4,7 +4,7 @@
 use super::builder::CircuitTrait;
 
 pub(crate) const FR_LEN: usize = 232;
-pub(crate) type Fr = [usize; FR_LEN];
+pub(crate) type Fr = [u32; FR_LEN];
 
 const REDUCTION_SPLIT: usize = 231; // 2^231 limb boundary
 const THRESH: usize = 32;
@@ -12,16 +12,16 @@ const THRESH: usize = 32;
 #[cfg(test)]
 const MOD_HEX: &str = "8000000000000000000000000000069d5bb915bcd46efb1ad5f173abdf"; // n
 
-type Bits = Vec<usize>;
+type Bits = Vec<u32>;
 
 #[inline]
-fn not<T: CircuitTrait>(b: &mut T, x: usize) -> usize {
+fn not<T: CircuitTrait>(b: &mut T, x: u32) -> u32 {
     let one_gate = b.one();
     b.xor_wire(x, one_gate)
 }
 
 // ───────── unsigned ADD  (variable length, ripple-carry) ─────────
-pub(crate) fn add_unsigned<T: CircuitTrait>(b: &mut T, a: &[usize], c: &[usize]) -> Vec<usize> {
+pub(crate) fn add_unsigned<T: CircuitTrait>(b: &mut T, a: &[u32], c: &[u32]) -> Vec<u32> {
     let n = a.len().max(c.len());
     let mut out = vec![b.zero(); n];
     let mut carry = b.zero();
@@ -38,7 +38,7 @@ pub(crate) fn add_unsigned<T: CircuitTrait>(b: &mut T, a: &[usize], c: &[usize])
 }
 
 // ───────── unsigned SUB  (assumes a ≥ b, but lengths may differ) ─────────
-pub(crate) fn sub_unsigned<T: CircuitTrait>(b: &mut T, a: &[usize], c: &[usize]) -> Vec<usize> {
+pub(crate) fn sub_unsigned<T: CircuitTrait>(b: &mut T, a: &[u32], c: &[u32]) -> Vec<u32> {
     let n = a.len(); // a is the minuend, guaranteed ≥ b
     let mut out = vec![b.zero(); n];
     let mut borrow = b.zero();
@@ -62,7 +62,7 @@ pub(crate) fn sub_unsigned<T: CircuitTrait>(b: &mut T, a: &[usize], c: &[usize])
     out
 }
 
-fn full_add<T: CircuitTrait>(b: &mut T, a: usize, b_: usize, cin: usize) -> (usize, usize) {
+fn full_add<T: CircuitTrait>(b: &mut T, a: u32, b_: u32, cin: u32) -> (u32, u32) {
     let p = b.xor_wire(a, b_); // propagate
     let g = b.and_wire(a, b_); // generate
     let sum = b.xor_wire(p, cin);
@@ -73,7 +73,7 @@ fn full_add<T: CircuitTrait>(b: &mut T, a: usize, b_: usize, cin: usize) -> (usi
 
 // ───────────────────  a ≥ b   (one wire, MSB first)  ─────────────────────
 //  Gate cost: 4·W XOR + 3·W AND
-pub(crate) fn ge_unsigned<T: CircuitTrait>(b: &mut T, a: &[usize], c: &[usize]) -> usize {
+pub(crate) fn ge_unsigned<T: CircuitTrait>(b: &mut T, a: &[u32], c: &[u32]) -> u32 {
     let w = a.len();
     let mut gt = b.zero();
     let mut eq = b.one();
@@ -99,7 +99,7 @@ pub(crate) fn ge_unsigned<T: CircuitTrait>(b: &mut T, a: &[usize], c: &[usize]) 
 /// * returns a fresh `Vec<usize>` with `k` leading zeros.
 ///
 /// **Gate cost:** zero (just copies wire IDs).
-pub(crate) fn emit_shl_bits<T: CircuitTrait>(b: &mut T, v: &[usize], k: usize) -> Vec<usize> {
+pub(crate) fn emit_shl_bits<T: CircuitTrait>(b: &mut T, v: &[u32], k: usize) -> Vec<u32> {
     let zero_wire = b.zero();
     let mut out = Vec::with_capacity(v.len() + k);
     out.extend(std::iter::repeat_n(zero_wire, k)); // k leading zeros
@@ -107,7 +107,7 @@ pub(crate) fn emit_shl_bits<T: CircuitTrait>(b: &mut T, v: &[usize], k: usize) -
     out
 }
 
-fn csa<T: CircuitTrait>(b: &mut T, x: usize, y: usize, z: usize) -> (usize, usize) {
+fn csa<T: CircuitTrait>(b: &mut T, x: u32, y: u32, z: u32) -> (u32, u32) {
     let tmp = b.xor_wire(x, y);
     let sum = b.xor_wire(tmp, z);
     let t = b.xor_wire(x, y); // p = x⊕y
@@ -121,7 +121,7 @@ pub(crate) fn mul_school<T: CircuitTrait>(bld: &mut T, a: &Bits, b: &Bits) -> Bi
     let max_len = a.len() + b.len();
 
     // 1. collect ANDs per column
-    let mut cols: Vec<Vec<usize>> = vec![Vec::new(); max_len];
+    let mut cols: Vec<Vec<u32>> = vec![Vec::new(); max_len];
     for i in 0..a.len() {
         for j in 0..b.len() {
             let bit = bld.and_wire(a[i], b[j]);
@@ -202,17 +202,17 @@ pub(crate) fn mul_kara_rec<T: CircuitTrait>(bld: &mut T, a: &Bits, b: &Bits) -> 
 
 // ──────────────────────────  2-way mux  (sel ? a : b)  ────────────────────
 #[inline]
-fn mux<T: CircuitTrait>(b: &mut T, sel: usize, a: usize, d: usize) -> usize {
+fn mux<T: CircuitTrait>(b: &mut T, sel: u32, a: u32, d: u32) -> u32 {
     let m0 = b.xor_wire(a, d);
     let m1 = b.and_wire(sel, m0);
     b.xor_wire(d, m1)
 }
-fn mux_vec<T: CircuitTrait>(b: &mut T, sel: usize, a: &[usize], d: &[usize]) -> Vec<usize> {
+fn mux_vec<T: CircuitTrait>(b: &mut T, sel: u32, a: &[u32], d: &[u32]) -> Vec<u32> {
     a.iter().zip(d).map(|(&x, &y)| mux(b, sel, x, y)).collect()
 }
 
 #[inline]
-pub(crate) fn pad_to<T: CircuitTrait>(b: &mut T, mut v: Vec<usize>, n: usize) -> Vec<usize> {
+pub(crate) fn pad_to<T: CircuitTrait>(b: &mut T, mut v: Vec<u32>, n: usize) -> Vec<u32> {
     if v.len() < n {
         v.extend(std::iter::repeat_n(b.zero(), n - v.len()));
     }
@@ -223,7 +223,7 @@ pub(crate) fn pad_to<T: CircuitTrait>(b: &mut T, mut v: Vec<usize>, n: usize) ->
 /// Uses the published w‑NAF‑6 table but **never propagates carries**
 /// until the very end: all partial products are merged in two Wallace
 /// trees (positive / negative digits).
-pub(crate) fn emit_mul_const_c_csa<T: CircuitTrait>(b: &mut T, t: &[usize]) -> Vec<usize> {
+pub(crate) fn emit_mul_const_c_csa<T: CircuitTrait>(b: &mut T, t: &[u32]) -> Vec<u32> {
     /* w‑NAF‑6 digits:  (shift , signed_digit) */
     const TABLE: &[(usize, i8)] = &[
         (0, 31),
@@ -247,8 +247,8 @@ pub(crate) fn emit_mul_const_c_csa<T: CircuitTrait>(b: &mut T, t: &[usize]) -> V
 
     /* ── 1. buckets “per bit‑position” for +ve and –ve digits ───────── */
     let max_len = t.len() + 120; // generous upper bound
-    let mut cols_pos: Vec<Vec<usize>> = vec![Vec::new(); max_len];
-    let mut cols_neg: Vec<Vec<usize>> = vec![Vec::new(); max_len];
+    let mut cols_pos: Vec<Vec<u32>> = vec![Vec::new(); max_len];
+    let mut cols_neg: Vec<Vec<u32>> = vec![Vec::new(); max_len];
 
     for &(shift, digit) in TABLE {
         let neg = digit < 0;
@@ -270,8 +270,8 @@ pub(crate) fn emit_mul_const_c_csa<T: CircuitTrait>(b: &mut T, t: &[usize]) -> V
     /* ── 2. Wallace‑tree reduction  (identical for pos / neg) ───────── */
     fn reduce_cols<T: CircuitTrait>(
         b: &mut T,
-        mut cols: Vec<Vec<usize>>,
-    ) -> (Vec<usize>, Vec<usize>) {
+        mut cols: Vec<Vec<u32>>,
+    ) -> (Vec<u32>, Vec<u32>) {
         let mut k = 0;
         while k < cols.len() {
             while cols[k].len() >= 3 {
@@ -327,9 +327,9 @@ pub(crate) fn emit_mul_const_c_csa<T: CircuitTrait>(b: &mut T, t: &[usize]) -> V
 }
 
 /// little-endian bit vector of the modulus  n
-pub(crate) fn const_mod_n<T: CircuitTrait>(b: &mut T) -> Vec<usize> {
+pub(crate) fn const_mod_n<T: CircuitTrait>(b: &mut T) -> Vec<u32> {
     const MOD_HEX: &str = "08000000000000000000000000000069d5bb915bcd46efb1ad5f173abdf";
-    let mut out = Vec::<usize>::new();
+    let mut out = vec![];
     for ch in MOD_HEX.chars().rev() {
         let nib = ch.to_digit(16).unwrap();
         for i in 0..4 {
@@ -343,8 +343,8 @@ pub(crate) fn const_mod_n<T: CircuitTrait>(b: &mut T) -> Vec<usize> {
 
 pub(crate) fn emit_reduce_pseudo_mersenne<T: CircuitTrait>(
     b: &mut T,
-    prod: &[usize],
-) -> Vec<usize> {
+    prod: &[u32],
+) -> Vec<u32> {
     /* base case: prod < 2²³¹  → already <  n  */
     if prod.len() <= REDUCTION_SPLIT {
         return prod.to_vec(); // just wires, no gates
@@ -392,7 +392,7 @@ pub(crate) fn emit_reduce_pseudo_mersenne<T: CircuitTrait>(
 // -----------------------------------------------------------------------------
 pub(crate) fn emit_fr_mul<T: CircuitTrait>(bld: &mut T, a: &Fr, b: &Fr) -> Fr {
     let prod = mul_kara_rec(bld, &a.to_vec(), &b.to_vec());
-    let res: [usize; FR_LEN] = emit_reduce_pseudo_mersenne(bld, &prod).try_into().unwrap();
+    let res: [u32; FR_LEN] = emit_reduce_pseudo_mersenne(bld, &prod).try_into().unwrap();
     res
 }
 
@@ -406,12 +406,12 @@ pub(crate) fn emit_fr_add<T: CircuitTrait>(bld: &mut T, a: &Fr, b: &Fr) -> Fr {
     let reduced_sum = sub_unsigned(bld, &sum, &modul); // a+b-n
     let ge = ge_unsigned(bld, &sum, &modul); // a+b>=n
     let nge = bld.xor_wire(ge, one);
-    let masked_reduced_sum: Vec<usize> = reduced_sum.iter().map(|r| bld.and_wire(*r, ge)).collect(); // (a+b-n)*ge
-    let masked_sum: Vec<usize> = sum.iter().map(|r| bld.and_wire(*r, nge)).collect(); // (a+b)*ge'
+    let masked_reduced_sum: Vec<u32> = reduced_sum.iter().map(|r| bld.and_wire(*r, ge)).collect(); // (a+b-n)*ge
+    let masked_sum: Vec<u32> = sum.iter().map(|r| bld.and_wire(*r, nge)).collect(); // (a+b)*ge'
     assert_eq!(masked_reduced_sum.len(), masked_sum.len());
-    let res: Vec<usize> =
+    let res: Vec<u32> =
         masked_reduced_sum.iter().zip(masked_sum).map(|(x0, x1)| bld.xor_wire(*x0, x1)).collect(); // (a+b)*ge' ^ (a+b-n)*ge
-    let res: [usize; FR_LEN] = res[0..FR_LEN].try_into().unwrap();
+    let res: [u32; FR_LEN] = res[0..FR_LEN].try_into().unwrap();
     res
 }
 
@@ -429,12 +429,12 @@ pub(crate) fn emit_fr_sub<T: CircuitTrait>(bld: &mut T, a: &Fr, b: &Fr) -> Fr {
 
     let nge = bld.xor_wire(ge, one);
 
-    let masked_a_minus_b: Vec<usize> = a_minus_b.iter().map(|r| bld.and_wire(*r, ge)).collect();
-    let masked_a_plus_r_minus_b: Vec<usize> =
+    let masked_a_minus_b: Vec<u32> = a_minus_b.iter().map(|r| bld.and_wire(*r, ge)).collect();
+    let masked_a_plus_r_minus_b: Vec<u32> =
         a_plus_r_minus_b.iter().map(|r| bld.and_wire(*r, nge)).collect();
 
     assert_eq!(masked_a_minus_b.len(), masked_a_plus_r_minus_b.len());
-    let res: Vec<usize> = masked_a_minus_b
+    let res: Vec<u32> = masked_a_minus_b
         .iter()
         .zip(masked_a_plus_r_minus_b)
         .map(|(x0, x1)| bld.xor_wire(*x0, x1))
@@ -478,7 +478,7 @@ mod tests {
 
             let wires = bld.eval_gates(&witness);
 
-            let c_bits_calc: [bool; FR_LEN] = c_labels.map(|id| wires[id]);
+            let c_bits_calc: [bool; FR_LEN] = c_labels.map(|id| wires[id as usize]);
             assert_eq!(c_bits_calc, frref_to_bits(&ref_r));
         }
     }
@@ -509,7 +509,7 @@ mod tests {
 
             let wires = bld.eval_gates(&witness);
 
-            let c_bits_calc: [bool; FR_LEN] = c_labels.map(|id| wires[id]);
+            let c_bits_calc: [bool; FR_LEN] = c_labels.map(|id| wires[id as usize]);
             assert_eq!(c_bits_calc, frref_to_bits(&ref_r));
         }
     }
@@ -540,7 +540,7 @@ mod tests {
 
             let wires = bld.eval_gates(&witness);
 
-            let c_bits_calc: [bool; FR_LEN] = c_labels.map(|id| wires[id]);
+            let c_bits_calc: [bool; FR_LEN] = c_labels.map(|id| wires[id as usize]);
             assert_eq!(c_bits_calc, frref_to_bits(&ref_r));
         }
     }

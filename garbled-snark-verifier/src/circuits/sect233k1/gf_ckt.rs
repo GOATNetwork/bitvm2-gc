@@ -1,18 +1,18 @@
 //! Basic base field element operations in binary circuit
 pub(crate) const GF_LEN: usize = 233;
 /// Representation of a base field element as wire labels
-pub(crate) type Gf = [usize; GF_LEN];
+pub(crate) type Gf = [u32; GF_LEN];
 
 use super::{builder::CircuitTrait, curve_ckt::CompressedCurvePoint, gf_mul_ckt::emit_gf_mul};
 
 /* Input  : two 233-wire operands, little-endian bit order          */
 /* Output : 233 wires, bit-wise XOR                                 */
 pub(crate) fn emit_gf_add<T: CircuitTrait>(b: &mut T, a: &Gf, c: &Gf) -> Gf {
-    let v: Vec<usize> = (0..GF_LEN).map(|i| b.xor_wire(a[i], c[i])).collect();
+    let v: Vec<u32> = (0..GF_LEN).map(|i| b.xor_wire(a[i], c[i])).collect();
     v.try_into().unwrap()
 }
 
-pub(crate) fn emit_gf_trace<T: CircuitTrait>(bld: &mut T, a: &Gf) -> usize {
+pub(crate) fn emit_gf_trace<T: CircuitTrait>(bld: &mut T, a: &Gf) -> u32 {
     let mut acc = *a;
     let mut t = *a;
     for _ in 1..GF_LEN {
@@ -117,7 +117,7 @@ pub(crate) fn emit_gf_inv<T: CircuitTrait>(bld: &mut T, a: Gf) -> Gf {
 pub(crate) fn emit_gf_decode<T: CircuitTrait>(
     bld: &mut T,
     src: &CompressedCurvePoint,
-) -> (Gf, usize) {
+) -> (Gf, u32) {
     // ---- 1. Copy into a 32-byte buffer (matching the original memset). ----
     let mut buf = [[bld.zero(); 8]; 32];
     buf[..30].copy_from_slice(src);
@@ -143,7 +143,7 @@ pub(crate) fn emit_gf_decode<T: CircuitTrait>(
 }
 
 /// interleave zeros:  b_k = a_{k/2}  if k even, else 0
-fn square_spread<T: CircuitTrait>(b: &mut T, a: &Gf) -> [usize; GF_LEN * 2] {
+fn square_spread<T: CircuitTrait>(b: &mut T, a: &Gf) -> [u32; GF_LEN * 2] {
     let z = b.zero();
     let mut h = [z; 466]; // 0…465
     for i in 0..GF_LEN {
@@ -178,7 +178,7 @@ pub(crate) fn emit_gf_square<T: CircuitTrait>(b: &mut T, a: &Gf) -> Gf {
 }
 
 /// Check if a base field elemnt is zero
-pub(crate) fn emit_gf_is_zero<T: CircuitTrait>(bld: &mut T, w: Gf) -> usize {
+pub(crate) fn emit_gf_is_zero<T: CircuitTrait>(bld: &mut T, w: Gf) -> u32 {
     let mut acc = bld.zero();
     for x in w {
         acc = bld.or_wire(acc, x);

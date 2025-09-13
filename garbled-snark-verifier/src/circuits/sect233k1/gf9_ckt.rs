@@ -6,9 +6,9 @@
 use super::builder::{CircuitTrait, xor_many, xor_three, xor_vec};
 
 pub(crate) const GF9_LEN: usize = 9;
-pub(crate) type GF9 = [usize; GF9_LEN];
+pub(crate) type GF9 = [u32; GF9_LEN];
 
-fn add_shifted<T: CircuitTrait>(b: &mut T, dst: &mut [Option<usize>], shift: usize, src: &[usize]) {
+fn add_shifted<T: CircuitTrait>(b: &mut T, dst: &mut [Option<u32>], shift: usize, src: &[u32]) {
     for (i, &w) in src.iter().enumerate() {
         let idx = i + shift;
         dst[idx] = match dst[idx] {
@@ -47,7 +47,7 @@ pub(crate) fn emit_gf9_square<T: CircuitTrait>(b: &mut T, a: GF9) -> GF9 {
 }
 
 /* 17-bit → 9-bit reduction network */
-fn reduce17_to9<T: CircuitTrait>(b: &mut T, p: [usize; 17]) -> GF9 {
+fn reduce17_to9<T: CircuitTrait>(b: &mut T, p: [u32; 17]) -> GF9 {
     [
         xor_many(b, [p[0], p[9], p[14]]),         // r0
         xor_many(b, [p[1], p[10], p[15]]),        // r1
@@ -64,7 +64,7 @@ fn reduce17_to9<T: CircuitTrait>(b: &mut T, p: [usize; 17]) -> GF9 {
 /* ─────────────── 3 × 3 carry-less multiply (6 AND) ──────────────── */
 /*  inputs  a,b   : little-endian 3-bit limbs  [a0,a1,a2]             */
 /*  output        : 5-bit product, little-endian                      */
-fn m33<T: CircuitTrait>(b: &mut T, a: [usize; 3], c: [usize; 3]) -> [usize; 5] {
+fn m33<T: CircuitTrait>(b: &mut T, a: [u32; 3], c: [u32; 3]) -> [u32; 5] {
     /* --- non-linear core (six AND) ------------------------------------ */
     let m0 = b.and_wire(a[0], c[0]); // a0 & b0
     let m1 = b.and_wire(a[1], c[1]); // a1 & b1
@@ -153,7 +153,7 @@ pub(crate) fn emit_gf9_mul<T: CircuitTrait>(bld: &mut T, a: GF9, c: GF9) -> GF9 
     add_shifted(bld, &mut tmp, 9, &c3); // c3 << 9
     add_shifted(bld, &mut tmp, 12, &c4); // c4 << 12
 
-    let prod18: [usize; 17] = tmp.map(|x| x.unwrap());
+    let prod18: [u32; 17] = tmp.map(|x| x.unwrap());
 
     /* 5 · reduce modulo x⁹+x⁴+1 */
     reduce17_to9(bld, prod18)

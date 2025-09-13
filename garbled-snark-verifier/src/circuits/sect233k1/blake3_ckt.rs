@@ -15,16 +15,16 @@ const CHUNK_START: u32 = 1 << 0;
 const CHUNK_END: u32 = 1 << 1;
 const ROOT: u32 = 1 << 3;
 
-type U32 = [usize; 32];
-type U8 = [usize; 8];
+type U32 = [u32; 32];
+type U8 = [u32; 8];
 
 fn const_u32_to_bits_le<T: CircuitTrait>(bld: &mut T, n: u32) -> U32 {
     let vs: Vec<bool> = (0..32).map(|i| (n >> i) & 1 != 0).collect();
-    let vs: Vec<usize> = vs.iter().map(|v| bool_const_to_wire_label(bld, *v)).collect();
+    let vs: Vec<u32> = vs.iter().map(|v| bool_const_to_wire_label(bld, *v)).collect();
     vs.try_into().unwrap()
 }
 
-fn bool_const_to_wire_label<T: CircuitTrait>(bld: &mut T, v: bool) -> usize {
+fn bool_const_to_wire_label<T: CircuitTrait>(bld: &mut T, v: bool) -> u32 {
     if !v { bld.zero() } else { bld.one() }
 }
 
@@ -62,12 +62,12 @@ fn wrapping_add_u32<T: CircuitTrait>(bld: &mut T, a: U32, b: U32) -> U32 {
 }
 
 fn xor_u32<T: CircuitTrait>(bld: &mut T, a: U32, b: U32) -> U32 {
-    let c: Vec<usize> = (0..32).map(|i| bld.xor_wire(a[i], b[i])).collect();
+    let c: Vec<u32> = (0..32).map(|i| bld.xor_wire(a[i], b[i])).collect();
     c.try_into().unwrap()
 }
 
 fn and_u32<T: CircuitTrait>(bld: &mut T, a: U32, b: U32) -> U32 {
-    let c: Vec<usize> = (0..32).map(|i| bld.and_wire(a[i], b[i])).collect();
+    let c: Vec<u32> = (0..32).map(|i| bld.and_wire(a[i], b[i])).collect();
     c.try_into().unwrap()
 }
 
@@ -431,7 +431,7 @@ mod test {
             let hw: u8 = out_bits
                 .iter()
                 .enumerate()
-                .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u8) << i));
+                .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id as usize] as u8) << i));
             hws.push(hw);
         }
 
@@ -445,7 +445,7 @@ mod test {
             let hw: u8 = out_bits
                 .iter()
                 .enumerate()
-                .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u8) << i));
+                .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id as usize] as u8) << i));
             hws.push(hw);
         }
 

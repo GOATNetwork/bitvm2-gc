@@ -11,6 +11,7 @@ use garbled_snark_verifier::{
     circuits::sect233k1::types::load_witness_from_files,
     core::utils::{SerializableCircuit, SerializableGate},
 };
+use garbled_snark_verifier::core::lite_circuit::LiteCircuit;
 
 mod mem_fs;
 mod utils;
@@ -18,7 +19,7 @@ mod utils;
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
 
-fn custom_dv_snark_circuit() -> Circuit {
+fn custom_dv_snark_circuit() -> LiteCircuit {
     //read witness from files
     let witness = load_witness_from_files(
         "src/data/dv-proof",
@@ -33,9 +34,9 @@ fn custom_dv_snark_circuit() -> Circuit {
 
     let start = Instant::now();
     for gate in &mut circuit.1 {
-        gate.evaluate();
+        gate.evaluate(&mut circuit.2);
     }
-    assert!(circuit.0[0].borrow().get_value());
+    assert!((circuit.2)[circuit.0[0] as usize].get_value());
 
     let elapsed = start.elapsed();
     info!(step = "Eval circuit", elapsed = ?elapsed);
@@ -47,7 +48,53 @@ fn split_circuit() {
     let mut circuit = custom_dv_snark_circuit();
     circuit.gate_counts().print();
     println!("Wires: {}", circuit.0.len());
-    utils::gen_sub_circuits(&mut circuit, 7_000_000);
+    gen_sub_circuits(&mut circuit, 7_000_000);
+}
+
+fn gen_sub_circuits(circuit: &mut LiteCircuit, max_gates: usize) {
+    let start = Instant::now();
+    let mut garbled_gates = circuit.garbled_gates();
+    let elapsed = start.elapsed();
+    info!(step = "garble gates", elapsed =? elapsed, "garbled gates: {}", garbled_gates.len());
+
+    let size = circuit.1.len().div_ceil(max_gates);
+
+    let start = Instant::now();
+    let _: Vec<_> = circuit
+        .1
+        .chunks(max_gates)
+        .enumerate()
+        .zip(garbled_gates.chunks_mut(max_gates))
+        // only for test, just take one
+        .take(1)
+        .map(|((i, w), garblings)| {
+            info!(step = "gen_sub_circuits", "Split batch {i}/{size}");
+            let out = SerializableCircuit {
+                gates: w
+                    .iter()
+                    .map(|w| SerializableGate {
+                        wire_a: (circuit.2)[w.wire_a as usize].clone(),
+                        wire_b: (circuit.2)[w.wire_b as usize].clone(),
+                        wire_c: (circuit.2)[w.wire_c as usize].clone(),
+                        gate_type: w.gate_type,
+                        gid: w.gid,
+                    })
+                    .collect(),
+                garblings: garblings.to_vec(),
+            };
+            let start = Instant::now();
+            bincode::serialize_into(
+                //std::fs::File::create(format!("garbled_{i}.bin")).unwrap(),
+                mem_fs::MemFile::create(format!("garbled_{i}.bin")).unwrap(),
+                &out,
+            )
+                .unwrap();
+            let elapsed = start.elapsed();
+            info!(step = "gen_sub_circuits", elapsed = ?elapsed, "Writing garbled_{i}.bin");
+        })
+        .collect();
+    let elapsed = start.elapsed();
+    info!(step = "gen_sub_circuits", elapsed =? elapsed, "total time");
 }
 
 fn main() {

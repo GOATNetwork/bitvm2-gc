@@ -128,27 +128,27 @@ impl VerifierPayloadRef {
         let secrets = Trapdoor { tau: bld.fresh(), delta: bld.fresh(), epsilon: bld.fresh() };
         let rpin = PublicInputs { public_inputs: [bld.fresh(), bld.fresh()] };
         let commit_p = {
-            let r: [usize; 240] = bld.fresh();
-            let r: Vec<[usize; 8]> = r
+            let r: [u32; 240] = bld.fresh();
+            let r: Vec<[u32; 8]> = r
                 .chunks(8)
                 .map(|x| {
-                    let y: [usize; 8] = x.try_into().unwrap();
+                    let y: [u32; 8] = x.try_into().unwrap();
                     y
                 })
                 .collect();
-            let r: [[usize; 8]; 30] = r.try_into().unwrap();
+            let r: [[u32; 8]; 30] = r.try_into().unwrap();
             r
         };
         let kzg_k = {
-            let r: [usize; 240] = bld.fresh();
-            let r: Vec<[usize; 8]> = r
+            let r: [u32; 240] = bld.fresh();
+            let r: Vec<[u32; 8]> = r
                 .chunks(8)
                 .map(|x| {
-                    let y: [usize; 8] = x.try_into().unwrap();
+                    let y: [u32; 8] = x.try_into().unwrap();
                     y
                 })
                 .collect();
-            let r: [[usize; 8]; 30] = r.try_into().unwrap();
+            let r: [[u32; 8]; 30] = r.try_into().unwrap();
             r
         };
         let proof = Proof { commit_p, kzg_k, a0: bld.fresh(), b0: bld.fresh() };
@@ -209,27 +209,27 @@ pub struct Trapdoor {
 #[derive(Debug)]
 pub struct IndexInfo {
     /// input wire inclusive range
-    pub input_wire_range: (usize, usize),
+    pub input_wire_range: (u32, u32),
     /// const zero wire label
-    pub const_zero: usize,
+    pub const_zero: u32,
     /// const one wire label
-    pub const_one: usize,
+    pub const_one: u32,
     /// output index
-    pub output_index: usize,
+    pub output_index: u32,
 }
 
-fn u8_arr_to_labels_le<T: CircuitTrait>(bld: &mut T, ns: &[u8]) -> Vec<[usize; 8]> {
+fn u8_arr_to_labels_le<T: CircuitTrait>(bld: &mut T, ns: &[u8]) -> Vec<[u32; 8]> {
     let zero = bld.zero();
     let one = bld.one();
-    let mut vs: Vec<[usize; 8]> = Vec::new();
+    let mut vs: Vec<[u32; 8]> = Vec::new();
     for n in ns {
-        let v: Vec<usize> = (0..8)
+        let v: Vec<u32> = (0..8)
             .map(|i| {
                 let r = (n >> i) & 1 != 0;
                 if r { one } else { zero }
             })
             .collect();
-        let v: [usize; 8] = v.try_into().unwrap();
+        let v: [u32; 8] = v.try_into().unwrap();
         vs.push(v);
     }
     vs
@@ -250,10 +250,10 @@ fn get_fs_challenge<T: CircuitTrait>(
         for pubin in public_inputs {
             let mut pubin_240 = [bld.zero(); FR_LEN];
             pubin_240.copy_from_slice(&pubin[0..FR_LEN]);
-            let mut r: Vec<[usize; 8]> = pubin_240
+            let mut r: Vec<[u32; 8]> = pubin_240
                 .chunks(8)
                 .map(|x| {
-                    let y: [usize; 8] = x.try_into().unwrap();
+                    let y: [u32; 8] = x.try_into().unwrap();
                     y
                 })
                 .collect();
@@ -268,14 +268,14 @@ fn get_fs_challenge<T: CircuitTrait>(
         let srs_hash = blake3_ckt::hash(bld, srs_bytes);
         let circuit_info_bytes = u8_arr_to_labels_le(bld, &circuit_info_bytes);
         let circuit_info_hash = blake3_ckt::hash(bld, circuit_info_bytes);
-        let mut compile_time_bytes: Vec<[usize; 8]> = Vec::new();
+        let mut compile_time_bytes: Vec<[u32; 8]> = Vec::new();
         compile_time_bytes.extend_from_slice(&srs_hash);
         compile_time_bytes.extend_from_slice(&circuit_info_hash);
         blake3_ckt::hash(bld, compile_time_bytes)
     };
 
     let runtime_hash = {
-        let mut runtime_bytes: Vec<[usize; 8]> = Vec::new();
+        let mut runtime_bytes: Vec<[u32; 8]> = Vec::new();
         runtime_bytes.extend_from_slice(&witness_commitment_hash);
         runtime_bytes.extend_from_slice(&public_inputs_hash);
 
@@ -283,7 +283,7 @@ fn get_fs_challenge<T: CircuitTrait>(
     };
 
     let mut root_hash = {
-        let mut root_bytes: Vec<[usize; 8]> = Vec::new();
+        let mut root_bytes: Vec<[u32; 8]> = Vec::new();
         root_bytes.extend_from_slice(&compile_time_hash);
         root_bytes.extend_from_slice(&runtime_hash);
 
@@ -295,7 +295,7 @@ fn get_fs_challenge<T: CircuitTrait>(
     root_hash[28..].copy_from_slice(&[zero_byte; 4]); // mask top 3 bytes, 256-24=232 bits
 
     // convert to Fr
-    let root_hash_flat: Vec<usize> = root_hash.into_iter().flatten().collect();
+    let root_hash_flat: Vec<u32> = root_hash.into_iter().flatten().collect();
     let root_fr: Fr = root_hash_flat[0..FR_LEN].try_into().unwrap();
     root_fr
 }
@@ -322,7 +322,7 @@ fn get_fs_challenge<T: CircuitTrait>(
 
 fn const_biguint_to_labels<T: CircuitTrait>(bld: &mut T, num: FrRef) -> Fr {
     let num_bits = frref_to_bits(&num);
-    let r: Vec<usize> =
+    let r: Vec<u32> =
         num_bits.iter().map(|xi| if *xi { bld.one() } else { bld.zero() }).collect();
     let r: Fr = r.try_into().unwrap();
     r
@@ -351,11 +351,11 @@ pub fn compile_verifier() -> (CircuitAdapter, IndexInfo) {
 pub fn evaluate_verifier(
     bld: &mut CircuitAdapter,
     witness: [bool; WITNESS_BIT_LEN],
-    output_wire_index: usize,
+    output_wire_index: u32,
 ) -> bool {
     let wires = bld.eval_gates(&witness);
 
-    wires[output_wire_index]
+    wires[output_wire_index as usize]
 }
 
 /// verify
@@ -364,7 +364,7 @@ pub(crate) fn verify<T: CircuitTrait>(
     proof: Proof,
     public_inputs: PublicInputs,
     secrets: Trapdoor,
-) -> usize {
+) -> u32 {
     let (proof_commit_p, decode_proof_commit_p_success) = emit_xsk233_decode(bld, &proof.commit_p);
     let (proof_kzg_k, decode_proof_kzg_k_success) = emit_xsk233_decode(bld, &proof.kzg_k);
 
@@ -453,15 +453,15 @@ mod test {
         let tau = FrRef::from_str(
             "490782060457092443021184404188169115419401325819878347174959236155604",
         )
-        .unwrap();
+            .unwrap();
         let delta = FrRef::from_str(
             "409859792668509615016679153954612494269657711226760893245268993658466",
         )
-        .unwrap();
+            .unwrap();
         let epsilon = FrRef::from_str(
             "2880039972651592580549544494658966441531834740391411845954153637005104",
         )
-        .unwrap();
+            .unwrap();
 
         let commit_p: [u8; 30] = [
             168, 213, 19, 178, 72, 50, 17, 173, 121, 162, 3, 162, 60, 63, 237, 145, 179, 165, 165,
@@ -474,11 +474,11 @@ mod test {
         let a0 = FrRef::from_str(
             "2787213486297295799494233727790939750249020822604491580499143810600903",
         )
-        .unwrap();
+            .unwrap();
         let b0 = FrRef::from_str(
             "1072602516393469765221017154198322485985591404674386889774270216915229",
         )
-        .unwrap();
+            .unwrap();
 
         let public_inputs = [
             FrRef::from_str("10964902444291521893664765711676021715483874668026528518811070427510")
@@ -510,15 +510,15 @@ mod test {
         let tau = FrRef::from_str(
             "2472308663339583895498147954222995510858962633570970238431638506807949",
         )
-        .unwrap();
+            .unwrap();
         let delta = FrRef::from_str(
             "2194316856053929337106370775922152179496555179813841848311939628788959",
         )
-        .unwrap();
+            .unwrap();
         let epsilon = FrRef::from_str(
             "1154785560216858119874588837659951154401760642599649999302917233356517",
         )
-        .unwrap();
+            .unwrap();
         let commit_p: [u8; 30] = [
             145, 195, 86, 210, 230, 219, 176, 179, 148, 236, 194, 133, 166, 240, 60, 111, 152, 154,
             62, 190, 248, 224, 197, 250, 131, 57, 145, 237, 213, 7,
@@ -530,11 +530,11 @@ mod test {
         let a0 = FrRef::from_str(
             "3042729463975785669077695901360320813980996043134603468597671969223884",
         )
-        .unwrap();
+            .unwrap();
         let b0 = FrRef::from_str(
             "3099898550361810144312020021372781014260137110595159844100103797269587",
         )
-        .unwrap();
+            .unwrap();
 
         let public_inputs = [
             FrRef::from_str("10964902444291521893664765711676021715483874668026528518811070427510")

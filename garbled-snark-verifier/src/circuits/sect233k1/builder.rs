@@ -11,6 +11,8 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelExtend,
     ParallelIterator,
 };
+use crate::core::lite_circuit::LiteCircuit;
+use crate::core::wire::WireId;
 
 /// Boolean Operation
 #[derive(Debug, Clone)]
@@ -24,10 +26,10 @@ pub enum GateOperation {
 /// Operation type for compatibility
 #[derive(Debug, Clone, Copy)]
 pub enum Operation<T> {
-    Add(usize, usize, usize), // XOR: output, input1, input2
-    Mul(usize, usize, usize), // AND: output, input1, input2
-    Or(usize, usize, usize),  // OR: output, input1, input2
-    Const(usize, T),          // Constant: output, value
+    Add(u32, u32, u32), // XOR: output, input1, input2
+    Mul(u32, u32, u32), // AND: output, input1, input2
+    Or(u32, u32, u32),  // OR: output, input1, input2
+    Const(u32, T),          // Constant: output, value
 }
 
 /// Custom Gate Type
@@ -48,12 +50,12 @@ pub struct CustomGateParams {
     /// type of custom gate: e.g Point Add
     gate_type: CustomGateType,
     /// wire indexes that the custom gate takes as input
-    input_wire_index: Vec<usize>,
+    input_wire_index: Vec<u32>,
     /// offset for internal wire
     // We need to assign unique index to internal wire
     // `internal_wire_start_index` is the starting index
     // all internal wires and output wires are increments from this value
-    internal_wire_start_index: usize,
+    internal_wire_start_index: u32,
 }
 
 /// Circuit Trait specifies how you represent the entire binary circuit.
@@ -64,35 +66,35 @@ pub struct CustomGateParams {
 /// depends upon the implementation.
 pub trait CircuitTrait {
     /// get fresh wire index
-    fn fresh_one(&mut self) -> usize;
+    fn fresh_one(&mut self) -> u32;
 
     /// get fresh wire indexes
-    fn fresh<const N: usize>(&mut self) -> [usize; N];
+    fn fresh<const N: usize>(&mut self) -> [u32; N];
 
     /// get wire index for constant zero wire
-    fn zero(&mut self) -> usize;
+    fn zero(&mut self) -> u32;
 
     /// get wire index for constant one wire
-    fn one(&mut self) -> usize;
+    fn one(&mut self) -> u32;
 
     /// XOR two input wires and return wire index of output
-    fn xor_wire(&mut self, x: usize, y: usize) -> usize;
+    fn xor_wire(&mut self, x: u32, y: u32) -> u32;
 
     /// OR two input wires and return wire index of output
-    fn or_wire(&mut self, x: usize, y: usize) -> usize;
+    fn or_wire(&mut self, x: u32, y: u32) -> u32;
 
     // AND two input wires and return wire index of output
-    fn and_wire(&mut self, x: usize, y: usize) -> usize;
+    fn and_wire(&mut self, x: u32, y: u32) -> u32;
 
     /// push an instance of custom gate. `params` specifies the current instance of Custom Gate.
     /// `new_wire_idx` represents the new next wire index
-    fn push_custom_gate(&mut self, params: CustomGateParams, new_wire_idx: usize);
+    fn push_custom_gate(&mut self, params: CustomGateParams, new_wire_idx: u32);
 
     /// get all gates
     fn get_gates(&self) -> &Vec<GateOperation>;
 
     /// next wire index
-    fn next_wire(&self) -> usize;
+    fn next_wire(&self) -> u32;
 
     /// initialize circuit configuration for custom gate
     /// `Template` specifies circuit configuration.
@@ -113,10 +115,10 @@ pub struct CircuitAdapter {
     // // Wire mapping: usize -> Wire
     // wire_map: HashMap<usize, Wire>,
     // Next wire index
-    next_wire: usize,
+    next_wire: u32,
     // Constant wire index
-    zero: Option<usize>,
-    one: Option<usize>,
+    zero: Option<u32>,
+    one: Option<u32>,
     // Gates in the new format
     gates: Vec<GateOperation>,
     // Templates for custom gates
@@ -147,26 +149,26 @@ pub struct Templates {
 }
 
 impl CircuitAdapter {
-    pub(crate) fn build(&self, witness: [bool; WITNESS_BIT_LEN]) -> Circuit {
+    pub(crate) fn build(&self, witness: [bool; WITNESS_BIT_LEN]) -> LiteCircuit {
         let n_wires = self.next_wire;
         println!("wires: {n_wires}");
 
         let start = Instant::now();
 
-        let mut wires = Vec::with_capacity(n_wires);
+        let mut wires = Vec::with_capacity(n_wires as usize);
         for i in 0..n_wires {
             if i.is_multiple_of(10_000_000) {
                 println!("wires: {} M", i / 1_000_000);
             }
-            wires.push(new_wirex());
+            wires.push(Wire::new());
         }
         println!("init wires took:{:?}", start.elapsed());
 
         // Set constant and witness wire values.
         // This is an efficient way to initialize the first few wires.
         let all_bits_iter = [false, true].iter().chain(witness.iter());
-        wires.iter().zip(all_bits_iter).for_each(|(wirex, bit)| {
-            wirex.borrow_mut().set(*bit);
+        wires.iter_mut().zip(all_bits_iter).for_each(|(wire, bit)| {
+            wire.set(*bit);
         });
 
         let start = Instant::now();
@@ -175,7 +177,7 @@ impl CircuitAdapter {
         // and immediately convert the resulting basic operations into `Gate` objects.
         // This trades the top-level parallelism of the unrolling step for lower memory consumption,
         // while retaining internal parallelism within `unroll_custom_gate`.
-        let gates: Vec<Gate<Wirex>> = self
+        let gates: Vec<Gate<WireId>> = self
             .gates
             .iter()
             .enumerate()
@@ -212,13 +214,13 @@ impl CircuitAdapter {
                 }
                 match op {
                     Operation::Add(d, x, y) => {
-                        Some(Gate::xor(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                        Some(Gate::xor(x, y, d))
                     }
                     Operation::Mul(d, x, y) => {
-                        Some(Gate::and(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                        Some(Gate::and(x, y, d))
                     }
                     Operation::Or(d, x, y) => {
-                        Some(Gate::or(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                        Some(Gate::or(x, y, d))
                     }
                     Operation::Const(_, _) => None,
                 }
@@ -228,20 +230,19 @@ impl CircuitAdapter {
 
         // The circuit output is assumed to be the last wire.
         // Using `expect` for a clearer error message if `wires` is empty.
-        let output_wire = wires.last().expect("Circuit must have at least one wire").clone();
-        Circuit::new(vec![output_wire], gates)
+        LiteCircuit::new(vec![(n_wires - 1) as WireId], gates, wires)
     }
 }
 
 impl CircuitTrait for CircuitAdapter {
-    fn fresh_one(&mut self) -> usize {
+    fn fresh_one(&mut self) -> u32 {
         let index = self.next_wire;
         self.next_wire += 1;
 
         index
     }
 
-    fn fresh<const N: usize>(&mut self) -> [usize; N] {
+    fn fresh<const N: usize>(&mut self) -> [u32; N] {
         let mut out = [0; N];
         for slot in &mut out {
             *slot = self.fresh_one();
@@ -250,7 +251,7 @@ impl CircuitTrait for CircuitAdapter {
         out
     }
 
-    fn zero(&mut self) -> usize {
+    fn zero(&mut self) -> u32 {
         if let Some(z) = self.zero {
             return z;
         }
@@ -260,7 +261,7 @@ impl CircuitTrait for CircuitAdapter {
         w
     }
 
-    fn one(&mut self) -> usize {
+    fn one(&mut self) -> u32 {
         if let Some(o) = self.one {
             return o;
         }
@@ -270,7 +271,7 @@ impl CircuitTrait for CircuitAdapter {
         w
     }
 
-    fn xor_wire(&mut self, x: usize, y: usize) -> usize {
+    fn xor_wire(&mut self, x: u32, y: u32) -> u32 {
         if x == y {
             return self.zero();
         }
@@ -281,12 +282,12 @@ impl CircuitTrait for CircuitAdapter {
             return x;
         }
         let output = self.fresh_one();
-        self.gates.push(GateOperation::Base(Operation::Add(output, x, y)));
+        self.gates.push(GateOperation::Base(Operation::Add(output as u32, x as u32, y as u32)));
 
         output
     }
 
-    fn or_wire(&mut self, x: usize, y: usize) -> usize {
+    fn or_wire(&mut self, x: u32, y: u32) -> u32 {
         if x == y {
             return x;
         }
@@ -305,12 +306,12 @@ impl CircuitTrait for CircuitAdapter {
         }
 
         let output = self.fresh_one();
-        self.gates.push(GateOperation::Base(Operation::Or(output, x, y)));
+        self.gates.push(GateOperation::Base(Operation::Or(output as u32, x as u32, y as u32)));
 
         output
     }
 
-    fn and_wire(&mut self, x: usize, y: usize) -> usize {
+    fn and_wire(&mut self, x: u32, y: u32) -> u32 {
         if x == y {
             return x;
         }
@@ -329,12 +330,12 @@ impl CircuitTrait for CircuitAdapter {
         }
 
         let output = self.fresh_one();
-        self.gates.push(GateOperation::Base(Operation::Mul(output, x, y)));
+        self.gates.push(GateOperation::Base(Operation::Mul(output as u32, x as u32, y as u32)));
 
         output
     }
 
-    fn push_custom_gate(&mut self, params: CustomGateParams, new_wire_idx: usize) {
+    fn push_custom_gate(&mut self, params: CustomGateParams, new_wire_idx: u32) {
         self.gates.push(GateOperation::Custom(params));
         self.next_wire = new_wire_idx;
     }
@@ -343,7 +344,7 @@ impl CircuitTrait for CircuitAdapter {
         &self.gates
     }
 
-    fn next_wire(&self) -> usize {
+    fn next_wire(&self) -> u32 {
         self.next_wire
     }
 
@@ -367,12 +368,12 @@ impl CircuitTrait for CircuitAdapter {
 }
 
 // Helper functions to match the original interface
-pub fn xor_three<T: CircuitTrait>(b: &mut T, x: usize, y: usize, z: usize) -> usize {
+pub fn xor_three<T: CircuitTrait>(b: &mut T, x: u32, y: u32, z: u32) -> u32 {
     let x_xor_y = b.xor_wire(x, y);
     b.xor_wire(x_xor_y, z)
 }
 
-pub fn xor_vec<T: CircuitTrait>(bld: &mut T, a: &[usize], b: &[usize]) -> Vec<usize> {
+pub fn xor_vec<T: CircuitTrait>(bld: &mut T, a: &[u32], b: &[u32]) -> Vec<u32> {
     let len = a.len().max(b.len());
     (0..len)
         .map(|i| match (a.get(i), b.get(i)) {
@@ -384,7 +385,7 @@ pub fn xor_vec<T: CircuitTrait>(bld: &mut T, a: &[usize], b: &[usize]) -> Vec<us
         .collect()
 }
 
-pub fn xor_many<T: CircuitTrait>(bld: &mut T, items: impl IntoIterator<Item = usize>) -> usize {
+pub fn xor_many<T: CircuitTrait>(bld: &mut T, items: impl IntoIterator<Item=u32>) -> u32 {
     let mut it = items.into_iter();
     let first = match it.next() {
         Some(w) => w,
@@ -404,21 +405,21 @@ pub fn xor_many<T: CircuitTrait>(bld: &mut T, items: impl IntoIterator<Item = us
 #[derive(Default, Clone, Debug)]
 pub struct Template {
     /// input wire indexes to this circuit
-    pub input_wires: Vec<usize>,
+    pub input_wires: Vec<u32>,
     /// logic gates in this circuit
     pub gates: Vec<GateOperation>,
     /// output wire indexes from this circuit
-    pub output_wires: Vec<usize>,
+    pub output_wires: Vec<u32>,
     /// wire index corresponding to constant value zero
-    pub const_wire_zero: usize,
+    pub const_wire_zero: u32,
     // wire index corresponding to constant value one
-    pub const_wire_one: usize,
+    pub const_wire_one: u32,
 
     /// starting wire index of internal wires
-    pub start_wire_idx: usize,
+    pub start_wire_idx: u32,
     /// final wire index of internal wires plus one
     // "plus one" here because end_wire_idx saves value of CktBuilder::next_wire
-    pub end_wire_idx: usize,
+    pub end_wire_idx: u32,
 
     // count of AND, XOR, OR gates in this circuit
     pub stats: (usize, usize, usize),
@@ -462,9 +463,9 @@ impl Template {
     /// which is defined by `input_wires`
     fn emit_custom<T: CircuitTrait>(
         bld: &mut T,
-        input_wires: Vec<usize>,
+        input_wires: Vec<u32>,
         gate_type: CustomGateType,
-    ) -> Vec<usize> {
+    ) -> Vec<u32> {
         // Build Configuration if it doesn't already exist
         if bld.get_template(gate_type).is_none() {
             bld.init_circuit_config_for_custom_gate(gate_type);
@@ -476,7 +477,7 @@ impl Template {
         let internal_wire_starting_index = bld.next_wire() - tmpl.start_wire_idx;
 
         // output wires are also labelled as any internal wire i.e. assigned a unique value
-        let ref_output_set: Vec<usize> =
+        let ref_output_set: Vec<u32> =
             tmpl.output_wires.iter().map(|x| x + internal_wire_starting_index).collect();
 
         let next_wire = bld.next_wire();
@@ -498,15 +499,15 @@ impl Template {
     /// Convert custom gate to basic gates
     pub fn unroll_custom_gate(
         &self,
-        zero: Option<usize>,
-        one: Option<usize>,
-        internal_wire_start_offset: usize,
-        input_wires: &[usize],
+        zero: Option<u32>,
+        one: Option<u32>,
+        internal_wire_start_offset: u32,
+        input_wires: &[u32],
     ) -> Vec<Operation<bool>> {
         assert_eq!(self.input_wires.len(), input_wires.len());
 
         // wire_map maps template wire indexes to instance specific wire indexes
-        let mut wire_map: HashMap<usize, usize> =
+        let mut wire_map: HashMap<u32, u32> =
             self.input_wires.par_iter().copied().zip(input_wires.to_owned()).collect();
 
         // iterate through internal wire indexes of the template
@@ -624,14 +625,14 @@ impl CircuitAdapter {
     /// as the first two wire labels are always constant wire labels 0 and 1.
     pub fn eval_gates(&self, witness: &[bool]) -> Vec<bool> {
         let n_wires = self.next_wire;
-        let mut w = vec![None; n_wires];
+        let mut w = vec![None; n_wires as usize];
         let gates = &self.gates;
         let zero_gate = self.zero;
         let one_gate = self.one;
         assert_eq!(zero_gate, Some(0));
-        w[zero_gate.unwrap()] = Some(false);
+        w[zero_gate.unwrap() as usize] = Some(false);
         assert_eq!(one_gate, Some(1));
-        w[one_gate.unwrap()] = Some(true);
+        w[one_gate.unwrap() as usize] = Some(true);
 
         const WIRE_OFFSET: usize = 2; // due to 0 and 1 at the first two index
         for (id, &bit) in witness.iter().enumerate() {
@@ -642,9 +643,9 @@ impl CircuitAdapter {
             match h {
                 GateOperation::Base(g) => {
                     match *g {
-                        Operation::Add(d, x, y) => w[d] = Some(w[x].unwrap() ^ w[y].unwrap()),
-                        Operation::Mul(d, x, y) => w[d] = Some(w[x].unwrap() & w[y].unwrap()),
-                        Operation::Or(d, x, y) => w[d] = Some(w[x].unwrap() | w[y].unwrap()),
+                        Operation::Add(d, x, y) => w[d as usize] = Some(w[x as usize].unwrap() ^ w[y as usize].unwrap()),
+                        Operation::Mul(d, x, y) => w[d as usize] = Some(w[x as usize].unwrap() & w[y as usize].unwrap()),
+                        Operation::Or(d, x, y) => w[d as usize] = Some(w[x as usize].unwrap() | w[y as usize].unwrap()),
                         // Operation::Const(d, v) => w[d] = Some(v),
                         _ => unreachable!(), // no other variants used
                     }
@@ -661,9 +662,9 @@ impl CircuitAdapter {
                     );
                     for g in gates {
                         match g {
-                            Operation::Add(d, x, y) => w[d] = Some(w[x].unwrap() ^ w[y].unwrap()),
-                            Operation::Mul(d, x, y) => w[d] = Some(w[x].unwrap() & w[y].unwrap()),
-                            Operation::Or(d, x, y) => w[d] = Some(w[x].unwrap() | w[y].unwrap()),
+                            Operation::Add(d, x, y) => w[d as usize] = Some(w[x as usize].unwrap() ^ w[y as usize].unwrap()),
+                            Operation::Mul(d, x, y) => w[d as usize] = Some(w[x as usize].unwrap() & w[y as usize].unwrap()),
+                            Operation::Or(d, x, y) => w[d as usize] = Some(w[x as usize].unwrap() | w[y as usize].unwrap()),
                             // Operation::Const(d, v) => w[d] = Some(v),
                             _ => unreachable!(), // no other variants used
                         }
@@ -714,7 +715,7 @@ mod tests {
         let mut circuit = CircuitAdapter::default();
 
         // Test batch wire creation
-        let wires: [usize; 4] = circuit.fresh();
+        let wires: [u32; 4] = circuit.fresh();
         for i in 0..4 {
             for j in i + 1..4 {
                 assert_ne!(wires[i], wires[j]);

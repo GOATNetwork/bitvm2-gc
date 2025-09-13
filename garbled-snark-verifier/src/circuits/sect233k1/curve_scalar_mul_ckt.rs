@@ -114,7 +114,7 @@ mod tau_adic_repr {
         out
     }
 
-    fn full_add<T: CircuitTrait>(b: &mut T, x: usize, y: usize, c: usize) -> (usize, usize) {
+    fn full_add<T: CircuitTrait>(b: &mut T, x: u32, y: u32, c: u32) -> (u32, u32) {
         let t = b.xor_wire(x, y); // x ⊕ y
         let sum = b.xor_wire(t, c); // SUM  = x ⊕ y ⊕ c
 
@@ -127,7 +127,7 @@ mod tau_adic_repr {
     }
 
     // ★ HALF-ADDER : 1 AND
-    fn half_add<T: CircuitTrait>(b: &mut T, x: usize, c: usize) -> (usize, usize) {
+    fn half_add<T: CircuitTrait>(b: &mut T, x: u32, c: u32) -> (u32, u32) {
         (b.xor_wire(x, c), b.and_wire(x, c))
     }
 
@@ -168,7 +168,7 @@ mod tau_adic_repr {
         out
     }
 
-    fn sub_bit<T: CircuitTrait>(a: &mut Fr, u: usize, b: &mut T) {
+    fn sub_bit<T: CircuitTrait>(a: &mut Fr, u: u32, b: &mut T) {
         let mut borrow = u; // 0 or 1 wire
         let one_gate = b.one();
         for bit in a.iter_mut() {
@@ -187,7 +187,7 @@ mod tau_adic_repr {
     pub(crate) fn emit_tau_adic_repr_bits<T: CircuitTrait>(
         b: &mut T,
         k_bits: &Fr,
-    ) -> [usize; TAU_ADIC_LEN] {
+    ) -> [u32; TAU_ADIC_LEN] {
         let mut a: Fr = *k_bits;
         let mut breg: Fr = [b.zero(); FR_LEN];
         let mut out = [b.zero(); TAU_ADIC_LEN];
@@ -274,7 +274,7 @@ mod precompute_table {
     pub(crate) fn emit_lookup<T: CircuitTrait>(
         bld: &mut T,
         table: &[CurvePoint],
-        indices: Vec<usize>,
+        indices: Vec<u32>,
     ) -> CurvePoint {
         fn mux<T: CircuitTrait>(
             bld: &mut T,

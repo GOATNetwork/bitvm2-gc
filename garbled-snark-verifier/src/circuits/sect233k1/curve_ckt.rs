@@ -25,7 +25,7 @@ pub(crate) struct CurvePoint {
 /// Size of a compressed Curve Point is 30 bytes
 pub(crate) const COMPRESSED_POINT_LEN: usize = 30;
 /// Representation of a compressed Curve Point as wire labels
-pub(crate) type CompressedCurvePoint = [[usize; 8]; COMPRESSED_POINT_LEN];
+pub(crate) type CompressedCurvePoint = [[u32; 8]; COMPRESSED_POINT_LEN];
 /// Representation of a compressed curve point as 30 byte array
 pub(crate) type CompressedCurvePointRef = [u8; COMPRESSED_POINT_LEN];
 
@@ -49,7 +49,7 @@ pub(crate) fn emit_point_equals<T: CircuitTrait>(
     bld: &mut T,
     p1: &CurvePoint,
     p2: &CurvePoint,
-) -> usize {
+) -> u32 {
     // tmp1 = S₁·T₂
     let tmp1: Gf = emit_gf_mul(bld, &p1.s, &p2.t);
 
@@ -93,16 +93,16 @@ impl CurvePoint {
         let x = BigUint::from_str(
             "13283792768796718556929275469989697816663440403339868882741001477299174",
         )
-        .unwrap();
+            .unwrap();
         let s = BigUint::from_str(
             "6416386389908495168242210184454780244589215014363767030073322872085145",
         )
-        .unwrap();
+            .unwrap();
         let z = BigUint::from_str("1").unwrap();
         let t = BigUint::from_str(
             "13283792768796718556929275469989697816663440403339868882741001477299174",
         )
-        .unwrap();
+            .unwrap();
 
         let x = gfref_to_bits(&x);
         let s = gfref_to_bits(&s);
@@ -181,7 +181,7 @@ pub(crate) fn emit_point_frob<T: CircuitTrait>(bld: &mut T, p1: &CurvePoint) -> 
 pub(crate) fn emit_xsk233_decode<T: CircuitTrait>(
     bld: &mut T,
     src: &CompressedCurvePoint,
-) -> (CurvePoint, usize) {
+) -> (CurvePoint, u32) {
     let (w, ve) = emit_gf_decode(bld, src);
     let wz = emit_gf_is_zero(bld, w); //wz = w == 0
 

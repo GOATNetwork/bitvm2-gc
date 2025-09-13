@@ -13,7 +13,7 @@ use super::gf9_ref::gf9ref_inv as gf9_inv;
 use super::gf9_ref::{gf9ref_mul, gf9ref_pow};
 
 #[inline]
-pub(crate) fn xor_gf9<T: CircuitTrait>(b: &mut T, x: &[usize; 9], y: &[usize; 9]) -> [usize; 9] {
+pub(crate) fn xor_gf9<T: CircuitTrait>(b: &mut T, x: &[u32; 9], y: &[u32; 9]) -> [u32; 9] {
     let mut out = [0; 9];
     for i in 0..9 {
         out[i] = b.xor_wire(x[i], y[i]);
@@ -22,15 +22,15 @@ pub(crate) fn xor_gf9<T: CircuitTrait>(b: &mut T, x: &[usize; 9], y: &[usize; 9]
 }
 
 /// Convert coefficients in F₂⁹ to bits by taking trace
-pub(crate) fn emit_gf9_to_bits<T: CircuitTrait>(bld: &mut T, cf: &[[usize; 9]]) -> Vec<usize> {
+pub(crate) fn emit_gf9_to_bits<T: CircuitTrait>(bld: &mut T, cf: &[[u32; 9]]) -> Vec<u32> {
     cf.iter().map(|&c| xor_many(bld, c)).collect()
 }
 
 /* ──────────────────  Reduce mod  x²³³ + x⁷⁴ + 1  (correct) ────────────────── */
-pub(crate) fn emit_reduce_mod<T: CircuitTrait>(b: &mut T, h: &[usize]) -> Gf {
+pub(crate) fn emit_reduce_mod<T: CircuitTrait>(b: &mut T, h: &[u32]) -> Gf {
     /* 0‥464 working copy (pad with zero wires) */
     let z = b.zero();
-    let mut c: Vec<usize> = (0..465).map(|i| *h.get(i).unwrap_or(&z)).collect();
+    let mut c: Vec<u32> = (0..465).map(|i| *h.get(i).unwrap_or(&z)).collect();
 
     /* fold high terms downward, high-to-low */
     for i in (233..465).rev() {
@@ -57,7 +57,7 @@ const N: usize = 511; // |F₂⁹×| = 2⁹ − 1
 // primitive element g = 0x02 for the poly x⁹ + x⁴ + 1
 const G: u16 = 0x02;
 
-type W = [usize; 9];
+type W = [u32; 9];
 // ---------------------------------------------------------------------------
 //  ω‑power table  (ω = G has order 511)
 // ---------------------------------------------------------------------------

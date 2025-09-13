@@ -63,11 +63,11 @@ fn domain(reps: &[usize]) -> Vec<u16> {
 fn extend_evaluation<T: CircuitTrait>(
     bld: &mut T,
     reps: &[usize],
-    rep_evs: &[[usize; 9]],
-) -> Vec<[usize; 9]> {
+    rep_evs: &[[u32; 9]],
+) -> Vec<[u32; 9]> {
     // first two evs are 0, 1
     // rest should be for representatives
-    let mut ys: Vec<[usize; 9]> = Vec::with_capacity(511);
+    let mut ys: Vec<[u32; 9]> = Vec::with_capacity(511);
     ys.push(rep_evs[0]);
 
     for i in 1..rep_evs.len() {
@@ -102,7 +102,7 @@ pub(crate) fn emit_gf_mul<T: CircuitTrait>(bld: &mut T, a: &Gf, b: &Gf) -> Gf {
     // Evaluate polynomials on domain
     let ya = emit_poly_eval_domain(bld, a, &xs);
     let yb = emit_poly_eval_domain(bld, b, &xs);
-    let yc: Vec<[usize; 9]> =
+    let yc: Vec<[u32; 9]> =
         ya.iter().zip(yb.iter()).map(|(&u, &v)| emit_gf9_mul(bld, u, v)).collect();
     assert_eq!(yc.len(), 59); // 58 representatives + 1 primitive point G^0
     let ycs = extend_evaluation(bld, &rep, &yc);
@@ -137,7 +137,7 @@ pub(crate) fn emit_gf_mul<T: CircuitTrait>(bld: &mut T, a: &Gf, b: &Gf) -> Gf {
         pys
     };
 
-    let pys: [[usize; 9]; 511] = pys.try_into().unwrap();
+    let pys: [[u32; 9]; 511] = pys.try_into().unwrap();
 
     // Convert evaluations back to polynomial, reduce and return as result
     emit_gf9_interpolate_fft(bld, &pys)

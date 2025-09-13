@@ -81,7 +81,7 @@ fn compute_transformation_matrix(const_c: Gf9Ref) -> [[u8; 9]; 9] {
 // The function that builds the actual circuit
 pub(crate) fn emit_mul_by_const<T: CircuitTrait>(
     b: &mut T,
-    word_bits: GF9,  /* secret  a */
+    word_bits: GF9, /* secret  a */
     const_c: Gf9Ref, /* PUBLIC  C */
 ) -> GF9 {
     // This matrix M is pre-computed and stored as a constant
@@ -111,7 +111,7 @@ pub(crate) fn emit_mul_by_const<T: CircuitTrait>(
 }
 
 // Helper to build an XOR tree
-fn xor_many<T: CircuitTrait>(b: &mut T, wires: &[usize]) -> usize {
+fn xor_many<T: CircuitTrait>(b: &mut T, wires: &[u32]) -> u32 {
     if wires.len() == 1 {
         return wires[0];
     }
@@ -135,7 +135,7 @@ fn zero_9<T: CircuitTrait>(b: &mut T) -> GF9 {
 /* Horner evaluation for ONE public sample point ------------------------ */
 fn emit_poly_eval_fixed<T: CircuitTrait>(
     b: &mut T,
-    coeff_bits: &Gf,      /* secret coeffs, bit-LSB order  a₀…a₂₃₂ */
+    coeff_bits: &Gf, /* secret coeffs, bit-LSB order  a₀…a₂₃₂ */
     sample_const: Gf9Ref, /* PUBLIC sample point           ( <512 )*/
 ) -> GF9 {
     /* acc starts at 0 */

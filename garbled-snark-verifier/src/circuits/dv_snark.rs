@@ -1,12 +1,12 @@
-use crate::bag::Circuit;
 use crate::circuits::sect233k1::dv_ckt::{
     ProofRef, PublicInputsRef, TrapdoorRef, VerifierPayloadRef, compile_verifier,
 };
 use crate::circuits::sect233k1::fr_ref::FrRef;
 use std::str::FromStr;
 use std::time::Instant;
+use crate::core::lite_circuit::LiteCircuit;
 
-pub fn dv_snark_verifier_circuit(witness: &VerifierPayloadRef) -> Circuit {
+pub fn dv_snark_verifier_circuit(witness: &VerifierPayloadRef) -> LiteCircuit {
     let start = Instant::now();
     let (builder, _) = compile_verifier();
     println!("Compile time: {:?}", start.elapsed());
@@ -67,7 +67,7 @@ fn test_dv_snark_verifier_circuit() {
     total_gates.print();
 
     for gate in &mut circuit.1 {
-        gate.evaluate();
+        gate.evaluate(&mut circuit.2);
     }
-    assert!(circuit.0[0].borrow().get_value());
+    assert!((circuit.2)[circuit.0[0] as usize].get_value());
 }
