@@ -13,14 +13,8 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
     let size = circuit.1.len().div_ceil(max_gates);
 
     let start = Instant::now();
-    let _: Vec<_> = circuit
-        .1
-        .chunks(max_gates)
-        .enumerate()
-        .zip(garbled_gates.chunks_mut(max_gates))
-        // only for test, just take one
-        .take(1)
-        .map(|((i, w), garblings)| {
+    circuit.1.chunks(max_gates).enumerate().zip(garbled_gates.chunks_mut(max_gates)).for_each(
+        |((i, w), garblings)| {
             info!(step = "gen_sub_circuits", "Split batch {i}/{size}");
             let out = SerializableCircuit {
                 gates: w
@@ -35,17 +29,20 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
                     .collect(),
                 garblings: garblings.to_vec(),
             };
-            let start = Instant::now();
-            bincode::serialize_into(
-                //std::fs::File::create(format!("garbled_{i}.bin")).unwrap(),
-                mem_fs::MemFile::create(format!("garbled_{i}.bin")).unwrap(),
-                &out,
-            )
-            .unwrap();
-            let elapsed = start.elapsed();
-            info!(step = "gen_sub_circuits", elapsed = ?elapsed, "Writing garbled_{i}.bin");
-        })
-        .collect();
+            // In this demo, we only save the first sub-circuit
+            if i == 0 {
+                let start = Instant::now();
+                bincode::serialize_into(
+                    //std::fs::File::create(format!("garbled_{i}.bin")).unwrap(),
+                    mem_fs::MemFile::create(format!("garbled_{i}.bin")).unwrap(),
+                    &out,
+                )
+                .unwrap();
+                let elapsed = start.elapsed();
+                info!(step = "gen_sub_circuits", elapsed = ?elapsed, "Writing garbled_{i}.bin");
+            }
+        },
+    );
     let elapsed = start.elapsed();
     info!(step = "gen_sub_circuits", elapsed =? elapsed, "total time");
 }

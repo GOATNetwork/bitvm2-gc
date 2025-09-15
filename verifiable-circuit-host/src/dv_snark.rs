@@ -47,7 +47,7 @@ fn split_circuit() {
     let mut circuit = custom_dv_snark_circuit();
     circuit.gate_counts().print();
     println!("Wires: {}", circuit.0.len());
-    utils::gen_sub_circuits(&mut circuit, 7_000_000);
+    utils::gen_sub_circuits(&mut circuit, 1_000_000);
 }
 
 fn main() {
@@ -91,7 +91,7 @@ fn main() {
     let start = Instant::now();
     // Generate the proof for the given guest and input.
     let (pk, vk) = client.setup(ELF);
-    let mut proof = client.prove(&pk, stdin).run().unwrap();
+    let mut proof = client.prove(&pk, stdin).compressed().run().unwrap();
 
     let elapsed = start.elapsed();
     info!(step = "generated proof", elapsed =? elapsed, "finish proof generation");
