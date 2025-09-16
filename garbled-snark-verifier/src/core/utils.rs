@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bag::{Circuit, Gate, S, Wire},
-    core::gate::GateType,
+    core::gate::{GateType, gate_garbled},
 };
 
 use std::sync::atomic::Ordering;
@@ -91,6 +91,24 @@ pub struct SerializableCircuit {
     pub garblings: Vec<Option<S>>,
 }
 
+impl SerializableCircuit {
+    fn garbled_gates(&mut self) -> Vec<Option<S>> {
+        self.gates
+            .iter_mut()
+            .enumerate()
+            .map(|(i, gate)| {
+                let a0 = gate.wire_a.select(false);
+                let b0 = gate.wire_b.select(false);
+
+                let (c0, ciphertext) = gate_garbled(a0, b0, gate.gid, gate.gate_type);
+                gate.wire_c.set_label(c0);
+
+                ciphertext
+            })
+            .collect()
+    }
+}
+
 impl From<&Circuit> for SerializableCircuit {
     fn from(c: &Circuit) -> Self {
         //let wires = c.0.iter().map(|w| w.borrow().clone()).collect();
@@ -132,8 +150,7 @@ impl From<&SerializableCircuit> for Circuit {
 }
 
 pub fn check_guest(buf: &[u8]) {
-    let sc: SerializableCircuit = bincode::deserialize(buf).unwrap();
-    let circuit: Circuit = (&sc).into();
-    let garblings = circuit.garbled_gates();
-    assert!(garblings == sc.garblings);
+    let mut sc: SerializableCircuit = bincode::deserialize(buf).unwrap();
+    let garblings = sc.garbled_gates();
+    assert_eq!(garblings, sc.garblings);
 }
