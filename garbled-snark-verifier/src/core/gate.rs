@@ -20,9 +20,9 @@ pub enum GateType {
     Cimp = 5, // b => a
     Nor = 6,
     Or = 7,
-    Xor,
-    Xnor,
-    Not,
+    Xor = 8,
+    Xnor = 9,
+    Not = 10,
 }
 
 impl fmt::Display for GateType {
@@ -58,6 +58,9 @@ impl TryFrom<u8> for GateType {
             5 => Ok(GateType::Cimp),
             6 => Ok(GateType::Nor),
             7 => Ok(GateType::Or),
+            8 => Ok(GateType::Xor),
+            9 => Ok(GateType::Xnor),
+            10 => Ok(GateType::Not),
             _ => Err(()),
         }
     }

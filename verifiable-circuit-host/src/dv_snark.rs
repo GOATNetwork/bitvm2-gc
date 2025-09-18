@@ -6,6 +6,7 @@ use tracing::info;
 use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils as sdk_utils};
 
 use garbled_snark_verifier::circuits::dv_snark::dv_snark_verifier_circuit;
+use garbled_snark_verifier::core::utils::check_guest;
 use garbled_snark_verifier::{
     bag::{Circuit, new_wirex},
     circuits::sect233k1::types::load_witness_from_files,
@@ -65,7 +66,7 @@ fn main() {
     // types of the elements in the input stream must match the types being read in the guest.
     let mut stdin = ZKMStdin::new();
 
-    //let ser_sc_0 = std::fs::read("garbled_0.bin").unwrap();
+    // let ser_sc_0 = std::fs::read("garbled_0.bin").unwrap();
     let ser_sc_0 = mem_fs::MemFile::read("garbled_0.bin").unwrap();
     info!("ser_sc_0 size: {:?} bytes", ser_sc_0.len());
 

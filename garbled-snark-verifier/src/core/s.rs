@@ -4,20 +4,20 @@ use std::ops::BitXor;
 use serde::{Deserialize, Serialize};
 
 use crate::circuits::bn254::utils::random_seed;
-use crate::core::utils::{LABLE_SIZE, hash};
+use crate::core::utils::{LABEL_SIZE, hash};
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
-pub struct S(pub [u8; LABLE_SIZE]);
+pub struct S(pub [u8; LABEL_SIZE]);
 
 impl S {
     pub const fn one() -> Self {
-        let mut s = [0_u8; LABLE_SIZE];
-        s[LABLE_SIZE - 1] = 1;
+        let mut s = [0_u8; LABEL_SIZE];
+        s[LABEL_SIZE - 1] = 1;
         Self(s)
     }
 
     pub fn random() -> Self {
-        Self(random_seed::<LABLE_SIZE>())
+        Self(random_seed::<LABEL_SIZE>())
     }
 
     pub fn neg(&self) -> Self {
@@ -33,9 +33,9 @@ impl S {
     }
 
     pub fn hash_ext(&self, gid: u32) -> Self {
-        let mut input = [0u8; LABLE_SIZE + 4];
-        input[..LABLE_SIZE].copy_from_slice(&self.0);
-        input[LABLE_SIZE..].copy_from_slice(&gid.to_le_bytes());
+        let mut input = [0u8; LABEL_SIZE + 4];
+        input[..LABEL_SIZE].copy_from_slice(&self.0);
+        input[LABEL_SIZE..].copy_from_slice(&gid.to_le_bytes());
         Self(hash(&input))
     }
 
@@ -46,7 +46,7 @@ impl S {
     }
 
     pub fn xor(mut a: Self, b: Self) -> Self {
-        for i in 0..LABLE_SIZE {
+        for i in 0..LABEL_SIZE {
             a.0[i] ^= b.0[i];
         }
         a
@@ -57,7 +57,7 @@ impl Add for S {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let mut s = [0_u8; LABLE_SIZE];
+        let mut s = [0_u8; LABEL_SIZE];
         let mut carry = 0;
         for (i, (u, v)) in zip(self.0, rhs.0).enumerate().rev() {
             let x = (u as u32) + (v as u32) + carry;
@@ -72,7 +72,7 @@ impl BitXor for S {
     type Output = Self;
     fn bitxor(self, rhs: Self) -> Self::Output {
         let mut a = self;
-        for i in 0..LABLE_SIZE {
+        for i in 0..LABEL_SIZE {
             a.0[i] ^= rhs.0[i];
         }
         a

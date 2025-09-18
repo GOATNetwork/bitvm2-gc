@@ -12,6 +12,6 @@ extern crate alloc;
 zkm_zkvm::entrypoint!(main);
 use garbled_snark_verifier::core::utils::check_guest;
 fn main() {
-    let mut buf = zkm_zkvm::io::read_vec();
+    let buf = zkm_zkvm::io::read_vec();
     check_guest(&buf);
 }
