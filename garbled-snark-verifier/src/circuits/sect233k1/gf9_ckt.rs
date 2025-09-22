@@ -159,80 +159,80 @@ pub(crate) fn emit_gf9_mul<T: CircuitTrait>(bld: &mut T, a: GF9, c: GF9) -> GF9 
     reduce17_to9(bld, prod18)
 }
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-//
-//     use crate::{builder::CktBuilder, gf9_ref::gf9ref_mul};
-//
-//     use rand::{Rng, SeedableRng, rngs::StdRng};
-//
-//     #[test]
-//     fn random_pairs_agree_with_reference() {
-//         let mut rng = StdRng::seed_from_u64(0xC0FFEE);
-//
-//         for _ in 0..1 {
-//             let a: u16 = rng.r#gen::<u16>() & 0x1FF; // random 9-bit ints
-//             let b: u16 = rng.r#gen::<u16>() & 0x1FF;
-//
-//             /* build one circuit instance */
-//             let mut bld = CktBuilder::default();
-//             let a_bits: [usize; 9] = bld.fresh();
-//             let b_bits: [usize; 9] = bld.fresh();
-//             let out_bits = emit_gf9_mul(&mut bld, a_bits, b_bits);
-//             let out_bits_k = emit_gf9_mul(&mut bld, a_bits, b_bits);
-//
-//             /* prepare witness */
-//             let mut witness = Vec::<bool>::with_capacity(18);
-//             witness.extend((0..9).map(|i| (a >> i) & 1 != 0));
-//             witness.extend((0..9).map(|i| (b >> i) & 1 != 0));
-//
-//             /* run the circuit */
-//             let wires = bld.eval_gates(&witness);
-//
-//             /* read 9-bit hardware result */
-//             let hw: u16 = out_bits
-//                 .iter()
-//                 .enumerate()
-//                 .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u16) << i));
-//             let chw: u16 = out_bits_k
-//                 .iter()
-//                 .enumerate()
-//                 .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u16) << i));
-//
-//             let nhw = gf9ref_mul(a, b);
-//             assert_eq!(hw, nhw, "Mismatch for a=0x{:03x}, b=0x{:03x}", a, b);
-//             assert_eq!(chw, nhw, "Mismatches for a=0x{:03x}, b=0x{:03x}", a, b);
-//         }
-//     }
-//
-//     #[test]
-//     fn random_pairs_agree_with_reference_for_square() {
-//         let mut rng = StdRng::seed_from_u64(0xC0FFEE);
-//
-//         for _ in 0..1_000 {
-//             let a: u16 = rng.r#gen::<u16>() & 0x1FF; // random 9-bit ints
-//
-//             /* build one circuit instance */
-//             let mut bld = CktBuilder::default();
-//             let a_bits: [usize; 9] = bld.fresh();
-//             let out_bits = emit_gf9_square(&mut bld, a_bits);
-//
-//             /* prepare witness */
-//             let mut witness = Vec::<bool>::with_capacity(18);
-//             witness.extend((0..9).map(|i| (a >> i) & 1 != 0));
-//
-//             /* run the circuit */
-//             let wires = bld.eval_gates(&witness);
-//
-//             /* read 9-bit hardware result */
-//             let hw: u16 = out_bits
-//                 .iter()
-//                 .enumerate()
-//                 .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u16) << i));
-//
-//             let nhw = gf9ref_mul(a, a);
-//             assert_eq!(hw, nhw, "Mismatch for a=0x{:03x}, b=0x{:03x}", a, a);
-//         }
-//     }
-// }
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use crate::circuits::sect233k1::{builder::CircuitAdapter, gf9_ref::gf9ref_mul};
+
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    #[test]
+    fn random_pairs_agree_with_reference() {
+        let mut rng = StdRng::seed_from_u64(0xC0FFEE);
+
+        for _ in 0..1 {
+            let a: u16 = rng.r#gen::<u16>() & 0x1FF; // random 9-bit ints
+            let b: u16 = rng.r#gen::<u16>() & 0x1FF;
+
+            /* build one circuit instance */
+            let mut bld = CircuitAdapter::default();
+            let a_bits: [usize; 9] = bld.fresh();
+            let b_bits: [usize; 9] = bld.fresh();
+            let out_bits = emit_gf9_mul(&mut bld, a_bits, b_bits);
+            let out_bits_k = emit_gf9_mul(&mut bld, a_bits, b_bits);
+
+            /* prepare witness */
+            let mut witness = Vec::<bool>::with_capacity(18);
+            witness.extend((0..9).map(|i| (a >> i) & 1 != 0));
+            witness.extend((0..9).map(|i| (b >> i) & 1 != 0));
+
+            /* run the circuit */
+            let wires = bld.eval_gates(&witness);
+
+            /* read 9-bit hardware result */
+            let hw: u16 = out_bits
+                .iter()
+                .enumerate()
+                .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u16) << i));
+            let chw: u16 = out_bits_k
+                .iter()
+                .enumerate()
+                .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u16) << i));
+
+            let nhw = gf9ref_mul(a, b);
+            assert_eq!(hw, nhw, "Mismatch for a=0x{:03x}, b=0x{:03x}", a, b);
+            assert_eq!(chw, nhw, "Mismatches for a=0x{:03x}, b=0x{:03x}", a, b);
+        }
+    }
+
+    #[test]
+    fn random_pairs_agree_with_reference_for_square() {
+        let mut rng = StdRng::seed_from_u64(0xC0FFEE);
+
+        for _ in 0..1_000 {
+            let a: u16 = rng.r#gen::<u16>() & 0x1FF; // random 9-bit ints
+
+            /* build one circuit instance */
+            let mut bld = CircuitAdapter::default();
+            let a_bits: [usize; 9] = bld.fresh();
+            let out_bits = emit_gf9_square(&mut bld, a_bits);
+
+            /* prepare witness */
+            let mut witness = Vec::<bool>::with_capacity(18);
+            witness.extend((0..9).map(|i| (a >> i) & 1 != 0));
+
+            /* run the circuit */
+            let wires = bld.eval_gates(&witness);
+
+            /* read 9-bit hardware result */
+            let hw: u16 = out_bits
+                .iter()
+                .enumerate()
+                .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u16) << i));
+
+            let nhw = gf9ref_mul(a, a);
+            assert_eq!(hw, nhw, "Mismatch for a=0x{:03x}, b=0x{:03x}", a, a);
+        }
+    }
+}

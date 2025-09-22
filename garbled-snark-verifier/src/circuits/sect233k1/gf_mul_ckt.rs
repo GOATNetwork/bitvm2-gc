@@ -143,73 +143,73 @@ pub(crate) fn emit_gf_mul<T: CircuitTrait>(bld: &mut T, a: &Gf, b: &Gf) -> Gf {
     emit_gf9_interpolate_fft(bld, &pys)
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use std::time::Instant;
-//
-//     use crate::{
-//         builder::CktBuilder,
-//         gf_ref::{bits_to_gfref, gfref_mul, gfref_to_bits},
-//     };
-//
-//     use super::*;
-//     use num_bigint::{BigUint, RandomBits};
-//     use rand::{Rng, SeedableRng, rngs::StdRng};
-//
-//     #[test]
-//     fn test_emit_gf_mul() {
-//         let mut rng = StdRng::seed_from_u64(0xC0FFEE);
-//
-//         let a: u64 = rng.r#gen::<u64>() & 0x1FF; // random 9-bit ints
-//         let b: u64 = rng.r#gen::<u64>() & 0x1FF;
-//         let size = 64;
-//
-//         let mut bld = CktBuilder::default();
-//         let a_bits: Gf = bld.fresh();
-//         let b_bits: Gf = bld.fresh();
-//         let r = Instant::now();
-//         let out_bits = emit_gf_mul(&mut bld, &a_bits, &b_bits);
-//         let el = r.elapsed();
-//         println!("emit_gf_mul takes {:?} seconds", el.as_secs());
-//
-//         let mut witness = Vec::<bool>::with_capacity(233 * 2);
-//         witness.extend((0..size).map(|i| (a >> i) & 1 != 0));
-//         witness.extend((size..233).map(|_| false));
-//         witness.extend((0..size).map(|i| (b >> i) & 1 != 0));
-//         witness.extend((size..233).map(|_| false));
-//
-//         let wires = bld.eval_gates(&witness);
-//
-//         let hw = bits_to_gfref(&out_bits.map(|w_id| wires[w_id]));
-//
-//         let chw = gfref_mul(&BigUint::from(a), &BigUint::from(b));
-//         bld.show_gate_counts();
-//         assert_eq!(hw, chw);
-//     }
-//
-//     #[test]
-//     fn test_emit_gf_mul2() {
-//         let mut rng = StdRng::seed_from_u64(0xC0FFEE);
-//
-//         let a: BigUint = rng.sample(RandomBits::new(232));
-//         let b: BigUint = rng.sample(RandomBits::new(232));
-//
-//         let mut bld = CktBuilder::default();
-//         let a_bits: Gf = bld.fresh();
-//         let b_bits: Gf = bld.fresh();
-//         let out_bits = emit_gf_mul(&mut bld, &a_bits, &b_bits);
-//
-//         let mut witness = Vec::<bool>::with_capacity(233 * 2);
-//         witness.extend(gfref_to_bits(&a));
-//         witness.extend(gfref_to_bits(&b));
-//         assert_eq!(witness.len(), 233 * 2);
-//         let wires = bld.eval_gates(&witness);
-//
-//         let hw = bits_to_gfref(&out_bits.map(|w_id| wires[w_id]));
-//
-//         let chw = gfref_mul(&a, &b);
-//         assert_eq!(hw, chw);
-//
-//         bld.show_gate_counts()
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use crate::circuits::sect233k1::{
+        builder::CircuitAdapter,
+        gf_ref::{bits_to_gfref, gfref_mul, gfref_to_bits},
+    };
+
+    use super::*;
+    use num_bigint::{BigUint, RandomBits};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    #[test]
+    fn test_emit_gf_mul() {
+        let mut rng = StdRng::seed_from_u64(0xC0FFEE);
+
+        let a: u64 = rng.r#gen::<u64>() & 0x1FF; // random 9-bit ints
+        let b: u64 = rng.r#gen::<u64>() & 0x1FF;
+        let size = 64;
+
+        let mut bld = CircuitAdapter::default();
+        let a_bits: Gf = bld.fresh();
+        let b_bits: Gf = bld.fresh();
+        let r = Instant::now();
+        let out_bits = emit_gf_mul(&mut bld, &a_bits, &b_bits);
+        let el = r.elapsed();
+        println!("emit_gf_mul takes {:?} seconds", el.as_secs());
+
+        let mut witness = Vec::<bool>::with_capacity(233 * 2);
+        witness.extend((0..size).map(|i| (a >> i) & 1 != 0));
+        witness.extend((size..233).map(|_| false));
+        witness.extend((0..size).map(|i| (b >> i) & 1 != 0));
+        witness.extend((size..233).map(|_| false));
+
+        let wires = bld.eval_gates(&witness);
+
+        let hw = bits_to_gfref(&out_bits.map(|w_id| wires[w_id]));
+
+        let chw = gfref_mul(&BigUint::from(a), &BigUint::from(b));
+        bld.show_gate_counts();
+        assert_eq!(hw, chw);
+    }
+
+    #[test]
+    fn test_emit_gf_mul2() {
+        let mut rng = StdRng::seed_from_u64(0xC0FFEE);
+
+        let a: BigUint = rng.sample(RandomBits::new(232));
+        let b: BigUint = rng.sample(RandomBits::new(232));
+
+        let mut bld = CircuitAdapter::default();
+        let a_bits: Gf = bld.fresh();
+        let b_bits: Gf = bld.fresh();
+        let out_bits = emit_gf_mul(&mut bld, &a_bits, &b_bits);
+
+        let mut witness = Vec::<bool>::with_capacity(233 * 2);
+        witness.extend(gfref_to_bits(&a));
+        witness.extend(gfref_to_bits(&b));
+        assert_eq!(witness.len(), 233 * 2);
+        let wires = bld.eval_gates(&witness);
+
+        let hw = bits_to_gfref(&out_bits.map(|w_id| wires[w_id]));
+
+        let chw = gfref_mul(&a, &b);
+        assert_eq!(hw, chw);
+
+        bld.show_gate_counts()
+    }
+}

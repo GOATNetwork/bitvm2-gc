@@ -430,19 +430,20 @@ pub(crate) fn verify<T: CircuitTrait>(
 mod test {
     use std::str::FromStr;
 
-    use num_bigint::BigUint;
-
-    use super::super::{
+    #[cfg(feature = "verify")]
+    use crate::circuits::sect233k1::dv_ref;
+    use crate::circuits::sect233k1::{
         builder::{CircuitAdapter, CircuitTrait},
         dv_ckt::{
-            PUBLIC_INPUT_LEN, ProofRef, PublicInputsRef, TrapdoorRef, VerifierPayloadRef,
-            compile_verifier, evaluate_verifier, u8_to_bits_le, u64_to_bits_le,
+            ProofRef, PublicInputsRef, TrapdoorRef, VerifierPayloadRef, compile_verifier,
+            evaluate_verifier, u8_to_bits_le,
         },
         fr_ckt::Fr,
         fr_ref::{FrRef, frref_to_bits},
     };
+    use num_bigint::BigUint;
 
-    use super::{PublicInputs, get_fs_challenge};
+    use super::get_fs_challenge;
 
     #[test]
     #[ignore] // ignore because of being long running
@@ -557,108 +558,80 @@ mod test {
         assert!(!passed_val, "verification should have failed but passed");
     }
 
-    // #[test]
-    // fn test_get_pub_hash_from_raw_pub_inputs() {
-    //     let mut bld = CircuitAdapter::default();
-    //
-    //     let deposit_index_labels: [usize; PUBLIC_INPUT_LEN] = bld.fresh();
-    //     let raw_pub_in = &RawPublicInputs {
-    //         deposit_index: deposit_index_labels,
-    //     };
-    //     let out_labels = get_pub_hash_from_raw_pub_inputs(&mut bld, raw_pub_in);
-    //
-    //     bld.show_gate_counts();
-    //
-    //     let deposit_index_raw_bytes = u64::from_le_bytes([55, 0, 0, 0, 89, 0, 0, 0]);
-    //     let deposit_index = u64_to_bits_le(deposit_index_raw_bytes).to_vec();
-    //     let wires = bld.eval_gates(&deposit_index);
-    //
-    //     let out_val: BigUint = out_labels
-    //         .iter()
-    //         .enumerate()
-    //         .fold(BigUint::ZERO, |acc, (i, &w_id)| {
-    //             acc + (BigUint::from(wires[w_id] as u16) << i)
-    //         });
-    //
-    //     let out_val_ref = dv_ref::get_pub_hash_from_raw_pub_inputs(&RawPublicInputsRef {
-    //         deposit_index: u64::from_le_bytes([55, 0, 0, 0, 89, 0, 0, 0]),
-    //     });
-    //     assert_eq!(out_val, out_val_ref);
-    // }
+    #[test]
+    #[cfg(feature = "verify")]
+    fn test_get_fs_challenge() {
+        let mut bld = CircuitAdapter::default();
 
-    // #[test]
-    // fn test_get_fs_challenge() {
-    //     let mut bld = CircuitAdapter::default();
-    //
-    //     let commit_p = {
-    //         let r: [usize; 240] = bld.fresh();
-    //         let r: Vec<[usize; 8]> = r
-    //             .chunks(8)
-    //             .map(|x| {
-    //                 let y: [usize; 8] = x.try_into().unwrap();
-    //                 y
-    //             })
-    //             .collect();
-    //         let r: [[usize; 8]; 30] = r.try_into().unwrap();
-    //         r
-    //     };
-    //
-    //     let pub0: Fr = bld.fresh();
-    //     let pub1: Fr = bld.fresh();
-    //     let pubs = [pub0, pub1];
-    //
-    //     let challenge_labels = get_fs_challenge(&mut bld, commit_p, pubs, vec![], vec![]);
-    //
-    //     let mut witness = Vec::new();
-    //     let commit_p: [u8; 30] = [
-    //         149, 102, 73, 129, 207, 1, 170, 225, 187, 192, 126, 126, 208, 3, 54, 148, 170, 148,
-    //         114, 143, 39, 215, 251, 62, 10, 32, 20, 146, 207, 0,
-    //     ];
-    //     let mut commit_p: Vec<bool> =
-    //         commit_p.iter().flat_map(|x| u8_to_bits_le(*x).to_vec()).collect();
-    //     let mut pub0 = frref_to_bits(
-    //         &BigUint::from_str(
-    //             "7527402554317099476086310993202889463751940730940407143885949231928",
-    //         )
-    //         .unwrap(),
-    //     )
-    //     .to_vec();
-    //     let mut pub1 = frref_to_bits(
-    //         &BigUint::from_str(
-    //             "19542051593079647282099705468191403958371264520862632234952945594121",
-    //         )
-    //         .unwrap(),
-    //     )
-    //     .to_vec();
-    //
-    //     witness.append(&mut commit_p);
-    //     witness.append(&mut pub0);
-    //     witness.append(&mut pub1);
-    //
-    //     let wires = bld.eval_gates(&witness);
-    //     let challenge_val: BigUint = challenge_labels
-    //         .iter()
-    //         .enumerate()
-    //         .fold(BigUint::ZERO, |acc, (i, &w_id)| acc + (BigUint::from(wires[w_id] as u16) << i));
-    //
-    //     let challenge_val_ref = {
-    //         let commit_p = [
-    //             149, 102, 73, 129, 207, 1, 170, 225, 187, 192, 126, 126, 208, 3, 54, 148, 170, 148,
-    //             114, 143, 39, 215, 251, 62, 10, 32, 20, 146, 207, 0,
-    //         ];
-    //         let public_inputs = vec![
-    //             BigUint::from_str(
-    //                 "7527402554317099476086310993202889463751940730940407143885949231928",
-    //             )
-    //             .unwrap(),
-    //             BigUint::from_str(
-    //                 "19542051593079647282099705468191403958371264520862632234952945594121",
-    //             )
-    //             .unwrap(),
-    //         ];
-    //         dv_ref::get_fs_challenge(commit_p, public_inputs, vec![], vec![])
-    //     };
-    //
-    //     assert_eq!(challenge_val, challenge_val_ref);
-    // }
+        let commit_p = {
+            let r: [usize; 240] = bld.fresh();
+            let r: Vec<[usize; 8]> = r
+                .chunks(8)
+                .map(|x| {
+                    let y: [usize; 8] = x.try_into().unwrap();
+                    y
+                })
+                .collect();
+            let r: [[usize; 8]; 30] = r.try_into().unwrap();
+            r
+        };
+
+        let pub0: Fr = bld.fresh();
+        let pub1: Fr = bld.fresh();
+        let pubs = [pub0, pub1];
+
+        let challenge_labels = get_fs_challenge(&mut bld, commit_p, pubs, vec![], vec![]);
+
+        let mut witness = Vec::new();
+        let commit_p: [u8; 30] = [
+            149, 102, 73, 129, 207, 1, 170, 225, 187, 192, 126, 126, 208, 3, 54, 148, 170, 148,
+            114, 143, 39, 215, 251, 62, 10, 32, 20, 146, 207, 0,
+        ];
+        let mut commit_p: Vec<bool> =
+            commit_p.iter().flat_map(|x| u8_to_bits_le(*x).to_vec()).collect();
+        let mut pub0 = frref_to_bits(
+            &BigUint::from_str(
+                "7527402554317099476086310993202889463751940730940407143885949231928",
+            )
+            .unwrap(),
+        )
+        .to_vec();
+        let mut pub1 = frref_to_bits(
+            &BigUint::from_str(
+                "19542051593079647282099705468191403958371264520862632234952945594121",
+            )
+            .unwrap(),
+        )
+        .to_vec();
+
+        witness.append(&mut commit_p);
+        witness.append(&mut pub0);
+        witness.append(&mut pub1);
+
+        let wires = bld.eval_gates(&witness);
+        let challenge_val: BigUint = challenge_labels
+            .iter()
+            .enumerate()
+            .fold(BigUint::ZERO, |acc, (i, &w_id)| acc + (BigUint::from(wires[w_id] as u16) << i));
+
+        let challenge_val_ref = {
+            let commit_p = [
+                149, 102, 73, 129, 207, 1, 170, 225, 187, 192, 126, 126, 208, 3, 54, 148, 170, 148,
+                114, 143, 39, 215, 251, 62, 10, 32, 20, 146, 207, 0,
+            ];
+            let public_inputs = vec![
+                BigUint::from_str(
+                    "7527402554317099476086310993202889463751940730940407143885949231928",
+                )
+                .unwrap(),
+                BigUint::from_str(
+                    "19542051593079647282099705468191403958371264520862632234952945594121",
+                )
+                .unwrap(),
+            ];
+            dv_ref::get_fs_challenge(commit_p, public_inputs, vec![], vec![])
+        };
+
+        assert_eq!(challenge_val, challenge_val_ref);
+    }
 }

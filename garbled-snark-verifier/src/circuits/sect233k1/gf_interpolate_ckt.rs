@@ -356,138 +356,138 @@ pub(crate) fn dft_73<T: CircuitTrait>(
     out
 }
 
-// #[cfg(test)]
-// mod test {
-//     use rand::{Rng, SeedableRng, rngs::StdRng};
-//
-//     use crate::builder::CktBuilder;
-//
-//     use super::*;
-//
-//     fn binary_vec_to_decimal(bits: Vec<u8>) -> u32 {
-//         assert_eq!(bits.len(), 9);
-//         let mut decimal = 0u32;
-//         for (i, bit) in bits.iter().enumerate() {
-//             assert!(*bit == 0 || *bit == 1, "Vec should only contain 0s and 1s");
-//             decimal |= (*bit as u32) << i;
-//         }
-//         decimal
-//     }
-//
-//     fn ref_poly_mul(a: &[u16], b: &[u16]) -> Vec<u16> {
-//         if a.is_empty() || b.is_empty() {
-//             return Vec::new();
-//         }
-//         let mut c = vec![0u16; a.len() + b.len() - 1];
-//         for i in 0..a.len() {
-//             if a[i] == 0 {
-//                 continue;
-//             }
-//             for j in 0..b.len() {
-//                 c[i + j] ^= gf9ref_mul(a[i], b[j]);
-//             }
-//         }
-//         c
-//     }
-//
-//     #[test]
-//     fn test_poly_mul() {
-//         for i in 0..1 {
-//             const P: usize = 72;
-//             let mut rng = StdRng::seed_from_u64(i);
-//             let mut a = [0u16; P];
-//             for a_i in a.iter_mut().take(P) {
-//                 *a_i = rng.r#gen::<u16>() & 0x1FF;
-//             }
-//             let mut b = [0u16; P];
-//             for b_i in b.iter_mut().take(P) {
-//                 *b_i = rng.r#gen::<u16>() & 0x1FF;
-//             }
-//             let ref_out_val = ref_poly_mul(&a, &b);
-//
-//             let mut input_a_wire_labels = [[0usize; 9]; P];
-//
-//             let mut witness = Vec::<bool>::new();
-//
-//             let mut bld = CktBuilder::default();
-//
-//             let mut push_bits = |val: u16, arr: &mut [usize; 9]| {
-//                 for (i, arr_i) in arr.iter_mut().enumerate().take(9) {
-//                     *arr_i = bld.fresh_one();
-//                     witness.push((val >> i) & 1 != 0);
-//                 }
-//             };
-//
-//             for i in 0..input_a_wire_labels.len() {
-//                 push_bits(a[i], &mut input_a_wire_labels[i]);
-//             }
-//
-//             let out_bits = poly_mul(&mut bld, &input_a_wire_labels, &b);
-//             let wires = bld.eval_gates(&witness);
-//
-//             let result: Vec<u16> = (0..out_bits.len())
-//                 .map(|i| {
-//                     let result: Vec<u8> = out_bits[i].iter().map(|id| wires[*id] as u8).collect();
-//                     let result_sum = binary_vec_to_decimal(result);
-//                     result_sum as u16
-//                 })
-//                 .collect();
-//
-//             assert_eq!(result, ref_out_val);
-//             bld.show_gate_counts()
-//         }
-//     }
-//
-//     /// naive evaluator: P(x_k) at all 511 points
-//     fn eval_poly(coeff: &[u16; N]) -> [u16; N] {
-//         let pow = pow_table();
-//         let mut out = [0u16; N];
-//         for k in 0..N {
-//             let x = pow[k];
-//             let mut x_pow = 1u16;
-//             let mut acc = 0u16;
-//             for &c in coeff.iter() {
-//                 acc ^= gf9ref_mul(c, x_pow);
-//                 x_pow = gf9ref_mul(x_pow, x);
-//             }
-//             out[k] = acc;
-//         }
-//         out
-//     }
-//
-//     #[test]
-//     fn test_inverse_interpolate() {
-//         let mut rng = rand::thread_rng();
-//
-//         let mut coeff = [0u16; N];
-//         for coeff_i in &mut coeff {
-//             *coeff_i = rng.r#gen::<u16>() & 0x1FF;
-//         }
-//         let evals = eval_poly(&coeff);
-//
-//         let mut bld = CktBuilder::default();
-//
-//         let mut y_bits = [[0usize; 9]; 511];
-//         let mut witness = Vec::<bool>::new();
-//
-//         let mut push_bits = |val: u16, arr: &mut [usize; 9]| {
-//             for (i, arr_i) in arr.iter_mut().enumerate().take(9) {
-//                 *arr_i = bld.fresh_one();
-//                 witness.push((val >> i) & 1 != 0);
-//             }
-//         };
-//
-//         for i in 0..evals.len() {
-//             push_bits(evals[i], &mut y_bits[i]);
-//         }
-//
-//         let out_bits = emit_gf9_interpolate_fft(&mut bld, &y_bits);
-//         /* run the circuit */
-//         let wires = bld.eval_gates(&witness);
-//
-//         let _result: Vec<u8> = out_bits.iter().map(|id| wires[*id] as u8).collect();
-//
-//         //assert_eq!(out_bits.to_vec(), result);
-//         bld.show_gate_counts()
-//     }
-// }
+#[cfg(test)]
+mod test {
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    use crate::circuits::sect233k1::builder::CircuitAdapter;
+
+    use super::*;
+
+    fn binary_vec_to_decimal(bits: Vec<u8>) -> u32 {
+        assert_eq!(bits.len(), 9);
+        let mut decimal = 0u32;
+        for (i, bit) in bits.iter().enumerate() {
+            assert!(*bit == 0 || *bit == 1, "Vec should only contain 0s and 1s");
+            decimal |= (*bit as u32) << i;
+        }
+        decimal
+    }
+
+    fn ref_poly_mul(a: &[u16], b: &[u16]) -> Vec<u16> {
+        if a.is_empty() || b.is_empty() {
+            return Vec::new();
+        }
+        let mut c = vec![0u16; a.len() + b.len() - 1];
+        for i in 0..a.len() {
+            if a[i] == 0 {
+                continue;
+            }
+            for j in 0..b.len() {
+                c[i + j] ^= gf9ref_mul(a[i], b[j]);
+            }
+        }
+        c
+    }
+
+    #[test]
+    fn test_poly_mul() {
+        for i in 0..1 {
+            const P: usize = 72;
+            let mut rng = StdRng::seed_from_u64(i);
+            let mut a = [0u16; P];
+            for a_i in a.iter_mut().take(P) {
+                *a_i = rng.r#gen::<u16>() & 0x1FF;
+            }
+            let mut b = [0u16; P];
+            for b_i in b.iter_mut().take(P) {
+                *b_i = rng.r#gen::<u16>() & 0x1FF;
+            }
+            let ref_out_val = ref_poly_mul(&a, &b);
+
+            let mut input_a_wire_labels = [[0usize; 9]; P];
+
+            let mut witness = Vec::<bool>::new();
+
+            let mut bld = CircuitAdapter::default();
+
+            let mut push_bits = |val: u16, arr: &mut [usize; 9]| {
+                for (i, arr_i) in arr.iter_mut().enumerate().take(9) {
+                    *arr_i = bld.fresh_one();
+                    witness.push((val >> i) & 1 != 0);
+                }
+            };
+
+            for i in 0..input_a_wire_labels.len() {
+                push_bits(a[i], &mut input_a_wire_labels[i]);
+            }
+
+            let out_bits = poly_mul(&mut bld, &input_a_wire_labels, &b);
+            let wires = bld.eval_gates(&witness);
+
+            let result: Vec<u16> = (0..out_bits.len())
+                .map(|i| {
+                    let result: Vec<u8> = out_bits[i].iter().map(|id| wires[*id] as u8).collect();
+                    let result_sum = binary_vec_to_decimal(result);
+                    result_sum as u16
+                })
+                .collect();
+
+            assert_eq!(result, ref_out_val);
+            bld.show_gate_counts()
+        }
+    }
+
+    /// naive evaluator: P(x_k) at all 511 points
+    fn eval_poly(coeff: &[u16; N]) -> [u16; N] {
+        let pow = pow_table();
+        let mut out = [0u16; N];
+        for k in 0..N {
+            let x = pow[k];
+            let mut x_pow = 1u16;
+            let mut acc = 0u16;
+            for &c in coeff.iter() {
+                acc ^= gf9ref_mul(c, x_pow);
+                x_pow = gf9ref_mul(x_pow, x);
+            }
+            out[k] = acc;
+        }
+        out
+    }
+
+    #[test]
+    fn test_inverse_interpolate() {
+        let mut rng = rand::thread_rng();
+
+        let mut coeff = [0u16; N];
+        for coeff_i in &mut coeff {
+            *coeff_i = rng.r#gen::<u16>() & 0x1FF;
+        }
+        let evals = eval_poly(&coeff);
+
+        let mut bld = CircuitAdapter::default();
+
+        let mut y_bits = [[0usize; 9]; 511];
+        let mut witness = Vec::<bool>::new();
+
+        let mut push_bits = |val: u16, arr: &mut [usize; 9]| {
+            for (i, arr_i) in arr.iter_mut().enumerate().take(9) {
+                *arr_i = bld.fresh_one();
+                witness.push((val >> i) & 1 != 0);
+            }
+        };
+
+        for i in 0..evals.len() {
+            push_bits(evals[i], &mut y_bits[i]);
+        }
+
+        let out_bits = emit_gf9_interpolate_fft(&mut bld, &y_bits);
+        /* run the circuit */
+        let wires = bld.eval_gates(&witness);
+
+        let _result: Vec<u8> = out_bits.iter().map(|id| wires[*id] as u8).collect();
+
+        //assert_eq!(out_bits.to_vec(), result);
+        bld.show_gate_counts()
+    }
+}

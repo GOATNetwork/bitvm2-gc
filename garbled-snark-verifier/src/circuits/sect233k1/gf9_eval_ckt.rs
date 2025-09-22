@@ -161,112 +161,112 @@ pub(crate) fn emit_poly_eval_domain<T: CircuitTrait>(
     domain.iter().map(|&alpha| emit_poly_eval_fixed(b, coeff_bits, alpha)).collect()
 }
 
-// #[cfg(test)]
-// mod test {
-//     use rand::{Rng, SeedableRng, rngs::StdRng};
-//
-//     use crate::{builder::CktBuilder, gf_ckt::Gf, gf9_ref::gf9ref_mul};
-//
-//     /// Reference Function: Evaluate a 233-bit polynomial (bit vector) at all x in `xs`
-//     pub(crate) fn ref_evaluate_poly_at_fixed_gf9(
-//         polynom: &[u8; 233],
-//         domain: &[Gf9Ref],
-//     ) -> Vec<Gf9Ref> {
-//         use crate::gf9_ref::gf9ref_mul;
-//
-//         let mut evals = Vec::with_capacity(domain.len());
-//         for &sample_pt in domain {
-//             let mut acc: u16 = 0;
-//             let mut xp: u16 = 1;
-//             for &bit in polynom.iter() {
-//                 if bit != 0 {
-//                     acc ^= xp;
-//                 }
-//                 xp = gf9ref_mul(xp, sample_pt);
-//             }
-//             evals.push(acc);
-//         }
-//         evals
-//     }
-//     use super::*;
-//
-//     #[test]
-//     fn test_poly_eval_fixed() {
-//         let mut rng = StdRng::seed_from_u64(0xDEC0_FFE1);
-//
-//         /* fixed random coefficient pattern                                */
-//         let mut coeffs_arr = [0u8; 233];
-//         for bit in &mut coeffs_arr {
-//             *bit = rng.r#gen::<u8>() & 1;
-//         }
-//
-//         /* random public domain of 5–15 points                              */
-//         let domain_len = rng.gen_range(5..=15);
-//         let mut domain = Vec::<u16>::with_capacity(domain_len);
-//         for _ in 0..domain_len {
-//             domain.push(rng.r#gen::<u16>() & 0x1FF); // 9-bit constants
-//         }
-//
-//         /* ----------- build circuit ------------------------------------- */
-//         let mut bld = CktBuilder::default();
-//
-//         /* allocate 233 secret input wires for the bits  a₀…a₂₃₂          */
-//         let coeff_wires: Vec<usize> = (0..233).map(|_| bld.fresh_one()).collect();
-//         let coeff_bits: &Gf = coeff_wires.as_slice().try_into().unwrap();
-//
-//         /* circuit outputs */
-//         let eval_wires = emit_poly_eval_domain(&mut bld, coeff_bits, &domain);
-//
-//         /* witness: 233 coefficient bits                                   */
-//         let mut witness = Vec::<bool>::with_capacity(233);
-//         for carr_i in &coeffs_arr {
-//             witness.push(*carr_i != 0);
-//         }
-//
-//         let wires = bld.eval_gates(&witness);
-//
-//         /* read hardware results ---------------------------------------- */
-//         let hw_evals: Vec<u16> = eval_wires
-//             .iter()
-//             .map(|bits| (0..9).fold(0u16, |acc, i| acc | ((wires[bits[i]] as u16) << i)))
-//             .collect();
-//
-//         /* software reference check ------------------------------------- */
-//         let sw_evals = ref_evaluate_poly_at_fixed_gf9(&coeffs_arr, &domain);
-//         assert_eq!(hw_evals, sw_evals, "mismatch in Horner evaluation");
-//     }
-//
-//     #[test]
-//     fn random_pairs_agree_with_reference() {
-//         let mut rng = StdRng::seed_from_u64(0xC0FFEE);
-//         let b: u16 = rng.r#gen::<u16>() & 0x1FF;
-//
-//         /* build one circuit instance */
-//         let mut bld = CktBuilder::default();
-//         let a_bits: GF9 = bld.fresh();
-//         //let b_bits: GF9 = bld.fresh();
-//         let out_bits_k = emit_mul_by_const(&mut bld, a_bits, b);
-//         bld.show_gate_counts();
-//
-//         for _ in 0..1_000 {
-//             let a: u16 = rng.r#gen::<u16>() & 0x1FF; // random 9-bit ints
-//
-//             /* prepare witness */
-//             let mut witness = Vec::<bool>::with_capacity(18);
-//             witness.extend((0..9).map(|i| (a >> i) & 1 != 0));
-//             witness.extend((0..9).map(|i| (b >> i) & 1 != 0));
-//
-//             /* run the circuit */
-//             let wires = bld.eval_gates(&witness);
-//
-//             /* read 9-bit hardware result */
-//             let chw: u16 = out_bits_k
-//                 .iter()
-//                 .enumerate()
-//                 .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u16) << i));
-//
-//             let nhw = gf9ref_mul(a, b);
-//             assert_eq!(chw, nhw, "Mismatch for a=0x{:03x}, b=0x{:03x}", a, b);
-//         }
-//     }
-// }
+#[cfg(test)]
+mod test {
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+
+    use crate::circuits::sect233k1::{builder::CircuitAdapter, gf_ckt::Gf, gf9_ref::gf9ref_mul};
+
+    /// Reference Function: Evaluate a 233-bit polynomial (bit vector) at all x in `xs`
+    pub(crate) fn ref_evaluate_poly_at_fixed_gf9(
+        polynom: &[u8; 233],
+        domain: &[Gf9Ref],
+    ) -> Vec<Gf9Ref> {
+        use crate::circuits::sect233k1::gf9_ref::gf9ref_mul;
+
+        let mut evals = Vec::with_capacity(domain.len());
+        for &sample_pt in domain {
+            let mut acc: u16 = 0;
+            let mut xp: u16 = 1;
+            for &bit in polynom.iter() {
+                if bit != 0 {
+                    acc ^= xp;
+                }
+                xp = gf9ref_mul(xp, sample_pt);
+            }
+            evals.push(acc);
+        }
+        evals
+    }
+    use super::*;
+
+    #[test]
+    fn test_poly_eval_fixed() {
+        let mut rng = StdRng::seed_from_u64(0xDEC0_FFE1);
+
+        /* fixed random coefficient pattern                                */
+        let mut coeffs_arr = [0u8; 233];
+        for bit in &mut coeffs_arr {
+            *bit = rng.r#gen::<u8>() & 1;
+        }
+
+        /* random public domain of 5–15 points                              */
+        let domain_len = rng.gen_range(5..=15);
+        let mut domain = Vec::<u16>::with_capacity(domain_len);
+        for _ in 0..domain_len {
+            domain.push(rng.r#gen::<u16>() & 0x1FF); // 9-bit constants
+        }
+
+        /* ----------- build circuit ------------------------------------- */
+        let mut bld = CircuitAdapter::default();
+
+        /* allocate 233 secret input wires for the bits  a₀…a₂₃₂          */
+        let coeff_wires: Vec<usize> = (0..233).map(|_| bld.fresh_one()).collect();
+        let coeff_bits: &Gf = coeff_wires.as_slice().try_into().unwrap();
+
+        /* circuit outputs */
+        let eval_wires = emit_poly_eval_domain(&mut bld, coeff_bits, &domain);
+
+        /* witness: 233 coefficient bits                                   */
+        let mut witness = Vec::<bool>::with_capacity(233);
+        for carr_i in &coeffs_arr {
+            witness.push(*carr_i != 0);
+        }
+
+        let wires = bld.eval_gates(&witness);
+
+        /* read hardware results ---------------------------------------- */
+        let hw_evals: Vec<u16> = eval_wires
+            .iter()
+            .map(|bits| (0..9).fold(0u16, |acc, i| acc | ((wires[bits[i]] as u16) << i)))
+            .collect();
+
+        /* software reference check ------------------------------------- */
+        let sw_evals = ref_evaluate_poly_at_fixed_gf9(&coeffs_arr, &domain);
+        assert_eq!(hw_evals, sw_evals, "mismatch in Horner evaluation");
+    }
+
+    #[test]
+    fn random_pairs_agree_with_reference() {
+        let mut rng = StdRng::seed_from_u64(0xC0FFEE);
+        let b: u16 = rng.r#gen::<u16>() & 0x1FF;
+
+        /* build one circuit instance */
+        let mut bld = CircuitAdapter::default();
+        let a_bits: GF9 = bld.fresh();
+        //let b_bits: GF9 = bld.fresh();
+        let out_bits_k = emit_mul_by_const(&mut bld, a_bits, b);
+        bld.show_gate_counts();
+
+        for _ in 0..1_000 {
+            let a: u16 = rng.r#gen::<u16>() & 0x1FF; // random 9-bit ints
+
+            /* prepare witness */
+            let mut witness = Vec::<bool>::with_capacity(18);
+            witness.extend((0..9).map(|i| (a >> i) & 1 != 0));
+            witness.extend((0..9).map(|i| (b >> i) & 1 != 0));
+
+            /* run the circuit */
+            let wires = bld.eval_gates(&witness);
+
+            /* read 9-bit hardware result */
+            let chw: u16 = out_bits_k
+                .iter()
+                .enumerate()
+                .fold(0, |acc, (i, &w_id)| acc | ((wires[w_id] as u16) << i));
+
+            let nhw = gf9ref_mul(a, b);
+            assert_eq!(chw, nhw, "Mismatch for a=0x{:03x}, b=0x{:03x}", a, b);
+        }
+    }
+}

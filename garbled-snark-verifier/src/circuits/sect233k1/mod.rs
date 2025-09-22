@@ -8,12 +8,14 @@ pub mod blake3_ckt;
 pub mod builder;
 
 pub mod curve_ckt;
-// pub mod curve_ref;
+#[cfg(feature = "verify")]
+pub mod curve_ref;
 pub mod curve_scalar_mul_ckt;
 
 pub mod dv_ckt;
 
-// pub mod dv_ref;
+#[cfg(feature = "verify")]
+pub mod dv_ref;
 
 pub mod gf_ckt;
 pub mod gf_interpolate_ckt;

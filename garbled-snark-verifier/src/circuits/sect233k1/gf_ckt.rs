@@ -188,118 +188,118 @@ pub(crate) fn emit_gf_is_zero<T: CircuitTrait>(bld: &mut T, w: Gf) -> usize {
     bld.xor_wire(acc, one)
 }
 
-// #[cfg(test)]
-// mod test {
-//     use std::os::raw::c_void;
-//
-//     use super::*;
-//     use crate::builder::CktBuilder;
-//     use crate::curve_ckt::COMPRESSED_POINT_LEN;
-//     use crate::gf_ref::{GfRef, gfref_mul};
-//     use num_traits::FromPrimitive;
-//     use num_traits::One;
-//     use xs233_sys::xsk233_generator;
-//
-//     /// Reverse of `to_u64_digits()`:
-//     ///   Vec<u64> little-endian → BigUint
-//     fn gf_from_u64_digits(digits: Vec<u64>) -> GfRef {
-//         // radix = 2^64
-//         let radix: GfRef = GfRef::one() << 64;
-//         // fold from most-significant limb to least
-//         digits.into_iter().rev().fold(GfRef::ZERO, |acc, limb| {
-//             // BigUint::from_u64 returns Option, but limb < 2^64 always fits.
-//             (acc * &radix) + GfRef::from_u64(limb).unwrap()
-//         })
-//     }
-//
-//     #[test]
-//     fn test_gf233_square_random() {
-//         use rand::{Rng, SeedableRng, rngs::StdRng};
-//         let mut rng = StdRng::seed_from_u64(0xD1CE_FADE);
-//
-//         for _ in 0..500 {
-//             /* --- random 233-bit element -------------------------------- */
-//             let mut words = [0u64; 4];
-//             words[0] = rng.r#gen();
-//             words[1] = rng.r#gen();
-//             words[2] = rng.r#gen();
-//             words[3] = rng.r#gen::<u64>() & ((1u64 << 41) - 1); // top 41 bits
-//             let a_big = gf_from_u64_digits(words.to_vec());
-//             // let a_bits: GF = {
-//             //     let mut v = [0usize; 233];
-//             //     for i in 0..233 {
-//             //         let w = (words[i >> 6] >> (i & 63)) & 1;
-//             //         v[i] = if w == 1 { 1 } else { 0 }; // placeholder; overwritten below
-//             //     }
-//             //     v
-//             // };
-//
-//             /* --- build circuit ----------------------------------------- */
-//             let mut bld = CktBuilder::default();
-//             let mut in_bits = [0usize; 233];
-//             let mut witness = Vec::<bool>::with_capacity(233);
-//             for i in 0..233 {
-//                 in_bits[i] = bld.fresh_one();
-//                 witness.push(((words[i >> 6] >> (i & 63)) & 1) == 1);
-//             }
-//             let out_bits = emit_gf_square(&mut bld, &in_bits);
-//
-//             let wires = bld.eval_gates(&witness);
-//
-//             /* --- collect hardware result ------------------------------- */
-//             let mut r_words = [0u64; 4];
-//             for i in 0..233 {
-//                 if wires[out_bits[i]] {
-//                     r_words[i >> 6] |= 1u64 << (i & 63);
-//                 }
-//             }
-//             let hw = gf_from_u64_digits(r_words.to_vec());
-//
-//             /* --- reference --------------------------------------------- */
-//             let sw = gfref_mul(&a_big, &a_big);
-//             assert_eq!(hw, sw, "square mismatch for random a");
-//         }
-//     }
-//
-//     #[test]
-//     fn test_emit_gf_decode() {
-//         let mut bld = CktBuilder::default();
-//
-//         let src = {
-//             let mut bytes = Vec::new();
-//             for _ in 0..COMPRESSED_POINT_LEN {
-//                 let byte: [usize; 8] = bld.fresh();
-//                 bytes.push(byte);
-//             }
-//             let bytes: CompressedCurvePoint = bytes.try_into().unwrap();
-//             bytes
-//         };
-//
-//         let (_, valid_label) = emit_gf_decode(&mut bld, &src);
-//
-//         // witness
-//         let mut witness = {
-//             unsafe {
-//                 let pt = xsk233_generator;
-//                 let mut dst = [0u8; COMPRESSED_POINT_LEN];
-//                 xs233_sys::xsk233_encode(dst.as_mut_ptr() as *mut c_void, &pt);
-//                 let mut wit = Vec::new();
-//                 for d in dst {
-//                     let mut vs: Vec<bool> = (0..8).map(|i| (d >> i) & 1 != 0).collect();
-//                     wit.append(&mut vs);
-//                 }
-//                 wit
-//             }
-//         };
-//         let wires = bld.eval_gates(&witness);
-//         let valid = wires[valid_label];
-//         assert!(valid);
-//
-//         // bit higher than 233 if set is not a valid field element as it is not within bounds
-//         // in such cases, `valid_label` emits false
-//         witness[GF_LEN] = true;
-//         let wires = bld.eval_gates(&witness);
-//         let valid = wires[valid_label];
-//         assert!(!valid);
-//     }
-// }
+#[cfg(all(test, feature = "verify"))]
+mod test {
+    use std::os::raw::c_void;
+
+    use super::*;
+    use crate::circuits::sect233k1::builder::CircuitAdapter;
+    use crate::circuits::sect233k1::curve_ckt::COMPRESSED_POINT_LEN;
+    use crate::circuits::sect233k1::gf_ref::{GfRef, gfref_mul};
+    use num_traits::FromPrimitive;
+    use num_traits::One;
+    use xs233_sys::xsk233_generator;
+
+    /// Reverse of `to_u64_digits()`:
+    ///   Vec<u64> little-endian → BigUint
+    fn gf_from_u64_digits(digits: Vec<u64>) -> GfRef {
+        // radix = 2^64
+        let radix: GfRef = GfRef::one() << 64;
+        // fold from most-significant limb to least
+        digits.into_iter().rev().fold(GfRef::ZERO, |acc, limb| {
+            // BigUint::from_u64 returns Option, but limb < 2^64 always fits.
+            (acc * &radix) + GfRef::from_u64(limb).unwrap()
+        })
+    }
+
+    #[test]
+    fn test_gf233_square_random() {
+        use rand::{Rng, SeedableRng, rngs::StdRng};
+        let mut rng = StdRng::seed_from_u64(0xD1CE_FADE);
+
+        for _ in 0..500 {
+            /* --- random 233-bit element -------------------------------- */
+            let mut words = [0u64; 4];
+            words[0] = rng.r#gen();
+            words[1] = rng.r#gen();
+            words[2] = rng.r#gen();
+            words[3] = rng.r#gen::<u64>() & ((1u64 << 41) - 1); // top 41 bits
+            let a_big = gf_from_u64_digits(words.to_vec());
+            // let a_bits: GF = {
+            //     let mut v = [0usize; 233];
+            //     for i in 0..233 {
+            //         let w = (words[i >> 6] >> (i & 63)) & 1;
+            //         v[i] = if w == 1 { 1 } else { 0 }; // placeholder; overwritten below
+            //     }
+            //     v
+            // };
+
+            /* --- build circuit ----------------------------------------- */
+            let mut bld = CircuitAdapter::default();
+            let mut in_bits = [0usize; 233];
+            let mut witness = Vec::<bool>::with_capacity(233);
+            for i in 0..233 {
+                in_bits[i] = bld.fresh_one();
+                witness.push(((words[i >> 6] >> (i & 63)) & 1) == 1);
+            }
+            let out_bits = emit_gf_square(&mut bld, &in_bits);
+
+            let wires = bld.eval_gates(&witness);
+
+            /* --- collect hardware result ------------------------------- */
+            let mut r_words = [0u64; 4];
+            for i in 0..233 {
+                if wires[out_bits[i]] {
+                    r_words[i >> 6] |= 1u64 << (i & 63);
+                }
+            }
+            let hw = gf_from_u64_digits(r_words.to_vec());
+
+            /* --- reference --------------------------------------------- */
+            let sw = gfref_mul(&a_big, &a_big);
+            assert_eq!(hw, sw, "square mismatch for random a");
+        }
+    }
+
+    #[test]
+    fn test_emit_gf_decode() {
+        let mut bld = CircuitAdapter::default();
+
+        let src = {
+            let mut bytes = Vec::new();
+            for _ in 0..COMPRESSED_POINT_LEN {
+                let byte: [usize; 8] = bld.fresh();
+                bytes.push(byte);
+            }
+            let bytes: CompressedCurvePoint = bytes.try_into().unwrap();
+            bytes
+        };
+
+        let (_, valid_label) = emit_gf_decode(&mut bld, &src);
+
+        // witness
+        let mut witness = {
+            unsafe {
+                let pt = xsk233_generator;
+                let mut dst = [0u8; COMPRESSED_POINT_LEN];
+                xs233_sys::xsk233_encode(dst.as_mut_ptr() as *mut c_void, &pt);
+                let mut wit = Vec::new();
+                for d in dst {
+                    let mut vs: Vec<bool> = (0..8).map(|i| (d >> i) & 1 != 0).collect();
+                    wit.append(&mut vs);
+                }
+                wit
+            }
+        };
+        let wires = bld.eval_gates(&witness);
+        let valid = wires[valid_label];
+        assert!(valid);
+
+        // bit higher than 233 if set is not a valid field element as it is not within bounds
+        // in such cases, `valid_label` emits false
+        witness[GF_LEN] = true;
+        let wires = bld.eval_gates(&witness);
+        let valid = wires[valid_label];
+        assert!(!valid);
+    }
+}
