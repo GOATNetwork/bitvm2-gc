@@ -183,7 +183,8 @@ mod tests {
         let hw = bits_to_gfref(&out_bits.map(|w_id| wires[w_id]));
 
         let chw = gfref_mul(&BigUint::from(a), &BigUint::from(b));
-        bld.show_gate_counts();
+        let stats = bld.gate_counts();
+        println!("{stats}");
         assert_eq!(hw, chw);
     }
 
@@ -210,6 +211,7 @@ mod tests {
         let chw = gfref_mul(&a, &b);
         assert_eq!(hw, chw);
 
-        bld.show_gate_counts()
+        let stats = bld.gate_counts();
+        println!("{stats}");
     }
 }

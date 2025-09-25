@@ -495,7 +495,8 @@ mod test {
         };
         let witness = verifier_payload.to_bits();
 
-        bld.show_gate_counts();
+        let stats = bld.gate_counts();
+        println!("{stats}");
 
         println!("label_info {:?}", index_info);
         let passed_val = evaluate_verifier(&mut bld, witness, index_info.output_index);
@@ -551,7 +552,8 @@ mod test {
         };
         let witness = verifier_payload.to_bits();
 
-        bld.show_gate_counts();
+        let stats = bld.gate_counts();
+        println!("{stats}");
 
         println!("label_info {:?}", index_info);
         let passed_val = evaluate_verifier(&mut bld, witness, index_info.output_index);

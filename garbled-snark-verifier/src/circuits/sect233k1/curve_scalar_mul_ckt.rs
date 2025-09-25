@@ -255,7 +255,8 @@ mod tau_adic_repr {
             let result: Vec<u8> = out_bits.iter().map(|id| wires[*id] as u8).collect();
             assert_eq!(rd_ref.to_vec(), result);
 
-            bld.show_gate_counts()
+            let stats = bld.gate_counts();
+            println!("{stats}");
         }
     }
 }
@@ -441,7 +442,8 @@ mod precompute_table {
             let st = Instant::now();
             let tables_ckt = emit_precompute_table(&mut bld, &pt_gen, w);
             let el = st.elapsed();
-            bld.show_gate_counts();
+            let stats = bld.gate_counts();
+            println!("{stats}");
             println!("emit_precompute_table took {} seconds ", el.as_secs());
             assert_eq!(tables_ref.len(), tables_ckt.len());
 
@@ -517,7 +519,8 @@ mod precompute_table {
 
             let entry_bits = emit_lookup(&mut bld, &tables_ckt, lookup_index_bit_labels);
 
-            bld.show_gate_counts();
+            let stats = bld.gate_counts();
+            println!("{stats}");
             let wires = bld.eval_gates(&witness);
             let ckt_x: Vec<bool> = entry_bits.x.iter().map(|id| wires[*id]).collect();
             let ckt_s: Vec<bool> = entry_bits.s.iter().map(|id| wires[*id]).collect();
@@ -653,7 +656,8 @@ pub(crate) mod point_scalar_mul {
 
             // bld.write_bristol_periodic("psm4.bristol").unwrap(); // uncomment if you want to dump to bristol file
 
-            bld.show_gate_counts();
+            let stats = bld.gate_counts();
+            println!("{stats}");
 
             let wires = bld.eval_gates(&witness);
 

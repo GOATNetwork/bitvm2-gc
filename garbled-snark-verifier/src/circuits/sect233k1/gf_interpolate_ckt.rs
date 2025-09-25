@@ -434,7 +434,8 @@ mod test {
                 .collect();
 
             assert_eq!(result, ref_out_val);
-            bld.show_gate_counts()
+            let stats = bld.gate_counts();
+            println!("{stats}");
         }
     }
 
@@ -488,6 +489,7 @@ mod test {
         let _result: Vec<u8> = out_bits.iter().map(|id| wires[*id] as u8).collect();
 
         //assert_eq!(out_bits.to_vec(), result);
-        bld.show_gate_counts()
+        let stats = bld.gate_counts();
+        println!("{stats}");
     }
 }

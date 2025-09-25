@@ -4,6 +4,7 @@ use crate::circuits::sect233k1::curve_ckt::{CurvePoint, template_emit_point_add}
 use crate::circuits::sect233k1::gf_ckt::GF_LEN;
 use crate::core::gate::Gate;
 use std::collections::HashMap;
+use std::fmt;
 use std::time::Instant;
 
 use crate::circuits::sect233k1::dv_ckt::WITNESS_BIT_LEN;
@@ -91,6 +92,9 @@ pub trait CircuitTrait {
     /// get all gates
     fn get_gates(&self) -> &Vec<GateOperation>;
 
+    /// count gates present in the circuit
+    fn gate_counts(&self) -> GateCounts;
+
     /// next wire index
     fn next_wire(&self) -> usize;
 
@@ -144,6 +148,86 @@ impl Default for CircuitAdapter {
 #[derive(Default, Debug)]
 pub struct Templates {
     pub ptadd_template: Option<Template>,
+}
+
+/// Aggregated gate statistics for a circuit build.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GateCounts {
+    pub and: usize,
+    pub xor: usize,
+    pub or: usize,
+    pub custom: usize,
+    pub custom_and: usize,
+    pub custom_xor: usize,
+    pub custom_or: usize,
+}
+
+impl GateCounts {
+    pub fn total_top_level(&self) -> usize {
+        self.and + self.xor + self.or + self.custom
+    }
+
+    pub fn total_native_gates(&self) -> usize {
+        self.and + self.xor + self.or + self.custom_and + self.custom_xor + self.custom_or
+    }
+
+    pub fn total_xor_gates(&self) -> usize {
+        self.xor + self.custom_xor
+    }
+
+    pub fn total_and_gates(&self) -> usize {
+        self.and + self.custom_and
+    }
+
+    pub fn total_or_gates(&self) -> usize {
+        self.or + self.custom_or
+    }
+}
+
+impl fmt::Display for GateCounts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "and: {and}, xor: {xor}, or: {or}, custom: {custom}, custom_and: {cand}, custom_xor: {cxor}, custom_or: {cor}, total_top_level: {total}, total_native_gates: {native}",
+            and = self.and,
+            xor = self.xor,
+            or = self.or,
+            custom = self.custom,
+            cand = self.custom_and,
+            cxor = self.custom_xor,
+            cor = self.custom_or,
+            total = self.total_top_level(),
+            native = self.total_native_gates()
+        )
+    }
+}
+
+impl core::ops::AddAssign for GateCounts {
+    fn add_assign(&mut self, rhs: Self) {
+        self.and += rhs.and;
+        self.xor += rhs.xor;
+        self.or += rhs.or;
+        self.custom += rhs.custom;
+        self.custom_and += rhs.custom_and;
+        self.custom_xor += rhs.custom_xor;
+        self.custom_or += rhs.custom_or;
+    }
+}
+
+impl core::ops::Sub for GateCounts {
+    type Output = GateCounts;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        GateCounts {
+            and: self.and.saturating_sub(rhs.and),
+            xor: self.xor.saturating_sub(rhs.xor),
+            or: self.or.saturating_sub(rhs.or),
+            custom: self.custom.saturating_sub(rhs.custom),
+            custom_and: self.custom_and.saturating_sub(rhs.custom_and),
+            custom_xor: self.custom_xor.saturating_sub(rhs.custom_xor),
+            custom_or: self.custom_or.saturating_sub(rhs.custom_or),
+        }
+    }
 }
 
 impl CircuitAdapter {
@@ -341,6 +425,37 @@ impl CircuitTrait for CircuitAdapter {
 
     fn get_gates(&self) -> &Vec<GateOperation> {
         &self.gates
+    }
+
+    fn gate_counts(&self) -> GateCounts {
+        let mut counts = GateCounts::default();
+        let point_add_stats = self.get_template(CustomGateType::PointAdd).map(|tmpl| tmpl.stats);
+        let mut point_add_count = 0usize;
+
+        for gate in self.get_gates() {
+            match gate {
+                GateOperation::Base(g) => match g {
+                    Operation::Add(_, _, _) => counts.xor += 1,
+                    Operation::Mul(_, _, _) => counts.and += 1,
+                    Operation::Or(_, _, _) => counts.or += 1,
+                    Operation::Const(_, _) => {}
+                },
+                GateOperation::Custom(params) => {
+                    counts.custom += 1;
+                    if let CustomGateType::PointAdd = params.gate_type {
+                        point_add_count += 1;
+                    }
+                }
+            }
+        }
+
+        if let Some((and, xor, or)) = point_add_stats {
+            counts.custom_and = and * point_add_count;
+            counts.custom_xor = xor * point_add_count;
+            counts.custom_or = or * point_add_count;
+        }
+
+        counts
     }
 
     fn next_wire(&self) -> usize {
@@ -568,57 +683,6 @@ impl Template {
 }
 
 impl CircuitAdapter {
-    /// show gate counts in the current CircuitAdapter
-    pub fn show_gate_counts(&mut self) {
-        let mut and_gates_count = 0;
-        let mut xor_gates_count = 0;
-        let mut or_gates_count = 0;
-        let mut custom_gates_count = 0;
-
-        let (tmp_mul, tmp_add, tmp_or) = {
-            if let Some(tmpl) = self.get_template(CustomGateType::PointAdd) {
-                (Some(tmpl.stats.0), Some(tmpl.stats.1), Some(tmpl.stats.2))
-            } else {
-                // if custom gate is not initialized return 0
-                (None, None, None)
-            }
-        };
-
-        for h in self.get_gates() {
-            match h {
-                GateOperation::Base(g) => match g {
-                    Operation::Add(_, _, _) => {
-                        xor_gates_count += 1;
-                    }
-                    Operation::Mul(_, _, _) => {
-                        and_gates_count += 1;
-                    }
-                    Operation::Or(_, _, _) => {
-                        or_gates_count += 1;
-                    }
-                    _ => unreachable!(),
-                },
-                GateOperation::Custom(_) => {
-                    custom_gates_count += 1;
-                    if let Some(tmp_add) = tmp_add {
-                        xor_gates_count += tmp_add;
-                    }
-                    if let Some(tmp_mul) = tmp_mul {
-                        and_gates_count += tmp_mul;
-                    }
-                    if let Some(tmp_or) = tmp_or {
-                        or_gates_count += tmp_or;
-                    }
-                }
-            }
-        }
-        println!("and_gates_count {}", and_gates_count);
-        println!("xor_gates_count {}", xor_gates_count);
-        println!("or_gates_count {}", or_gates_count);
-        println!("custom_gates_count {}", custom_gates_count);
-        println!("total_gates_count {}", self.get_gates().len());
-    }
-
     /// Evaluate a binary circuit given `witness` as input wire values.
     /// Assumes that these `witness` values correspond to wire labels from 2 to 2+num_input_wires.
     /// as the first two wire labels are always constant wire labels 0 and 1.

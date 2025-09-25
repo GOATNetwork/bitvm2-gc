@@ -421,7 +421,8 @@ mod test {
         let mut out_slice = [[0; 8]; 32];
         hasher.finalize(&mut bld, &mut out_slice);
 
-        bld.show_gate_counts();
+        let stats = bld.gate_counts();
+        println!("{stats}");
 
         // Evaluate the circuit and input 1 and compare corresponding result
         let wires = bld.eval_gates(&bool_abc.concat());

@@ -246,7 +246,8 @@ mod test {
         let a_bits: GF9 = bld.fresh();
         //let b_bits: GF9 = bld.fresh();
         let out_bits_k = emit_mul_by_const(&mut bld, a_bits, b);
-        bld.show_gate_counts();
+        let stats = bld.gate_counts();
+        println!("{stats}");
 
         for _ in 0..1_000 {
             let a: u16 = rng.r#gen::<u16>() & 0x1FF; // random 9-bit ints

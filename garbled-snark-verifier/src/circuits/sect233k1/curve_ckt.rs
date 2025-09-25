@@ -364,7 +364,8 @@ mod test {
         let c_ptadd = emit_point_add(&mut bld, &c_pt, &c_pt2);
         let el = st.elapsed();
         println!("emit_point_add took {} seconds to compile ", el.as_secs());
-        bld.show_gate_counts();
+        let stats = bld.gate_counts();
+        println!("{stats}");
 
         let mut witness = Vec::<bool>::with_capacity(233 * 8);
         witness.extend(gfref_to_bits(&pt.x));
@@ -431,6 +432,7 @@ mod test {
         let out_label = wires[out_ok_label];
         println!("out_label {}", out_label);
         assert!(out_label, "should be 1 for valid input");
-        bld.show_gate_counts();
+        let stats = bld.gate_counts();
+        println!("{stats}");
     }
 }
