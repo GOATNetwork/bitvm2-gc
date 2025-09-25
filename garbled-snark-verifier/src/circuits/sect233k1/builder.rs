@@ -153,9 +153,9 @@ pub struct Templates {
 /// Aggregated gate statistics for a circuit build.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct GateCounts {
-    pub and: usize,
-    pub xor: usize,
-    pub or: usize,
+    pub direct_and: usize,
+    pub direct_xor: usize,
+    pub direct_or: usize,
     pub custom: usize,
     pub custom_and: usize,
     pub custom_xor: usize,
@@ -164,23 +164,16 @@ pub struct GateCounts {
 
 impl GateCounts {
     pub fn total_top_level(&self) -> usize {
-        self.and + self.xor + self.or + self.custom
+        self.direct_and + self.direct_xor + self.direct_or + self.custom
     }
 
     pub fn total_native_gates(&self) -> usize {
-        self.and + self.xor + self.or + self.custom_and + self.custom_xor + self.custom_or
-    }
-
-    pub fn total_xor_gates(&self) -> usize {
-        self.xor + self.custom_xor
-    }
-
-    pub fn total_and_gates(&self) -> usize {
-        self.and + self.custom_and
-    }
-
-    pub fn total_or_gates(&self) -> usize {
-        self.or + self.custom_or
+        self.direct_and
+            + self.direct_xor
+            + self.direct_or
+            + self.custom_and
+            + self.custom_xor
+            + self.custom_or
     }
 }
 
@@ -188,10 +181,10 @@ impl fmt::Display for GateCounts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "and: {and}, xor: {xor}, or: {or}, custom: {custom}, custom_and: {cand}, custom_xor: {cxor}, custom_or: {cor}, total_top_level: {total}, total_native_gates: {native}",
-            and = self.and,
-            xor = self.xor,
-            or = self.or,
+            "direct_and: {dand}, direct_xor: {dxor}, direct_or: {dor}, custom: {custom}, custom_and: {cand}, custom_xor: {cxor}, custom_or: {cor}, total_top_level: {total}, total_native_gates: {native}",
+            dand = self.direct_and,
+            dxor = self.direct_xor,
+            dor = self.direct_or,
             custom = self.custom,
             cand = self.custom_and,
             cxor = self.custom_xor,
@@ -204,9 +197,9 @@ impl fmt::Display for GateCounts {
 
 impl core::ops::AddAssign for GateCounts {
     fn add_assign(&mut self, rhs: Self) {
-        self.and += rhs.and;
-        self.xor += rhs.xor;
-        self.or += rhs.or;
+        self.direct_and += rhs.direct_and;
+        self.direct_xor += rhs.direct_xor;
+        self.direct_or += rhs.direct_or;
         self.custom += rhs.custom;
         self.custom_and += rhs.custom_and;
         self.custom_xor += rhs.custom_xor;
@@ -219,9 +212,9 @@ impl core::ops::Sub for GateCounts {
 
     fn sub(self, rhs: Self) -> Self::Output {
         GateCounts {
-            and: self.and.saturating_sub(rhs.and),
-            xor: self.xor.saturating_sub(rhs.xor),
-            or: self.or.saturating_sub(rhs.or),
+            direct_and: self.direct_and.saturating_sub(rhs.direct_and),
+            direct_xor: self.direct_xor.saturating_sub(rhs.direct_xor),
+            direct_or: self.direct_or.saturating_sub(rhs.direct_or),
             custom: self.custom.saturating_sub(rhs.custom),
             custom_and: self.custom_and.saturating_sub(rhs.custom_and),
             custom_xor: self.custom_xor.saturating_sub(rhs.custom_xor),
@@ -435,9 +428,9 @@ impl CircuitTrait for CircuitAdapter {
         for gate in self.get_gates() {
             match gate {
                 GateOperation::Base(g) => match g {
-                    Operation::Add(_, _, _) => counts.xor += 1,
-                    Operation::Mul(_, _, _) => counts.and += 1,
-                    Operation::Or(_, _, _) => counts.or += 1,
+                    Operation::Add(_, _, _) => counts.direct_xor += 1,
+                    Operation::Mul(_, _, _) => counts.direct_and += 1,
+                    Operation::Or(_, _, _) => counts.direct_or += 1,
                     Operation::Const(_, _) => {}
                 },
                 GateOperation::Custom(params) => {
