@@ -223,11 +223,9 @@ pub(crate) fn emit_xsk233_decode<T: CircuitTrait>(
 
     // condset
     let rp_or_wz = bld.or_wire(rp, wz);
-    let r = bld.and_wire(ve, rp_or_wz);
+    let success = bld.and_wire(ve, rp_or_wz);
 
-    let mut one_233 = [bld.zero(); GF_LEN];
-    one_233[0] = one;
-    (CurvePoint { x, s, z: one_233, t: x }, r)
+    (CurvePoint { x, s, z: gf_one(bld), t: x }, success)
 }
 
 // Generate Circuit Configuration for Point Addition

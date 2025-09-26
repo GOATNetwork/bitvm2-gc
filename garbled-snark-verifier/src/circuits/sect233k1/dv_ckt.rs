@@ -368,16 +368,14 @@ pub(crate) fn verify<T: CircuitTrait>(
     let (proof_commit_p, decode_proof_commit_p_success) = emit_xsk233_decode(bld, &proof.commit_p);
     let (proof_kzg_k, decode_proof_kzg_k_success) = emit_xsk233_decode(bld, &proof.kzg_k);
 
-    let is_input_valid = {
-        let one_wire = bld.one();
-        let fr_modulus = const_mod_n(bld);
-        let proof_a0_invalid = ge_unsigned(bld, &proof.a0, &fr_modulus); // a0 should be less than modulus
-        let proof_b0_invalid = ge_unsigned(bld, &proof.b0, &fr_modulus);
-        let proof_scalars_invalid = bld.or_wire(proof_a0_invalid, proof_b0_invalid); // either invalid
-        let proof_scalars_valid = bld.xor_wire(proof_scalars_invalid, one_wire); // both scalars valid
-        let is_pts_valid = bld.and_wire(decode_proof_commit_p_success, decode_proof_kzg_k_success); // pts valid
-        bld.and_wire(proof_scalars_valid, is_pts_valid) // points and scalars valid
-    };
+    let one_wire = bld.one();
+    let fr_modulus = const_mod_n(bld);
+    let proof_a0_invalid = ge_unsigned(bld, &proof.a0, &fr_modulus); // a0 should be less than modulus
+    let proof_b0_invalid = ge_unsigned(bld, &proof.b0, &fr_modulus);
+    let proof_scalars_invalid = bld.or_wire(proof_a0_invalid, proof_b0_invalid); // either invalid
+    let proof_scalars_valid = bld.xor_wire(proof_scalars_invalid, one_wire); // both scalars valid
+    let decoded_points_valid =
+        bld.and_wire(decode_proof_commit_p_success, decode_proof_kzg_k_success); // both decodings ok
 
     // let public_inputs_1 = get_pub_hash_from_raw_pub_inputs(bld, &public_inputs);
     // let public_inputs_0_vk_const = {
@@ -401,15 +399,14 @@ pub(crate) fn verify<T: CircuitTrait>(
     };
 
     // Step 3. Compute u₀ and v₀
-    let delta2 = fr_mul(bld, &secrets.delta, &secrets.delta);
     let u0 = {
-        //(&proof.a0 + &secrets.delta * &proof.b0 + &delta2 * &r0) * &secrets.epsilon;
-        let db0 = fr_mul(bld, &secrets.delta, &proof.b0);
-        let a0_p_db0 = fr_add(bld, &proof.a0, &db0);
-        let d2_r0 = fr_mul(bld, &delta2, &r0);
-        let t1 = fr_add(bld, &a0_p_db0, &d2_r0);
+        //(proof.a0 + secrets.delta * (proof.b0 + secrets.delta * r0)) * secrets.epsilon
+        let delta_r0 = fr_mul(bld, &secrets.delta, &r0);
+        let b0_plus = fr_add(bld, &proof.b0, &delta_r0);
+        let inner = fr_mul(bld, &secrets.delta, &b0_plus);
+        let sum = fr_add(bld, &proof.a0, &inner);
 
-        fr_mul(bld, &t1, &secrets.epsilon)
+        fr_mul(bld, &sum, &secrets.epsilon)
     };
     let tmp0 = fr_sub(bld, &secrets.tau, &fs_challenge_alpha);
     let v0 = fr_mul(bld, &tmp0, &secrets.epsilon);
@@ -422,8 +419,9 @@ pub(crate) fn verify<T: CircuitTrait>(
     let rhs: CurvePoint = proof_commit_p;
 
     let verify_success = emit_point_equals(bld, &lhs, &rhs);
+    let eq_with_valid_points = bld.and_wire(verify_success, decoded_points_valid);
 
-    bld.and_wire(verify_success, is_input_valid)
+    bld.and_wire(eq_with_valid_points, proof_scalars_valid)
 }
 
 #[cfg(test)]
