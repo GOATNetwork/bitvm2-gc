@@ -32,18 +32,10 @@ pub enum Operation<T> {
 }
 
 /// Custom Gate Type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy)]
 pub enum CustomGateType {
     PointAdd,
     // add more type here e.g fr_mul when needed for memory balance
-}
-
-impl fmt::Display for CustomGateType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CustomGateType::PointAdd => write!(f, "PointAdd"),
-        }
-    }
 }
 
 /// Parameters that specify an instance of boolean circuit
