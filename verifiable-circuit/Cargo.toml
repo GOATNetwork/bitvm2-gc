@@ -15,4 +15,4 @@ sha2 = ["garbled-snark-verifier/garbled", "garbled-snark-verifier/_sha2", "garbl
 poseidon2 = ["garbled-snark-verifier/garbled", "garbled-snark-verifier/_poseidon2", "garbled-snark-verifier/_getrandom"]
 blake3 = ["garbled-snark-verifier/garbled", "garbled-snark-verifier/_blake3", "garbled-snark-verifier/_getrandom"]
 aes = ["garbled-snark-verifier/garbled", "garbled-snark-verifier/_aes", "garbled-snark-verifier/_getrandom"]
-default = ["aes"]
+default = ["poseidon2"]
