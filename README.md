@@ -63,6 +63,6 @@ Server configuration: 32 core, 480G RAM
 |-----------------------------------|---------------------------------------------------------------------------------------|------------------|-------------|-------------|-------------------|---------------------|
 | deserialize_compressed_g2_circuit | and variants: 122185357, xor variants: 350864003, not: 550724, total:473600084        | 4268330910 * 68  | 51G         | 33s         | 480M/(IOPS) = 188 | 178                 |
 | groth16_verifier_circuit          | and variants: 2718558275, xor variants: 7617087185, not: 62381441, total: 10398026901 |                  |             |             |                   |
-| dv_snark                          | and variants: 11083481, xor variants: 2736913012, total: 2747996493                   | 297417996 * 2271 | 292G        | 80s         |                   |
+| dv_snark (use poseidon2)          | and variants: 8844207, xor variants: 2402635668, total: 2411479875                    | 297417996 * 2412 | 292G        | 76s         |                   |
 
 Proving efficiency:  300k Poseidon2 hashes/s on a single RTX 4090 card.
