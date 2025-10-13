@@ -2,7 +2,6 @@
 //! The following functions do not assume binary circuit representation and are used
 //! only to validate their respective implementation in binary circuit through tests
 
-#![cfg(test)]
 use std::{os::raw::c_void, str::FromStr};
 
 use num_bigint::BigUint;
@@ -10,7 +9,7 @@ use num_traits::One;
 use num_traits::ToPrimitive;
 use xs233_sys::{xsk233_neutral, xsk233_point};
 
-use super::curve_ckt::{AffinePointRef, CompressedCurvePointRef};
+use super::curve_ckt::AffinePointRef;
 use super::gf_ref::gfref_square;
 use super::gf_ref::{GfRef, gfref_add, gfref_mul, gfref_one};
 
@@ -237,7 +236,6 @@ pub(crate) fn point_scalar_multiplication(k: &GfRef, point_p: &CurvePointRef) ->
     }
 }
 
-#[cfg(test)]
 mod xsys_test {
     use std::str::FromStr;
 

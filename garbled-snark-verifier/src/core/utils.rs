@@ -91,23 +91,22 @@ pub struct SerializableCircuit {
     pub garblings: Vec<Option<S>>,
 }
 
-impl SerializableCircuit {
-    fn garbled_gates(&mut self) -> Vec<Option<S>> {
-        self.gates
-            .iter_mut()
-            .enumerate()
-            .map(|(i, gate)| {
-                let a0 = gate.wire_a.select(false);
-                let b0 = gate.wire_b.select(false);
-
-                let (c0, ciphertext) = gate_garbled(a0, b0, gate.gid, gate.gate_type);
-                gate.wire_c.set_label(c0);
-
-                ciphertext
-            })
-            .collect()
-    }
-}
+// impl SerializableCircuit {
+//     fn garbled_gates(&mut self) -> Vec<Option<S>> {
+//         self.gates
+//             .iter_mut()
+//             .map(|gate| {
+//                 let a0 = gate.wire_a.select(false);
+//                 let b0 = gate.wire_b.select(false);
+//
+//                 let (c0, ciphertext) = gate_garbled(a0, b0, gate.gid, gate.gate_type);
+//                 gate.wire_c.set_label(c0);
+//
+//                 ciphertext
+//             })
+//             .collect()
+//     }
+// }
 
 impl From<&Circuit> for SerializableCircuit {
     fn from(c: &Circuit) -> Self {

@@ -255,8 +255,7 @@ impl CircuitAdapter {
         let gates: Vec<Gate> = self
             .gates
             .iter()
-            .enumerate()
-            .flat_map(|(i, g)| {
+            .flat_map(|g| {
                 // Unroll the current gate `g` into a temporary list of basic operations.
                 // This temporary list is much smaller than the full `basic_ops` vector would be.
                 let ops_for_this_gate = match g {
@@ -435,6 +434,7 @@ impl CircuitTrait for CircuitAdapter {
                 },
                 GateOperation::Custom(params) => {
                     counts.custom += 1;
+                    #[allow(irrefutable_let_patterns)]
                     if let CustomGateType::PointAdd = params.gate_type {
                         point_add_count += 1;
                     }
@@ -535,7 +535,7 @@ pub struct Template {
 impl Template {
     /// Generate binary circuit for point addition using cached configuration 'template' for this circuit.
     /// Input is the same as it would normally be for point addition, which is two CurvePoints
-    pub fn emit_point_add_custom<T: CircuitTrait>(
+    pub(crate) fn emit_point_add_custom<T: CircuitTrait>(
         bld: &mut T,
         p1: &CurvePoint,
         p2: &CurvePoint,

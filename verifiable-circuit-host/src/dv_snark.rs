@@ -1,17 +1,12 @@
-use rand::{RngCore, SeedableRng};
-use rand_chacha::ChaCha12Rng;
+// use rand::{RngCore, SeedableRng};
+// use rand_chacha::ChaCha12Rng;
 use std::time::Instant;
 use tracing::info;
 
 use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils as sdk_utils};
 
 use garbled_snark_verifier::circuits::dv_snark::dv_snark_verifier_circuit;
-use garbled_snark_verifier::core::utils::check_guest;
-use garbled_snark_verifier::{
-    bag::{Circuit, new_wirex},
-    circuits::sect233k1::types::load_witness_from_files,
-    core::utils::{SerializableCircuit, SerializableGate},
-};
+use garbled_snark_verifier::{bag::Circuit, circuits::sect233k1::types::load_witness_from_files};
 
 mod mem_fs;
 mod utils;
@@ -76,7 +71,7 @@ fn main() {
     info!("Saved sub-circuit to garbled_0.bin");
 
     // info!("Check guest");
-    // check_guest(&ser_sc_0);
+    // garbled_snark_verifier::core::utils::check_guest(&ser_sc_0);
 
     stdin.write_vec(ser_sc_0);
     // Create a `ProverClient` method.
@@ -92,7 +87,7 @@ fn main() {
     let start = Instant::now();
     // Generate the proof for the given guest and input.
     let (pk, vk) = client.setup(ELF);
-    let mut proof = client.prove(&pk, stdin).compressed().run().unwrap();
+    let proof = client.prove(&pk, stdin).compressed().run().unwrap();
 
     let elapsed = start.elapsed();
     info!(step = "generated proof", elapsed =? elapsed, "finish proof generation");

@@ -1,17 +1,13 @@
-#![cfg(test)]
 //! Reference implementation of DV Verifier Program
 //!
-use std::str::FromStr;
-
 use super::{
-    curve_ckt::CompressedCurvePointRef,
     curve_ref::{CurvePointRef, point_add, point_equals, point_scalar_multiplication},
     dv_ckt::{ProofRef, PublicInputsRef, TrapdoorRef},
     fr_ckt::FR_LEN,
     fr_ref::FrRef,
 };
-use crate::circuits::sect233k1::curve_ckt::{AffinePointRef, CurvePoint};
-use num_traits::{FromPrimitive, Num};
+use crate::circuits::sect233k1::curve_ckt::AffinePointRef;
+use num_traits::Num;
 
 pub(crate) fn get_fs_challenge(
     commit_p: &AffinePointRef,

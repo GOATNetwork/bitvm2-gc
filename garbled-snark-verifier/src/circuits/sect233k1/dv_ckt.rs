@@ -14,12 +14,7 @@ use super::{
 use crate::circuits::sect233k1::curve_ckt::{
     AffinePoint, CurvePoint, emit_affine_point_is_on_curve, emit_point_add, emit_point_equals,
 };
-use crate::circuits::sect233k1::gf_ckt::{GF_LEN, Gf};
-use num_bigint::BigUint;
-use num_traits::Zero;
-use std::str::FromStr;
-
-const PUBLIC_INPUT_LEN: usize = 2 * FR_LEN;
+use crate::circuits::sect233k1::gf_ckt::GF_LEN;
 
 #[derive(Debug)]
 /// VerifierPayloadRef
@@ -112,11 +107,6 @@ impl TrapdoorRef {
     }
 }
 
-fn u64_to_bits_le(n: u64) -> [bool; 64] {
-    let v: Vec<bool> = (0..64).map(|i| (n >> i) & 1 != 0).collect();
-    v.try_into().unwrap()
-}
-
 pub(crate) fn u8_to_bits_le(n: u8) -> [bool; 8] {
     let v: Vec<bool> = (0..8).map(|i| (n >> i) & 1 != 0).collect();
     v.try_into().unwrap()
@@ -152,7 +142,7 @@ impl VerifierPayloadRef {
 
 /// Proof wires (Lopez–Dahab under test, compressed otherwise).
 #[derive(Debug, Clone)]
-pub struct Proof {
+pub(crate) struct Proof {
     /// commit_p
     pub commit_p: AffinePoint, // commitment to witness folding & quotient
     /// kzg_k
@@ -306,14 +296,6 @@ fn get_fs_challenge<T: CircuitTrait>(
 //     let out_fr: Fr = out_hash_flat[0..FR_LEN].try_into().unwrap();
 //     out_fr
 // }
-
-fn const_biguint_to_labels<T: CircuitTrait>(bld: &mut T, num: FrRef) -> Fr {
-    let num_bits = frref_to_bits(&num);
-    let r: Vec<usize> =
-        num_bits.iter().map(|xi| if *xi { bld.one() } else { bld.zero() }).collect();
-    let r: Fr = r.try_into().unwrap();
-    r
-}
 
 /// Function to compile dvsnark verifier circuit
 pub fn compile_verifier() -> (CircuitAdapter, IndexInfo) {

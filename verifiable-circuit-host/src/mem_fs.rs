@@ -16,6 +16,7 @@ pub struct MemFile {
     cursor: usize,
 }
 
+#[allow(dead_code)]
 impl MemFile {
     pub fn create<S: AsRef<str>>(name: S) -> Result<Self> {
         let fs = get_fs();

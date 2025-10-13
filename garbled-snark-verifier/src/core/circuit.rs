@@ -81,6 +81,7 @@ impl Circuit {
     }
 }
 
+#[cfg(feature = "garbled")]
 #[cfg(test)]
 mod tests {
     use crate::bag::new_wirex;
@@ -91,7 +92,6 @@ mod tests {
     use ark_ec::CurveGroup;
     use ark_ff::{AdditiveGroup, Field};
 
-    #[cfg(feature = "garbled")]
     #[test]
     fn test_selector_circuit_garbled_evaluation() {
         let mut wire_a = new_wirex();
@@ -123,7 +123,6 @@ mod tests {
         assert_eq!(output_label, computed_output_label);
     }
 
-    #[cfg(feature = "garbled")]
     #[test]
     fn test_fq6_mul_montgomery_circuit_garbled_evaluation() {
         let a = Fq6::random();
@@ -140,7 +139,6 @@ mod tests {
         let _ = circuit.garbled_evaluate(&garblings);
     }
 
-    #[cfg(feature = "garbled")]
     #[test]
     fn test_g1_projective_to_affine_montgomery_circuit_garbled_evaluation() {
         let p_projective = G1Projective::random().double();

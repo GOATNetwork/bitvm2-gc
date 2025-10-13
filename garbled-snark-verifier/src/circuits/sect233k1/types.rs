@@ -1,4 +1,4 @@
-use crate::circuits::sect233k1::curve_ckt::{AffinePointRef, CompressedCurvePointRef};
+use crate::circuits::sect233k1::curve_ckt::AffinePointRef;
 use crate::circuits::sect233k1::dv_ckt::{
     ProofRef, PublicInputsRef, TrapdoorRef, VerifierPayloadRef,
 };
@@ -34,7 +34,7 @@ impl<'de> Deserialize<'de> for FrBits {
 }
 
 #[derive(Deserialize)]
-pub struct RawProof {
+pub(crate) struct RawProof {
     pub commit_p: AffinePointRef,
     pub kzg_k: AffinePointRef,
     pub a0: FrBits,
@@ -82,7 +82,7 @@ impl Into<TrapdoorRef> for RawTrapdoor {
     }
 }
 
-pub struct RawVerifierPayload {
+pub(crate) struct RawVerifierPayload {
     pub proof: RawProof,
     pub public_inputs: Vec<RawFr>,
     pub trapdoor: RawTrapdoor,
