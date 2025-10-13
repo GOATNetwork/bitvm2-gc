@@ -188,7 +188,19 @@ pub(crate) fn emit_gf_is_zero<T: CircuitTrait>(bld: &mut T, w: Gf) -> usize {
     bld.xor_wire(acc, one)
 }
 
-#[cfg(all(test, feature = "verify"))]
+/// Check two field elements for equality
+pub(crate) fn emit_gf_equals<T: CircuitTrait>(bld: &mut T, a: &Gf, b: &Gf) -> usize {
+    let mut acc = bld.one();
+    let one = bld.one();
+    for i in 0..GF_LEN {
+        let eq = bld.xor_wire(a[i], b[i]);
+        let eq = bld.xor_wire(eq, one); // NOT
+        acc = bld.and_wire(acc, eq);
+    }
+    acc
+}
+
+#[cfg(test)]
 mod test {
     use std::os::raw::c_void;
 

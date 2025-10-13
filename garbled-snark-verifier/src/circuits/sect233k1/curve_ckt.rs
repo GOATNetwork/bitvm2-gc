@@ -5,13 +5,15 @@ use std::str::FromStr;
 use super::{
     builder::{CircuitTrait, GateOperation, Template},
     gf_ckt::{
-        GF_LEN, Gf, emit_gf_add, emit_gf_decode, emit_gf_halftrace, emit_gf_inv, emit_gf_is_zero,
-        emit_gf_square, emit_gf_trace,
+        GF_LEN, Gf, emit_gf_add, emit_gf_decode, emit_gf_equals, emit_gf_halftrace, emit_gf_inv,
+        emit_gf_is_zero, emit_gf_square, emit_gf_trace,
     },
     gf_mul_ckt::emit_gf_mul,
 };
 use crate::circuits::sect233k1::builder::{CircuitAdapter, Operation};
+use crate::circuits::sect233k1::dv_ckt::u8_to_bits_le;
 use num_bigint::BigUint;
+use serde::Deserialize;
 
 /// Representation of a point, on the xsk233 curve in projective co-ordinates, as wire labels
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
@@ -20,6 +22,35 @@ pub(crate) struct CurvePoint {
     pub s: Gf,
     pub z: Gf,
     pub t: Gf,
+}
+
+/// Representation of a point in Lopez–Dahab affine (λ) coordinates.
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub(crate) struct AffinePoint {
+    pub x: Gf,
+    pub s: Gf,
+}
+
+/// Lopez–Dahab λ coordinates (x, λ(=s)) for a curve point over GF(2^233).
+#[derive(Debug, Deserialize)]
+pub(crate) struct AffinePointRef {
+    pub x: [u8; 30],
+    pub s: [u8; 30],
+}
+
+impl AffinePointRef {
+    pub fn to_bits(&self) -> Vec<bool> {
+        let mut bits = Vec::with_capacity(GF_LEN * 2);
+
+        // Helper to extract 233 little-endian bits from a 30-byte array.
+        let bytes_to_exact_bits = |bytes: &[u8]| -> Vec<bool> {
+            bytes.iter().flat_map(|&byte| u8_to_bits_le(byte)).take(GF_LEN).collect()
+        };
+
+        bits.extend(bytes_to_exact_bits(&self.x));
+        bits.extend(bytes_to_exact_bits(&self.s));
+        bits
+    }
 }
 
 /// Size of a compressed Curve Point is 30 bytes
@@ -228,6 +259,30 @@ pub(crate) fn emit_xsk233_decode<T: CircuitTrait>(
     (CurvePoint { x, s, z: gf_one(bld), t: x }, success)
 }
 
+/// Converts an affine Lopez–Dahab point to projective representation and validates it.
+/// Verify that (x, s) lies on the curve: s^2 + x*s == x^4 + 1.
+pub(crate) fn emit_affine_point_is_on_curve<T: CircuitTrait>(
+    bld: &mut T,
+    p: &AffinePoint,
+) -> (CurvePoint, usize) {
+    let one = gf_one(bld);
+    let lhs = {
+        let s_squared = emit_gf_square(bld, &p.s);
+        let s_mul_x = emit_gf_mul(bld, &p.s, &p.x);
+        emit_gf_add(bld, &s_squared, &s_mul_x)
+    };
+    let rhs = {
+        let x_squared = emit_gf_square(bld, &p.x);
+        let x_fourth = emit_gf_square(bld, &x_squared);
+        emit_gf_add(bld, &x_fourth, &one)
+    };
+
+    let is_on_curve = emit_gf_equals(bld, &lhs, &rhs);
+    let projective_p = CurvePoint { x: p.x, s: p.s, z: one, t: p.x };
+
+    (projective_p, is_on_curve)
+}
+
 // Generate Circuit Configuration for Point Addition
 pub(crate) fn template_emit_point_add() -> Template {
     println!("Initializing template_emit_point_add");
@@ -298,7 +353,7 @@ pub(crate) fn template_emit_point_add() -> Template {
     }
 }
 
-#[cfg(all(test, feature = "verify"))]
+#[cfg(test)]
 mod test {
     use std::{os::raw::c_void, str::FromStr, time::Instant};
 

@@ -8,10 +8,9 @@ use std::{os::raw::c_void, str::FromStr};
 use num_bigint::BigUint;
 use num_traits::One;
 use num_traits::ToPrimitive;
-#[cfg(feature = "verify")]
 use xs233_sys::{xsk233_neutral, xsk233_point};
 
-use super::curve_ckt::CompressedCurvePointRef;
+use super::curve_ckt::{AffinePointRef, CompressedCurvePointRef};
 use super::gf_ref::gfref_square;
 use super::gf_ref::{GfRef, gfref_add, gfref_mul, gfref_one};
 
@@ -61,7 +60,6 @@ impl CurvePointRef {
     }
 
     // Decode from extern crate point type `xsk233_point`
-    #[cfg(feature = "verify")]
     pub(crate) fn from_xsk233_point(w: &xsk233_point) -> CurvePointRef {
         let w = w.opaque;
         fn from_limbs(limbs: &[u64]) -> BigUint {
@@ -82,19 +80,21 @@ impl CurvePointRef {
         CurvePointRef { x, s, z, t }
     }
 
-    /// Decode from byte representation of compressed curve point
-    #[cfg(feature = "verify")]
-    pub(crate) fn from_compressed_point(src: &CompressedCurvePointRef) -> (Self, bool) {
+    /// Decode from byte representation of affine curve point
+    pub(crate) fn from_affine_point(src: &AffinePointRef) -> (Self, bool) {
         unsafe {
-            let mut src = *src;
-            let mut pt2 = xsk233_neutral;
-            let success = xs233_sys::xsk233_decode(&mut pt2, src.as_mut_ptr() as *mut c_void);
-            let pt_ref = Self::from_xsk233_point(&pt2);
+            let mut pt = xsk233_neutral;
+            let success = xs233_sys::xsk233_from_affine(
+                &mut pt,
+                src.x.as_ptr() as *const c_void,
+                src.s.as_ptr() as *const c_void,
+            );
+
+            let pt_ref = Self::from_xsk233_point(&pt);
             (pt_ref, success != 0)
         }
     }
 
-    #[cfg(feature = "verify")]
     pub(crate) fn to_xsk233_point(&self) -> xsk233_point {
         fn to_limbs(b: &BigUint) -> [u64; 4] {
             debug_assert!(b.bits() <= 233, "coordinate exceeds 233 bits");
@@ -206,7 +206,6 @@ pub(crate) fn point_frob(p1: &CurvePointRef) -> CurvePointRef {
     p3
 }
 
-#[cfg(feature = "verify")]
 pub(crate) fn point_scalar_multiplication(k: &GfRef, point_p: &CurvePointRef) -> CurvePointRef {
     fn fr_to_le_bytes(fr: &BigUint) -> Vec<u8> {
         let limbs = fr.to_u64_digits();
@@ -238,7 +237,7 @@ pub(crate) fn point_scalar_multiplication(k: &GfRef, point_p: &CurvePointRef) ->
     }
 }
 
-#[cfg(all(test, feature = "verify"))]
+#[cfg(test)]
 mod xsys_test {
     use std::str::FromStr;
 

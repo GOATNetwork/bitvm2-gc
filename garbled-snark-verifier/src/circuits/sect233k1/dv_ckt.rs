@@ -1,14 +1,9 @@
 //! Binary circuit implementation of DV Verifier Program
 //!
-use std::str::FromStr;
-
 use super::{
     blake3_ckt,
     builder::{CircuitAdapter, CircuitTrait},
-    curve_ckt::{
-        CompressedCurvePoint, CompressedCurvePointRef, CurvePoint, emit_point_add,
-        emit_point_equals, emit_xsk233_decode,
-    },
+    curve_ckt::AffinePointRef,
     curve_scalar_mul_ckt::point_scalar_mul::emit_mul_windowed_tau,
     fr_ckt::{
         FR_LEN, Fr, const_mod_n, emit_fr_add as fr_add, emit_fr_mul as fr_mul,
@@ -16,6 +11,13 @@ use super::{
     },
     fr_ref::{FrRef, frref_to_bits},
 };
+use crate::circuits::sect233k1::curve_ckt::{
+    AffinePoint, CurvePoint, emit_affine_point_is_on_curve, emit_point_add, emit_point_equals,
+};
+use crate::circuits::sect233k1::gf_ckt::{GF_LEN, Gf};
+use num_bigint::BigUint;
+use num_traits::Zero;
+use std::str::FromStr;
 
 const PUBLIC_INPUT_LEN: usize = 2 * FR_LEN;
 
@@ -34,33 +36,30 @@ pub struct VerifierPayloadRef {
 /// ProofRef
 pub struct ProofRef {
     /// commit_p
-    pub commit_p: CompressedCurvePointRef, // commitment to witness folding & quotient
+    pub commit_p: AffinePointRef, // commitment to witness folding & quotient
     /// kzg_k
-    pub kzg_k: CompressedCurvePointRef, // combined KZG evaluation proof
+    pub kzg_k: AffinePointRef, // combined KZG evaluation proof
     /// a0
     pub a0: FrRef,
     /// b0
     pub b0: FrRef,
 }
 
-const PROOF_BIT_LEN: usize = 944;
+const PROOF_BIT_LEN: usize = GF_LEN * 2 * 2 + FR_LEN * 2;
 const PUBINP_BIT_LEN: usize = 2 * FR_LEN;
 const TRAPDOOR_BIT_LEN: usize = 696;
 
 pub(crate) const WITNESS_BIT_LEN: usize = PROOF_BIT_LEN + PUBINP_BIT_LEN + TRAPDOOR_BIT_LEN;
 
 impl ProofRef {
-    // (2 * 30 + 2 * 29)*8 = 944
-    /// Serialize ProofRef
+    /// Serialize ProofRef into Lopez–Dahab affine coordinates
     pub fn to_bits(&self) -> [bool; PROOF_BIT_LEN] {
-        let mut commit_p: Vec<bool> =
-            self.commit_p.iter().flat_map(|x| u8_to_bits_le(*x).to_vec()).collect();
-        let mut kzg_k: Vec<bool> =
-            self.kzg_k.iter().flat_map(|x| u8_to_bits_le(*x).to_vec()).collect();
+        let mut commit_p = self.commit_p.to_bits();
+        let mut kzg_k = self.kzg_k.to_bits();
         let mut a0 = frref_to_bits(&self.a0).to_vec();
         let mut b0 = frref_to_bits(&self.b0).to_vec();
 
-        let mut witness: Vec<bool> = Vec::new();
+        let mut witness = vec![];
 
         witness.append(&mut commit_p);
         witness.append(&mut kzg_k);
@@ -104,7 +103,7 @@ impl TrapdoorRef {
         let mut delta = frref_to_bits(&self.delta).to_vec();
         let mut epsilon = frref_to_bits(&self.epsilon).to_vec();
 
-        let mut witness: Vec<bool> = Vec::new();
+        let mut witness = vec![];
         witness.append(&mut tau);
         witness.append(&mut delta);
         witness.append(&mut epsilon);
@@ -118,7 +117,7 @@ fn u64_to_bits_le(n: u64) -> [bool; 64] {
     v.try_into().unwrap()
 }
 
-fn u8_to_bits_le(n: u8) -> [bool; 8] {
+pub(crate) fn u8_to_bits_le(n: u8) -> [bool; 8] {
     let v: Vec<bool> = (0..8).map(|i| (n >> i) & 1 != 0).collect();
     v.try_into().unwrap()
 }
@@ -127,30 +126,10 @@ impl VerifierPayloadRef {
     fn get_indexes(bld: &mut CircuitAdapter) -> (Proof, PublicInputs, Trapdoor) {
         let secrets = Trapdoor { tau: bld.fresh(), delta: bld.fresh(), epsilon: bld.fresh() };
         let rpin = PublicInputs { public_inputs: [bld.fresh(), bld.fresh()] };
-        let commit_p = {
-            let r: [usize; 240] = bld.fresh();
-            let r: Vec<[usize; 8]> = r
-                .chunks(8)
-                .map(|x| {
-                    let y: [usize; 8] = x.try_into().unwrap();
-                    y
-                })
-                .collect();
-            let r: [[usize; 8]; 30] = r.try_into().unwrap();
-            r
-        };
-        let kzg_k = {
-            let r: [usize; 240] = bld.fresh();
-            let r: Vec<[usize; 8]> = r
-                .chunks(8)
-                .map(|x| {
-                    let y: [usize; 8] = x.try_into().unwrap();
-                    y
-                })
-                .collect();
-            let r: [[usize; 8]; 30] = r.try_into().unwrap();
-            r
-        };
+
+        let commit_p = AffinePoint { x: bld.fresh(), s: bld.fresh() };
+        let kzg_k = AffinePoint { x: bld.fresh(), s: bld.fresh() };
+
         let proof = Proof { commit_p, kzg_k, a0: bld.fresh(), b0: bld.fresh() };
         (proof, rpin, secrets)
     }
@@ -161,7 +140,7 @@ impl VerifierPayloadRef {
         let mut public_inputs = self.public_input.to_bits().to_vec();
         let mut proof_bits = self.proof.to_bits().to_vec();
 
-        let mut witness: Vec<bool> = Vec::new();
+        let mut witness = vec![];
 
         witness.append(&mut secret_bits);
         witness.append(&mut public_inputs);
@@ -171,13 +150,13 @@ impl VerifierPayloadRef {
     }
 }
 
-/// Proof
-#[derive(Debug)]
+/// Proof wires (Lopez–Dahab under test, compressed otherwise).
+#[derive(Debug, Clone)]
 pub struct Proof {
     /// commit_p
-    pub commit_p: CompressedCurvePoint, // commitment to witness folding & quotient
+    pub commit_p: AffinePoint, // commitment to witness folding & quotient
     /// kzg_k
-    pub kzg_k: CompressedCurvePoint, // combined KZG evaluation proof
+    pub kzg_k: AffinePoint, // combined KZG evaluation proof
     /// a0
     pub a0: Fr,
     /// b0
@@ -237,13 +216,21 @@ fn u8_arr_to_labels_le<T: CircuitTrait>(bld: &mut T, ns: &[u8]) -> Vec<[usize; 8
 
 fn get_fs_challenge<T: CircuitTrait>(
     bld: &mut T,
-    commit_p: CompressedCurvePoint,
+    commit_p: AffinePoint,
     public_inputs: [Fr; 2],
     srs_bytes: Vec<u8>,
     circuit_info_bytes: Vec<u8>,
 ) -> Fr {
-    // convert Vec<u8> into its usize version
-    let witness_commitment_hash = blake3_ckt::hash(bld, commit_p.to_vec());
+    // convert affine (x, λ) into byte-aligned representation (30 bytes per coordinate)
+    let zero = bld.zero();
+    let mut commit_bits = commit_p.x.to_vec();
+    commit_bits.resize(240, zero);
+    commit_bits.extend_from_slice(&commit_p.s);
+    commit_bits.resize(480, zero);
+
+    let commit_p_u8 = commit_bits.chunks(8).map(|chunk| chunk.try_into().unwrap()).collect();
+
+    let witness_commitment_hash = blake3_ckt::hash(bld, commit_p_u8);
 
     let public_inputs_hash = {
         let mut buf = Vec::new();
@@ -365,8 +352,9 @@ pub(crate) fn verify<T: CircuitTrait>(
     public_inputs: PublicInputs,
     secrets: Trapdoor,
 ) -> usize {
-    let (proof_commit_p, decode_proof_commit_p_success) = emit_xsk233_decode(bld, &proof.commit_p);
-    let (proof_kzg_k, decode_proof_kzg_k_success) = emit_xsk233_decode(bld, &proof.kzg_k);
+    let (proof_commit_p, is_proof_commit_p_on_curve) =
+        emit_affine_point_is_on_curve(bld, &proof.commit_p);
+    let (proof_kzg_k, is_proof_kzg_k_on_curve) = emit_affine_point_is_on_curve(bld, &proof.kzg_k);
 
     let one_wire = bld.one();
     let fr_modulus = const_mod_n(bld);
@@ -374,14 +362,7 @@ pub(crate) fn verify<T: CircuitTrait>(
     let proof_b0_invalid = ge_unsigned(bld, &proof.b0, &fr_modulus);
     let proof_scalars_invalid = bld.or_wire(proof_a0_invalid, proof_b0_invalid); // either invalid
     let proof_scalars_valid = bld.xor_wire(proof_scalars_invalid, one_wire); // both scalars valid
-    let decoded_points_valid =
-        bld.and_wire(decode_proof_commit_p_success, decode_proof_kzg_k_success); // both decodings ok
-
-    // let public_inputs_1 = get_pub_hash_from_raw_pub_inputs(bld, &public_inputs);
-    // let public_inputs_0_vk_const = {
-    //     let num = FrRef::from_str(vk).unwrap(); // vk
-    //     const_biguint_to_labels(bld, num)
-    // };
+    let decoded_points_valid = bld.and_wire(is_proof_commit_p_on_curve, is_proof_kzg_k_on_curve); // both points valid
 
     let fs_challenge_alpha =
         get_fs_challenge(bld, proof.commit_p, public_inputs.public_inputs.clone(), vec![], vec![]);
@@ -428,20 +409,21 @@ pub(crate) fn verify<T: CircuitTrait>(
 mod test {
     use std::str::FromStr;
 
-    #[cfg(feature = "verify")]
+    use super::{AffinePoint, get_fs_challenge};
+    use crate::circuits::sect233k1::curve_ckt::AffinePointRef;
     use crate::circuits::sect233k1::dv_ref;
     use crate::circuits::sect233k1::{
         builder::{CircuitAdapter, CircuitTrait},
+        curve_ref::CurvePointRef,
         dv_ckt::{
             ProofRef, PublicInputsRef, TrapdoorRef, VerifierPayloadRef, compile_verifier,
-            evaluate_verifier, u8_to_bits_le,
+            evaluate_verifier,
         },
         fr_ckt::Fr,
         fr_ref::{FrRef, frref_to_bits},
+        gf_ref::gfref_to_bits,
     };
     use num_bigint::BigUint;
-
-    use super::get_fs_challenge;
 
     #[test]
     #[ignore] // ignore because of being long running
@@ -461,26 +443,37 @@ mod test {
             "2880039972651592580549544494658966441531834740391411845954153637005104",
         )
         .unwrap();
-
-        let commit_p: [u8; 30] = [
-            168, 213, 19, 178, 72, 50, 17, 173, 121, 162, 3, 162, 60, 63, 237, 145, 179, 165, 165,
-            135, 87, 158, 208, 2, 246, 88, 48, 98, 79, 1,
-        ];
-        let kzg_k: [u8; 30] = [
-            231, 54, 75, 155, 102, 116, 56, 195, 20, 172, 98, 121, 191, 219, 4, 75, 2, 26, 23, 57,
-            159, 205, 208, 26, 222, 157, 94, 111, 97, 0,
-        ];
+        let commit_p = AffinePointRef {
+            x: [
+                130, 16, 132, 245, 115, 118, 110, 233, 235, 58, 5, 190, 187, 230, 138, 225, 149,
+                231, 32, 45, 41, 29, 94, 89, 248, 158, 54, 19, 86, 0,
+            ],
+            s: [
+                93, 74, 178, 168, 173, 38, 101, 88, 181, 49, 78, 207, 89, 78, 130, 42, 242, 245,
+                88, 5, 253, 250, 54, 182, 177, 249, 82, 57, 147, 0,
+            ],
+        };
+        let kzg_k = AffinePointRef {
+            x: [
+                36, 69, 122, 22, 89, 79, 186, 56, 138, 8, 183, 193, 186, 98, 21, 62, 9, 143, 173,
+                24, 89, 195, 126, 73, 241, 118, 71, 103, 223, 0,
+            ],
+            s: [
+                12, 122, 106, 168, 104, 248, 117, 18, 171, 218, 85, 138, 31, 80, 250, 230, 176,
+                136, 74, 129, 137, 78, 181, 48, 88, 180, 21, 139, 39, 1,
+            ],
+        };
         let a0 = FrRef::from_str(
-            "2787213486297295799494233727790939750249020822604491580499143810600903",
+            "1858232303623355521215721639157430371979542022979851183514844283900649",
         )
         .unwrap();
         let b0 = FrRef::from_str(
-            "1072602516393469765221017154198322485985591404674386889774270216915229",
+            "3045644831070136055562137919853497607898653327126781771795842528553732",
         )
         .unwrap();
 
         let public_inputs = [
-            FrRef::from_str("10964902444291521893664765711676021715483874668026528518811070427510")
+            FrRef::from_str("9487159538405616582219466419827834782293111327936747259752845028149")
                 .unwrap(),
             FrRef::from_str("22596372664815072823112258091854569627353949811861389086305200952659")
                 .unwrap(),
@@ -495,8 +488,8 @@ mod test {
 
         let stats = bld.gate_counts();
         println!("{stats}");
-
         println!("label_info {:?}", index_info);
+
         let passed_val = evaluate_verifier(&mut bld, witness, index_info.output_index);
         assert!(passed_val, "verification failed");
     }
@@ -508,31 +501,43 @@ mod test {
 
         // Prepare VerifierPayloadRef
         let tau = FrRef::from_str(
-            "2472308663339583895498147954222995510858962633570970238431638506807949",
+            "490782060457092443021184404188169115419401325819878347174959236155604",
         )
         .unwrap();
         let delta = FrRef::from_str(
-            "2194316856053929337106370775922152179496555179813841848311939628788959",
+            "409859792668509615016679153954612494269657711226760893245268993658466",
         )
         .unwrap();
         let epsilon = FrRef::from_str(
-            "1154785560216858119874588837659951154401760642599649999302917233356517",
+            "2880039972651592580549544494658966441531834740391411845954153637005104",
         )
         .unwrap();
-        let commit_p: [u8; 30] = [
-            145, 195, 86, 210, 230, 219, 176, 179, 148, 236, 194, 133, 166, 240, 60, 111, 152, 154,
-            62, 190, 248, 224, 197, 250, 131, 57, 145, 237, 213, 7,
-        ];
-        let kzg_k: [u8; 30] = [
-            239, 6, 89, 163, 169, 250, 184, 159, 153, 181, 70, 47, 167, 56, 153, 92, 52, 197, 196,
-            244, 10, 197, 235, 26, 46, 57, 18, 194, 56, 0,
-        ];
+        let commit_p = AffinePointRef {
+            x: [
+                130, 16, 132, 245, 115, 118, 110, 233, 235, 58, 5, 190, 187, 230, 138, 225, 149,
+                231, 32, 45, 41, 29, 94, 89, 248, 158, 54, 19, 86, 0,
+            ],
+            s: [
+                93, 74, 178, 168, 173, 38, 101, 88, 181, 49, 78, 207, 89, 78, 130, 42, 242, 245,
+                88, 5, 253, 250, 54, 182, 177, 249, 82, 57, 147, 0,
+            ],
+        };
+        let kzg_k = AffinePointRef {
+            x: [
+                36, 69, 122, 22, 89, 79, 186, 56, 138, 8, 183, 193, 186, 98, 21, 62, 9, 143, 173,
+                24, 89, 195, 126, 73, 241, 118, 71, 103, 223, 0,
+            ],
+            s: [
+                12, 122, 106, 168, 104, 248, 117, 18, 171, 218, 85, 138, 31, 80, 250, 230, 176,
+                136, 74, 129, 137, 78, 181, 48, 88, 180, 21, 139, 39, 1,
+            ],
+        };
         let a0 = FrRef::from_str(
-            "3042729463975785669077695901360320813980996043134603468597671969223884",
+            "1858232303623355521215721639157430371979542022979851183514844283900649",
         )
         .unwrap();
         let b0 = FrRef::from_str(
-            "3099898550361810144312020021372781014260137110595159844100103797269587",
+            "3045644831070136055562137919853497607898653327126781771795842528553732",
         )
         .unwrap();
 
@@ -559,22 +564,10 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "verify")]
     fn test_get_fs_challenge() {
         let mut bld = CircuitAdapter::default();
 
-        let commit_p = {
-            let r: [usize; 240] = bld.fresh();
-            let r: Vec<[usize; 8]> = r
-                .chunks(8)
-                .map(|x| {
-                    let y: [usize; 8] = x.try_into().unwrap();
-                    y
-                })
-                .collect();
-            let r: [[usize; 8]; 30] = r.try_into().unwrap();
-            r
-        };
+        let commit_p = AffinePoint { x: bld.fresh(), s: bld.fresh() };
 
         let pub0: Fr = bld.fresh();
         let pub1: Fr = bld.fresh();
@@ -583,54 +576,43 @@ mod test {
         let challenge_labels = get_fs_challenge(&mut bld, commit_p, pubs, vec![], vec![]);
 
         let mut witness = Vec::new();
-        let commit_p: [u8; 30] = [
-            149, 102, 73, 129, 207, 1, 170, 225, 187, 192, 126, 126, 208, 3, 54, 148, 170, 148,
-            114, 143, 39, 215, 251, 62, 10, 32, 20, 146, 207, 0,
-        ];
-        let mut commit_p: Vec<bool> =
-            commit_p.iter().flat_map(|x| u8_to_bits_le(*x).to_vec()).collect();
-        let mut pub0 = frref_to_bits(
-            &BigUint::from_str(
-                "7527402554317099476086310993202889463751940730940407143885949231928",
-            )
-            .unwrap(),
-        )
-        .to_vec();
-        let mut pub1 = frref_to_bits(
-            &BigUint::from_str(
-                "19542051593079647282099705468191403958371264520862632234952945594121",
-            )
-            .unwrap(),
-        )
-        .to_vec();
+        let commit_p_ref = AffinePointRef {
+            x: [
+                130, 249, 227, 133, 241, 141, 173, 8, 217, 155, 78, 16, 150, 181, 1, 85, 184, 26,
+                181, 124, 96, 138, 22, 114, 229, 195, 239, 193, 112, 1,
+            ],
+            s: [
+                78, 81, 53, 143, 80, 62, 204, 162, 70, 108, 219, 212, 41, 18, 17, 195, 99, 212,
+                133, 145, 119, 185, 20, 230, 218, 109, 147, 98, 173, 1,
+            ],
+        };
+        let (commit_ref, success) = CurvePointRef::from_affine_point(&commit_p_ref);
+        assert!(success);
 
-        witness.append(&mut commit_p);
-        witness.append(&mut pub0);
-        witness.append(&mut pub1);
+        let mut commit_x_bits = gfref_to_bits(&commit_ref.x).to_vec();
+        let mut commit_y_bits = gfref_to_bits(&commit_ref.s).to_vec();
+
+        let public_inputs: Vec<_> = [
+            "7527402554317099476086310993202889463751940730940407143885949231928",
+            "19542051593079647282099705468191403958371264520862632234952945594121",
+        ]
+        .iter()
+        .map(|s| BigUint::from_str(s).unwrap())
+        .collect();
+        let mut public_inputs_bits =
+            public_inputs.iter().flat_map(|fr| frref_to_bits(fr)).collect::<Vec<_>>();
+
+        witness.append(&mut commit_x_bits);
+        witness.append(&mut commit_y_bits);
+        witness.append(&mut public_inputs_bits);
 
         let wires = bld.eval_gates(&witness);
         let challenge_val: BigUint = challenge_labels
             .iter()
             .enumerate()
             .fold(BigUint::ZERO, |acc, (i, &w_id)| acc + (BigUint::from(wires[w_id] as u16) << i));
-
-        let challenge_val_ref = {
-            let commit_p = [
-                149, 102, 73, 129, 207, 1, 170, 225, 187, 192, 126, 126, 208, 3, 54, 148, 170, 148,
-                114, 143, 39, 215, 251, 62, 10, 32, 20, 146, 207, 0,
-            ];
-            let public_inputs = vec![
-                BigUint::from_str(
-                    "7527402554317099476086310993202889463751940730940407143885949231928",
-                )
-                .unwrap(),
-                BigUint::from_str(
-                    "19542051593079647282099705468191403958371264520862632234952945594121",
-                )
-                .unwrap(),
-            ];
-            dv_ref::get_fs_challenge(commit_p, public_inputs, vec![], vec![])
-        };
+        let challenge_val_ref =
+            dv_ref::get_fs_challenge(&commit_p_ref, &public_inputs, vec![], vec![]);
 
         assert_eq!(challenge_val, challenge_val_ref);
     }

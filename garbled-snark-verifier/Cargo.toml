@@ -26,12 +26,12 @@ aes = { version = "0.8.4", optional = true }
 ark-serialize = { version = "0.5.0", default-features = false, features = ["derive"] }
 
 bincode = { workspace = true }
-xs233-sys = { version = "0.2.0", optional = true }
 rayon = "1.10.0"
 
 [dev-dependencies]
 ark-groth16 = "0.5.0"
 ark-std = { version = "0.5.0", default-features = false, features = ["print-trace"] }
+xs233-sys = { git = "https://github.com/blake-pro/xs233-sys.git" }
 
 [features]
 default = []
@@ -41,4 +41,3 @@ _poseidon2 = ["poseidon2"]
 _blake3 = []
 _aes = ["aes"]
 _getrandom = ["getrandom/custom"]
-verify = ["xs233-sys"]

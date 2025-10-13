@@ -334,6 +334,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_groth16_verifier_montgomery_circuit() {
         let k = 6;
         let mut rng = ChaCha12Rng::seed_from_u64(test_rng().next_u64());

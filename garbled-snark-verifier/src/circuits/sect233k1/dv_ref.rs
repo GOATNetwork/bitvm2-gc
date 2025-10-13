@@ -3,8 +3,6 @@
 //!
 use std::str::FromStr;
 
-use num_traits::{FromPrimitive, Num};
-
 use super::{
     curve_ckt::CompressedCurvePointRef,
     curve_ref::{CurvePointRef, point_add, point_equals, point_scalar_multiplication},
@@ -12,14 +10,29 @@ use super::{
     fr_ckt::FR_LEN,
     fr_ref::FrRef,
 };
+use crate::circuits::sect233k1::curve_ckt::{AffinePointRef, CurvePoint};
+use num_traits::{FromPrimitive, Num};
 
 pub(crate) fn get_fs_challenge(
-    commit_p: CompressedCurvePointRef,
-    public_inputs: Vec<FrRef>,
+    commit_p: &AffinePointRef,
+    public_inputs: &[FrRef],
     srs_bytes: Vec<u8>,
     circuit_info_bytes: Vec<u8>,
 ) -> FrRef {
-    let witness_commitment_hash = { blake3::hash(commit_p.as_ref()) };
+    let witness_commitment_hash = {
+        let (curve_point, success) = CurvePointRef::from_affine_point(commit_p);
+        assert!(success, "failed to decode commitment point");
+
+        let mut affine_bytes = Vec::with_capacity(60);
+        let mut x_bytes = curve_point.x.to_bytes_le();
+        x_bytes.resize(30, 0);
+        let mut y_bytes = curve_point.s.to_bytes_le();
+        y_bytes.resize(30, 0);
+        affine_bytes.extend_from_slice(&x_bytes);
+        affine_bytes.extend_from_slice(&y_bytes);
+
+        blake3::hash(&affine_bytes)
+    };
 
     let public_inputs_hash = {
         let mut buf = Vec::new();
@@ -104,9 +117,8 @@ pub(crate) fn verify(
     secrets: TrapdoorRef,
 ) -> bool {
     let (proof_commit_p, decode_proof_commit_p_success) =
-        CurvePointRef::from_compressed_point(&proof.commit_p);
-    let (proof_kzg_k, decode_proof_kzg_k_success) =
-        CurvePointRef::from_compressed_point(&proof.kzg_k);
+        CurvePointRef::from_affine_point(&proof.commit_p);
+    let (proof_kzg_k, decode_proof_kzg_k_success) = CurvePointRef::from_affine_point(&proof.kzg_k);
     let n = FrRef::from_str_radix(MOD_HEX, 16).unwrap();
     let decode_scalars_success = proof.a0 < n && proof.b0 < n;
 
@@ -114,7 +126,7 @@ pub(crate) fn verify(
     // let public_inputs_0_vk_const = FrRef::from_str(ziren_vk).unwrap(); // vk
 
     let fs_challenge_alpha =
-        get_fs_challenge(proof.commit_p, public_inputs.public_inputs.to_vec(), vec![], vec![]);
+        get_fs_challenge(&proof.commit_p, &public_inputs.public_inputs, vec![], vec![]);
 
     let i0 = {
         let t0 = fr_mul(&public_inputs.public_inputs[1], &fs_challenge_alpha);
@@ -154,6 +166,7 @@ pub(crate) fn verify(
 mod test {
     use super::super::fr_ref::FrRef;
     use super::{ProofRef, PublicInputsRef, TrapdoorRef, verify};
+    use crate::circuits::sect233k1::curve_ckt::AffinePointRef;
     use std::str::FromStr;
 
     #[test]
@@ -175,20 +188,32 @@ mod test {
         };
 
         let proof = ProofRef {
-            commit_p: [
-                168, 213, 19, 178, 72, 50, 17, 173, 121, 162, 3, 162, 60, 63, 237, 145, 179, 165,
-                165, 135, 87, 158, 208, 2, 246, 88, 48, 98, 79, 1,
-            ],
-            kzg_k: [
-                231, 54, 75, 155, 102, 116, 56, 195, 20, 172, 98, 121, 191, 219, 4, 75, 2, 26, 23,
-                57, 159, 205, 208, 26, 222, 157, 94, 111, 97, 0,
-            ],
+            commit_p: AffinePointRef {
+                x: [
+                    130, 16, 132, 245, 115, 118, 110, 233, 235, 58, 5, 190, 187, 230, 138, 225,
+                    149, 231, 32, 45, 41, 29, 94, 89, 248, 158, 54, 19, 86, 0,
+                ],
+                s: [
+                    93, 74, 178, 168, 173, 38, 101, 88, 181, 49, 78, 207, 89, 78, 130, 42, 242,
+                    245, 88, 5, 253, 250, 54, 182, 177, 249, 82, 57, 147, 0,
+                ],
+            },
+            kzg_k: AffinePointRef {
+                x: [
+                    36, 69, 122, 22, 89, 79, 186, 56, 138, 8, 183, 193, 186, 98, 21, 62, 9, 143,
+                    173, 24, 89, 195, 126, 73, 241, 118, 71, 103, 223, 0,
+                ],
+                s: [
+                    12, 122, 106, 168, 104, 248, 117, 18, 171, 218, 85, 138, 31, 80, 250, 230, 176,
+                    136, 74, 129, 137, 78, 181, 48, 88, 180, 21, 139, 39, 1,
+                ],
+            },
             a0: FrRef::from_str(
-                "2787213486297295799494233727790939750249020822604491580499143810600903",
+                "1858232303623355521215721639157430371979542022979851183514844283900649",
             )
             .unwrap(),
             b0: FrRef::from_str(
-                "1072602516393469765221017154198322485985591404674386889774270216915229",
+                "3045644831070136055562137919853497607898653327126781771795842528553732",
             )
             .unwrap(),
         };
@@ -196,7 +221,7 @@ mod test {
         let rpin = PublicInputsRef {
             public_inputs: [
                 FrRef::from_str(
-                    "10964902444291521893664765711676021715483874668026528518811070427510",
+                    "9487159538405616582219466419827834782293111327936747259752845028149",
                 )
                 .unwrap(),
                 FrRef::from_str(
@@ -228,20 +253,32 @@ mod test {
         };
 
         let proof = ProofRef {
-            commit_p: [
-                168, 213, 19, 178, 72, 50, 17, 173, 121, 162, 3, 162, 60, 63, 237, 145, 179, 165,
-                165, 135, 87, 158, 208, 2, 246, 88, 48, 98, 79, 1,
-            ],
-            kzg_k: [
-                231, 54, 75, 155, 102, 116, 56, 195, 20, 172, 98, 121, 191, 219, 4, 75, 2, 26, 23,
-                57, 159, 205, 208, 26, 222, 157, 94, 111, 97, 0,
-            ],
+            commit_p: AffinePointRef {
+                x: [
+                    130, 16, 132, 245, 115, 118, 110, 233, 235, 58, 5, 190, 187, 230, 138, 225,
+                    149, 231, 32, 45, 41, 29, 94, 89, 248, 158, 54, 19, 86, 0,
+                ],
+                s: [
+                    93, 74, 178, 168, 173, 38, 101, 88, 181, 49, 78, 207, 89, 78, 130, 42, 242,
+                    245, 88, 5, 253, 250, 54, 182, 177, 249, 82, 57, 147, 0,
+                ],
+            },
+            kzg_k: AffinePointRef {
+                x: [
+                    36, 69, 122, 22, 89, 79, 186, 56, 138, 8, 183, 193, 186, 98, 21, 62, 9, 143,
+                    173, 24, 89, 195, 126, 73, 241, 118, 71, 103, 223, 0,
+                ],
+                s: [
+                    12, 122, 106, 168, 104, 248, 117, 18, 171, 218, 85, 138, 31, 80, 250, 230, 176,
+                    136, 74, 129, 137, 78, 181, 48, 88, 180, 21, 139, 39, 1,
+                ],
+            },
             a0: FrRef::from_str(
-                "1787213486297295799494233727790939750249020822604491580499143810600903",
+                "1858232303623355521215721639157430371979542022979851183514844283900649",
             )
             .unwrap(),
             b0: FrRef::from_str(
-                "1072602516393469765221017154198322485985591404674386889774270216915229",
+                "3045644831070136055562137919853497607898653327126781771795842528553732",
             )
             .unwrap(),
         };

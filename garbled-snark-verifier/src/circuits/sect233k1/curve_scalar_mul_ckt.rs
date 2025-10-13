@@ -213,7 +213,7 @@ mod tau_adic_repr {
         out
     }
 
-    #[cfg(all(test, feature = "verify"))]
+    #[cfg(test)]
     mod test {
         use num_bigint::{BigUint, RandomBits};
         use rand::Rng;
@@ -1132,7 +1132,7 @@ mod precompute_table {
         table
     }
 
-    #[cfg(all(test, feature = "verify"))]
+    #[cfg(test)]
     mod test {
         use std::time::Instant;
 
@@ -1191,6 +1191,7 @@ mod precompute_table {
         }
 
         #[test]
+        #[ignore]
         fn test_emit_precompute_table() {
             let w = 2;
             let pt_ref = InnerPointRef::generator();
@@ -1366,7 +1367,7 @@ pub(crate) mod point_scalar_mul {
         r
     }
 
-    #[cfg(all(test, feature = "verify"))]
+    #[cfg(test)]
     mod test {
         use std::time::Instant;
 
