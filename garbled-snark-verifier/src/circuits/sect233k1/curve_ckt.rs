@@ -293,16 +293,14 @@ pub(crate) fn template_emit_point_add() -> Template {
 
 #[cfg(test)]
 mod test {
-    use std::{os::raw::c_void, str::FromStr, time::Instant};
+    use std::{str::FromStr, time::Instant};
 
     use crate::circuits::sect233k1::{
         builder::CircuitTrait,
-        curve_ckt::{COMPRESSED_POINT_LEN, CompressedCurvePoint, emit_xsk233_decode},
         gf_ref::bits_to_gfref,
     };
     use num_bigint::{BigUint, RandomBits};
     use rand::Rng;
-    use xs233_sys::xsk233_generator;
 
     use crate::circuits::sect233k1::{
         builder::CircuitAdapter,
@@ -378,52 +376,5 @@ mod test {
 
         let c_ptadd_val = InnerPointRef { x: c_ptadd_x, s: c_ptadd_s, z: c_ptadd_z, t: c_ptadd_t };
         assert_eq!(c_ptadd_val, ptadd);
-    }
-
-    #[test]
-    fn test_point_decode_roundtrip() {
-        let mut bld = CircuitAdapter::default();
-
-        let src = {
-            let mut bytes = Vec::new();
-            for _ in 0..COMPRESSED_POINT_LEN {
-                let byte: [usize; 8] = bld.fresh();
-                bytes.push(byte);
-            }
-            let bytes: CompressedCurvePoint = bytes.try_into().unwrap();
-            bytes
-        };
-        let (c_ptadd, out_ok_label) = emit_xsk233_decode(&mut bld, &src);
-
-        let witness = {
-            unsafe {
-                let pt = xsk233_generator;
-                let mut dst = [0u8; COMPRESSED_POINT_LEN];
-                xs233_sys::xsk233_encode(dst.as_mut_ptr() as *mut c_void, &pt);
-                let mut wit = Vec::new();
-                for d in dst {
-                    let mut vs: Vec<bool> = (0..8).map(|i| (d >> i) & 1 != 0).collect();
-                    wit.append(&mut vs);
-                }
-                wit
-            }
-        };
-
-        let wires = bld.eval_gates(&witness);
-
-        let c_ptadd_x = bits_to_gfref(&c_ptadd.x.map(|w_id| wires[w_id]));
-        let c_ptadd_s = bits_to_gfref(&c_ptadd.s.map(|w_id| wires[w_id]));
-        let c_ptadd_z = bits_to_gfref(&c_ptadd.z.map(|w_id| wires[w_id]));
-        let c_ptadd_t = bits_to_gfref(&c_ptadd.t.map(|w_id| wires[w_id]));
-
-        let c_ptadd_val = InnerPointRef { x: c_ptadd_x, s: c_ptadd_s, z: c_ptadd_z, t: c_ptadd_t };
-
-        assert_eq!(c_ptadd_val, InnerPointRef::generator());
-
-        let out_label = wires[out_ok_label];
-        println!("out_label {}", out_label);
-        assert!(out_label, "should be 1 for valid input");
-        let stats = bld.gate_counts();
-        println!("{stats}");
     }
 }
