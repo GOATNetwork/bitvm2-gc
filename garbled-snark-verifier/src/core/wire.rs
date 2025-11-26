@@ -2,30 +2,33 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::{s::S, utils::DELTA};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct Wire {
     // garble
     pub label: Option<S>,
     // evaluate
     pub value: Option<bool>,
+    // id in sub-circuit wire list.
+    // should be removed in case of not using sub-circuits
+    pub id: Option<u32>,
 }
 
 impl Default for Wire {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
 impl Wire {
     #[cfg(feature = "garbled")]
-    pub fn new() -> Self {
+    pub fn new(id: Option<u32>) -> Self {
         let label = Some(S::random());
-        Self { label, value: None }
+        Self { label, value: None, id }
     }
 
     #[cfg(not(feature = "garbled"))]
-    pub fn new() -> Self {
-        Self { label: None, value: None }
+    pub fn new(id: Option<u32>) -> Self {
+        Self { label: None, value: None, id }
     }
 
     pub fn select(&self, selector: bool) -> S {

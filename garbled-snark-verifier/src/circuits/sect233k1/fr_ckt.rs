@@ -4,7 +4,7 @@
 use super::builder::CircuitTrait;
 
 pub(crate) const FR_LEN: usize = 232;
-pub(crate) type Fr = [usize; FR_LEN];
+pub type Fr = [usize; FR_LEN];
 
 const REDUCTION_SPLIT: usize = 231; // 2^231 limb boundary
 const THRESH: usize = 32;

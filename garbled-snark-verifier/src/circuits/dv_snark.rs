@@ -8,7 +8,7 @@ pub fn dv_snark_verifier_circuit(witness: &VerifierPayloadRef) -> Circuit {
     println!("Compile time: {:?}", start.elapsed());
 
     let start = Instant::now();
-    let circuit = builder.build(witness.to_bits());
+    let circuit = builder.build(&witness.to_bits());
     println!("build circuit time:{:?}", start.elapsed());
 
     circuit

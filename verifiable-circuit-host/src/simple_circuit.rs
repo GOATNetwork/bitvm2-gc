@@ -1,10 +1,16 @@
 use std::time::Instant;
+use num_bigint::BigUint;
 use tracing::info;
 
 use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils as sdk_utils};
 
-use garbled_snark_verifier::dv_bn254::dv_snark::dv_snark_verifier_circuit;
-use garbled_snark_verifier::{bag::Circuit, dv_bn254::dv_ref::VerifierPayloadRef};
+use garbled_snark_verifier::circuits::dv_snark::dv_snark_verifier_circuit;
+use garbled_snark_verifier::{bag::Circuit, circuits::sect233k1::types::load_witness_from_files};
+use garbled_snark_verifier::circuits::bn254::fq2::Fq2;
+use garbled_snark_verifier::circuits::sect233k1::builder::{CircuitAdapter, CircuitTrait};
+use garbled_snark_verifier::circuits::sect233k1::fr_ckt::Fr;
+use garbled_snark_verifier::circuits::sect233k1::fr_ref::frref_to_bits;
+use garbled_snark_verifier::core::utils::deserialize_from_bytes;
 use crate::utils::{SUB_CIRCUIT_MAX_GATES, SUB_INPUT_GATES_PARTS};
 
 mod mem_fs;
@@ -13,33 +19,51 @@ mod utils;
 /// The ELF we want to execute inside the zkVM.
 const ELF: &[u8] = include_elf!("verifiable-circuit");
 
-fn custom_dv_snark_circuit() -> Circuit {
-    //read witness from files
-    let witness = VerifierPayloadRef::load_witness_from_files(
-        "src/data/dv-proof",
-        "src/data/public_inputs.bin",
-        "src/data/trapdoor.bin",
-    );
+// this circuit receive 2 Fr numbers and a selector bit
+// return the selected number
+fn custom_simple_circuit() -> Circuit {
+    let mut bld = CircuitAdapter::default();
+    const N: usize = 200;
+    let a: [usize; N] = bld.fresh();
+    let b: [usize; N] = bld.fresh();
+    let sel = bld.fresh_one();
 
-    let start = Instant::now();
-    let mut circuit = dv_snark_verifier_circuit(&witness);
-    let elapsed = start.elapsed();
-    info!(step = "Gen circuit", elapsed = ?elapsed);
-
-    let start = Instant::now();
-    for gate in &mut circuit.1 {
-        gate.evaluate();
+    let mut res = [bld.zero(); N];
+    for i in 0..N {
+        let d = bld.xor_wire(a[i], b[i]);
+        let xd = bld.and_wire(sel, d);
+        res[i] = bld.xor_wire(xd, a[i]);
+        // res[i] = d;
     }
-    // assert!(circuit.0.last().borrow().get_value());
-    println!("circuit output: {:?}", circuit.0.last().unwrap().borrow().get_value());
-    let elapsed = start.elapsed();
-    info!(step = "Eval circuit", elapsed = ?elapsed);
 
+    // witness
+    let k1_be_bytes = vec![
+        0, 0, 0, 51, 96, 176, 10, 90, 39, 174, 104, 4, 29, 148, 187, 28, 109, 98, 171, 127,
+        230, 48, 143, 66, 84, 143, 149, 177, 187, 210, 141, 20,
+    ];
+    let k2_be_bytes = vec![
+        0, 0, 0, 26, 108, 65, 9, 244, 48, 225, 36, 47, 208, 219, 69, 144, 176, 74, 146, 191,
+        44, 28, 58, 190, 137, 175, 120, 202, 225, 15, 139, 63,
+    ];
+    let k1 = BigUint::from_bytes_be(&k1_be_bytes);
+    let k2 = BigUint::from_bytes_be(&k2_be_bytes);
+    let k1witness = frref_to_bits(&k1);
+    let k2witness = frref_to_bits(&k2);
+
+    let k1witness = k1witness[..N].to_vec();
+    let k2witness = k2witness[..N].to_vec();
+
+    let mut witness = Vec::<bool>::new();
+    witness.extend_from_slice(&k1witness);
+    witness.extend_from_slice(&k2witness);
+    // witness.push(true); // selector k2
+
+    let circuit = bld.build(&witness);
     circuit
 }
 
 fn split_circuit() {
-    let mut circuit = custom_dv_snark_circuit();
+    let mut circuit = custom_simple_circuit();
     circuit.gate_counts().print();
     println!("Wires: {}", circuit.0.len());
     utils::gen_sub_circuits(&mut circuit, SUB_CIRCUIT_MAX_GATES);
@@ -62,6 +86,7 @@ fn main() {
 
     let mut sub_gates: [Vec<u8>; SUB_INPUT_GATES_PARTS] =
         std::array::from_fn(|_| Vec::new());
+
     for part in 0..SUB_INPUT_GATES_PARTS {
         sub_gates[part] = mem_fs::MemFile::read(format!("garbled_gates_{}.bin", part)).unwrap();
         // sub_gates = std::fs::read(format!("garbled_gates_{}.bin", part)).unwrap();
@@ -94,6 +119,7 @@ fn main() {
     }
     stdin.write_vec(sub_wires);
     stdin.write_vec(sub_ciphertexts);
+
     // Create a `ProverClient` method.
     let client = ProverClient::new();
 
@@ -107,23 +133,23 @@ fn main() {
     let start = Instant::now();
     // Generate the proof for the given guest and input.
     let (pk, vk) = client.setup(ELF);
-    let proof = client.prove(&pk, stdin).compressed().run().unwrap();
+    let proof = client.prove(&pk, stdin).run().unwrap();
 
     let elapsed = start.elapsed();
     info!(step = "generated proof", elapsed =? elapsed, "finish proof generation");
 
     // Verify proof and public values
     client.verify(&proof, &vk).expect("verification failed");
-
-    // Test a round trip of proof serialization and deserialization.
-    proof.save("proof-with-pis.bin").expect("saving proof failed");
-    let deserialized_proof =
-        ZKMProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
-
-    // Verify the deserialized proof.
-    client.verify(&deserialized_proof, &vk).expect("verification failed");
-
-    info!("successfully generated and verified proof for the program!");
-    let total_elapsed = start_total.elapsed();
-    info!(elapsed = ?total_elapsed, "total time");
+    //
+    // // Test a round trip of proof serialization and deserialization.
+    // proof.save("proof-with-pis.bin").expect("saving proof failed");
+    // let deserialized_proof =
+    //     ZKMProofWithPublicValues::load("proof-with-pis.bin").expect("loading proof failed");
+    //
+    // // Verify the deserialized proof.
+    // client.verify(&deserialized_proof, &vk).expect("verification failed");
+    //
+    // info!("successfully generated and verified proof for the program!");
+    // let total_elapsed = start_total.elapsed();
+    // info!(elapsed = ?total_elapsed, "total time");
 }

@@ -1,14 +1,15 @@
-use std::{cell::RefCell, rc::Rc, sync::atomic::AtomicU32};
-
+use std::{slice, sync::atomic::AtomicU32};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bag::{Circuit, Gate, S, Wire},
-    core::gate::{GateType, gate_garbled},
+    bag::S,
 };
 
 use std::sync::atomic::Ordering;
 
+pub const SUB_CIRCUIT_MAX_GATES: usize = 1_000_000;
+pub const SUB_INPUT_GATES_PART_SIZE: usize = 200_000;
+pub const SUB_INPUT_GATES_PARTS: usize = 5;
 pub const LABEL_SIZE: usize = 16;
 // FIXME: set up a private global difference
 pub static DELTA: S = S::one();
@@ -76,167 +77,103 @@ pub fn hash(input: &[u8]) -> [u8; LABEL_SIZE] {
     unsafe { *(output.as_ptr() as *const [u8; LABEL_SIZE]) }
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SerializableGate {
-    pub wire_a: Wire,
-    pub wire_b: Wire,
-    pub wire_c: Wire,
-    pub gate_type: GateType,
+    pub gate_type: u8,
+    pub wire_a_id: u32,
+    pub wire_b_id: u32,
+    pub wire_c_id: u32,
     pub gid: u32,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct SerializableCircuit {
-    pub gates: Vec<SerializableGate>, // Must also be serializable
-    pub garblings: Vec<Option<S>>,
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct SerializableSubCircuitGates<const N: usize> {
+    pub gates: [SerializableGate; N],
 }
 
-impl From<&Circuit> for SerializableCircuit {
-    fn from(c: &Circuit) -> Self {
-        //let wires = c.0.iter().map(|w| w.borrow().clone()).collect();
-        let gates =
-            c.1.iter()
-                .map(|w| SerializableGate {
-                    wire_a: w.wire_a.borrow().clone(),
-                    wire_b: w.wire_b.borrow().clone(),
-                    wire_c: w.wire_c.borrow().clone(),
-                    gate_type: w.gate_type,
-                    gid: w.gid,
-                })
-                .collect();
-        Self { gates, garblings: Vec::new() }
+pub fn serialize_to_bytes<const N: usize>(s: &SerializableSubCircuitGates<N>) -> Vec<u8> {
+    unsafe {
+        let ptr = s as *const SerializableSubCircuitGates<N> as *const u8;
+        let bytes = slice::from_raw_parts(ptr, size_of::<SerializableSubCircuitGates<N>>());
+        bytes.to_vec()
     }
 }
 
-impl From<&SerializableCircuit> for Circuit {
-    fn from(sc: &SerializableCircuit) -> Self {
-        let mut wires = vec![];
-        let gates = sc
-            .gates
-            .iter()
-            .map(|g| {
-                wires.push(Rc::new(RefCell::new(g.wire_a.clone())));
-                wires.push(Rc::new(RefCell::new(g.wire_b.clone())));
-                wires.push(Rc::new(RefCell::new(g.wire_c.clone())));
-                Gate {
-                    wire_a: wires[wires.len() - 3].clone(),
-                    wire_b: wires[wires.len() - 2].clone(),
-                    wire_c: wires[wires.len() - 1].clone(),
-                    gate_type: g.gate_type,
-                    gid: g.gid,
-                }
-            })
-            .collect();
-        Self(wires, gates)
+pub fn deserialize_from_bytes<const N: usize>(buf: &[u8]) -> SerializableSubCircuitGates<N> {
+    assert!(buf.len() >= std::mem::size_of::<SerializableSubCircuitGates<N>>());
+    unsafe {
+        let ptr = buf.as_ptr() as *const SerializableSubCircuitGates<N>;
+        ptr.read_unaligned()
     }
 }
 
-struct Reader<'a> {
-    buf: &'a [u8],
-    cursor: usize,
+
+#[repr(C)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct SerializableWire {
+    pub label: S,
+    pub value: Option<bool>,
 }
 
-impl<'a> Reader<'a> {
-    pub fn new(buf: &'a [u8]) -> Self {
-        Reader { buf, cursor: 0 }
-    }
+#[repr(C)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct SerializableSubWires {
+    pub labels: Vec<S>,
+    pub value: Vec<Option<bool>>,
+}
 
-    fn read_u8(&mut self) -> u8 {
-        let b = self.buf[self.cursor];
-        self.cursor += 1;
-        b
+impl SerializableSubWires {
+    pub fn from_serialzable_wires(wires: &[SerializableWire]) -> Self {
+        let mut labels = Vec::with_capacity(wires.len());
+        let mut value = Vec::with_capacity(wires.len());
+        for wire in wires {
+            labels.push(wire.label);
+            value.push(wire.value);
+        }
+        SerializableSubWires { labels, value }
     }
+}
 
-    fn read_u32(&mut self) -> u32 {
-        let start = self.cursor;
-        let v = u32::from_le_bytes(self.buf[start..start + 4].try_into().unwrap());
-        self.cursor += 4;
-        v
-    }
+pub fn check_guest(
+    sub_gates_parts: &[Vec<u8>; SUB_INPUT_GATES_PARTS],
+    sub_wires: &[u8],
+    sub_ciphertexts: &[u8],
+) -> Vec<u8>  {
+    // read sub_ciphertexts:
+    let mut c_start = 0;
+    let num_ciphertexts = u64::from_le_bytes(sub_ciphertexts[c_start..c_start + 8].try_into().unwrap());
+    c_start += 8;
 
-    fn read_u64(&mut self) -> u64 {
-        let start = self.cursor;
-        let v = u64::from_le_bytes(self.buf[start..start + 8].try_into().unwrap());
-        self.cursor += 8;
-        v
-    }
+    // create input for ciphertext check syscall
+    let mut input = Vec::new();
+    let mut index = 0;
+    for part in 0..SUB_INPUT_GATES_PARTS {
+        let sub_gates: SerializableSubCircuitGates<SUB_INPUT_GATES_PART_SIZE> = deserialize_from_bytes(&sub_gates_parts[part]);
+        for i in 0..sub_gates.gates.len() {
+            if sub_gates.gates[i].gate_type == 0 { // and gate
+                let gate = &sub_gates.gates[i];
+                let base = 8usize;
+                let start_a0 = base + (gate.wire_a_id as usize) * LABEL_SIZE;
+                let start_b0 = base + (gate.wire_b_id as usize) * LABEL_SIZE;
 
-    fn read_s(&mut self) -> S {
-        let mut arr = [0u8; LABEL_SIZE];
-        arr.copy_from_slice(&self.buf[self.cursor..self.cursor + LABEL_SIZE]);
-        self.cursor += LABEL_SIZE;
-        S(arr)
-    }
+                let a0 = S(sub_wires[start_a0..start_a0 + LABEL_SIZE].try_into().unwrap());
+                let gid = gate.gid;
+                let a1 = a0 ^ DELTA;
 
-    fn read_option_s(&mut self) -> Option<S> {
-        match self.read_u8() {
-            0 => None,
-            1 => Some(self.read_s()),
-            other => panic!("Invalid Option<S> tag: {}", other),
+                let h0 = a0.hash_ext(gid);
+                let h1 = a1.hash_ext(gid);
+
+                input.extend_from_slice(&h0.0);
+                input.extend_from_slice(&h1.0);
+                input.extend_from_slice(&sub_wires[start_b0..start_b0 + LABEL_SIZE]);
+                input.extend_from_slice(&sub_ciphertexts[c_start..c_start + LABEL_SIZE]);
+                index += 1;
+                c_start += LABEL_SIZE;
+            }
         }
     }
-
-    fn skip_option_bool(&mut self) {
-        if self.read_u8() != 0 {
-            self.cursor += 1;
-        }
-    }
-
-    fn skip_wire(&mut self) {
-        // Option<S>
-        if self.read_u8() != 0 {
-            self.cursor += LABEL_SIZE;
-        }
-        // Option<bool>
-        self.skip_option_bool();
-    }
-
-    fn read_gate_type(&mut self) -> GateType {
-        let d = self.read_u32();
-        GateType::try_from(d as u8).expect("Invalid GateType")
-    }
-}
-
-pub fn check_guest(buf: &[u8]) {
-    let mut reader = Reader::new(buf);
-
-    // 1. Read the number of gates from the start of the buffer.
-    // bincode serializes Vec length as a u64.
-    let num_gates = reader.read_u64() as usize;
-
-    // 2. Create a vector to store the computed garblings.
-    let mut computed_garblings = Vec::with_capacity(num_gates);
-
-    // 3. Loop through each gate's data in the stream.
-    for _ in 0..num_gates {
-        // For wire_a, read the label and correctly skip the rest of the wire.
-        let a0 = reader.read_option_s().expect("Missing wire_a label");
-        reader.skip_option_bool();
-
-        // For wire_b, read the label and correctly skip the rest of the wire.
-        let b0 = reader.read_option_s().expect("Missing wire_b label");
-        reader.skip_option_bool();
-
-        // Skip wire_c entirely.
-        reader.skip_wire();
-
-        // Read gate_type and gid.
-        let gate_type = reader.read_gate_type();
-        let gid = reader.read_u32();
-
-        // Immediately compute the garbling.
-        let (_, ciphertext) = gate_garbled(a0, b0, gid, gate_type);
-        computed_garblings.push(ciphertext);
-    }
-
-    // 4. At this point, the reader is at the start of the serialized `garblings` Vec.
-    // Read the number of expected garblings.
-    let num_garblings = reader.read_u64() as usize;
-    assert_eq!(num_gates, num_garblings, "Mismatch in number of garblings");
-
-    // 5. Compare computed garblings with expected garblings from the stream.
-    for i in 0..num_garblings {
-        let expected_garbling = reader.read_option_s();
-        assert_eq!(computed_garblings[i], expected_garbling, "Garbling mismatch at index {}", i);
-    }
+    assert_eq!(index, num_ciphertexts);
+    input
 }

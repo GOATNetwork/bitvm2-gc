@@ -4,7 +4,7 @@ use super::fr_ckt::FR_LEN;
 
 pub(crate) type FrRef = BigUint;
 
-pub(crate) fn frref_to_bits(n: &FrRef) -> [bool; FR_LEN] {
+pub fn frref_to_bits(n: &FrRef) -> [bool; FR_LEN] {
     let bytes = n.to_bytes_le();
     let mut bits = [false; FR_LEN];
     for i in 0..FR_LEN {
