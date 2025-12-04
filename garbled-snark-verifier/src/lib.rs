@@ -1,5 +1,6 @@
 pub mod circuits;
 pub mod core;
+pub mod dv_bn254;
 
 pub mod bag {
     pub use crate::core::circuit::Circuit;

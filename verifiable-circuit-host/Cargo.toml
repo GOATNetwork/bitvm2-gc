@@ -40,5 +40,9 @@ path = "src/dv_snark.rs"
 name = "simple-circuit"
 path = "src/simple_circuit.rs"
 
+[[bin]]
+name = "bn254-dv-snark"
+path = "src/bn254_dv_snark.rs"
+
 # [features]
 # cuda = ["zkm-sdk/cuda"]

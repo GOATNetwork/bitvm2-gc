@@ -95,7 +95,11 @@ fn split_circuit() {
     let mut circuit = custom_groth16_verifier_circuit();
     circuit.gate_counts().print();
     println!("Wires: {}", circuit.0.len());
-    utils::gen_sub_circuits(&mut circuit, SUB_CIRCUIT_MAX_GATES);
+    
+    let num_gates = circuit.1.len();
+    let non_free_gates = circuit.gate_counts().nonfree_gate_count();
+    let finest_ratio = num_gates / (non_free_gates as usize);
+    utils::gen_sub_circuits(&mut circuit, SUB_CIRCUIT_MAX_GATES, finest_ratio);
 }
 
 fn main() {

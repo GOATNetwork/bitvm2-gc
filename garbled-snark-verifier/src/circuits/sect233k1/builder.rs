@@ -306,6 +306,98 @@ impl CircuitAdapter {
         // let output_wire = wires.last().expect("Circuit must have at least one wire").clone();
         Circuit::new(wires, gates)
     }
+
+    pub const MAX_BENCHMARK_WIRES: usize = 1_000_000_000;
+    pub const MAX_BENCHMARK_GATES: usize = 500_000_000;
+
+    // limit the size of built circuit for benchmarking
+    pub fn build_benchmark(&self, witness: &[bool]) -> Circuit {
+        let n_wires = self.next_wire;
+        println!("wires: {n_wires}");
+
+        let start = Instant::now();
+
+        // Need to build around 1000M wires and 500M gates for the benchmark.
+
+        let n_wires = CircuitAdapter::MAX_BENCHMARK_WIRES;
+        let mut wires = Vec::with_capacity(n_wires);
+        for i in 0..n_wires {
+            if i.is_multiple_of(10_000_000) {
+                println!("wires: {} M", i / 1_000_000);
+            }
+            wires.push(new_wirex_with_id(i as u32));
+        }
+        println!("init wires took:{:?}", start.elapsed());
+
+        // Set constant and witness wire values.
+        // This is an efficient way to initialize the first few wires.
+        let all_bits_iter = [false, true].iter().chain(witness.iter());
+        wires.iter().zip(all_bits_iter).for_each(|(wirex, bit)| {
+            wirex.borrow_mut().set(*bit);
+        });
+
+        let start = Instant::now();
+        // To reduce peak memory usage, we avoid creating the large intermediate `basic_ops` vector.
+        // Instead, we iterate through the top-level gates, unroll them one by one,
+        // and immediately convert the resulting basic operations into `Gate` objects.
+        // This trades the top-level parallelism of the unrolling step for lower memory consumption,
+        // while retaining internal parallelism within `unroll_custom_gate`.
+        let gates: Vec<Gate> = self
+            .gates
+            .iter()
+            .take(Self::MAX_BENCHMARK_GATES)
+            .flat_map(|g| {
+                // Unroll the current gate `g` into a temporary list of basic operations.
+                // This temporary list is much smaller than the full `basic_ops` vector would be.
+                let ops_for_this_gate = match g {
+                    GateOperation::Base(op) => vec![*op],
+                    GateOperation::Custom(params) => {
+                        let templ = self.get_template(params.gate_type).unwrap_or_else(|| {
+                            panic!(
+                                "Template for custom gate {:?} not initialized",
+                                params.gate_type
+                            )
+                        });
+                        templ.unroll_custom_gate(
+                            self.zero,
+                            self.one,
+                            params.internal_wire_start_index,
+                            &params.input_wire_index,
+                        )
+                    }
+                };
+
+                // Immediately convert these basic operations to `Gate` objects.
+                // This consumes `ops_for_this_gate`, and its memory is freed after this block.
+                // This creates an iterator that `flat_map` will process.
+                ops_for_this_gate.into_iter()
+            })
+            .enumerate()
+            .filter_map(|(i, op)| {
+                if i.is_multiple_of(10_000_000) {
+                    println!("processing II {} M", i / 1_000_000);
+                }
+                match op {
+                    Operation::Add(d, x, y) => {
+                        Some(Gate::xor(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                    }
+                    Operation::Mul(d, x, y) => {
+                        Some(Gate::and(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                    }
+                    Operation::Or(d, x, y) => {
+                        Some(Gate::or(wires[x].clone(), wires[y].clone(), wires[d].clone()))
+                    }
+                    Operation::Const(_, _) => None,
+                }
+            })
+            .collect();
+        println!("gates to circuit took:{:?}", start.elapsed());
+
+        // The circuit output is assumed to be the last wire.
+        // Using `expect` for a clearer error message if `wires` is empty.
+        // let output_wire = wires.last().expect("Circuit must have at least one wire").clone();
+        Circuit::new(wires, gates)
+    }
 }
 
 impl CircuitTrait for CircuitAdapter {

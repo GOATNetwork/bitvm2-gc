@@ -32,7 +32,7 @@ fn custom_simple_circuit() -> Circuit {
     for i in 0..N {
         let d = bld.xor_wire(a[i], b[i]);
         let xd = bld.and_wire(sel, d);
-        res[i] = bld.xor_wire(xd, a[i]);
+        res[i] = bld.or_wire(xd, a[i]);
         // res[i] = d;
     }
 
@@ -66,7 +66,10 @@ fn split_circuit() {
     let mut circuit = custom_simple_circuit();
     circuit.gate_counts().print();
     println!("Wires: {}", circuit.0.len());
-    utils::gen_sub_circuits(&mut circuit, SUB_CIRCUIT_MAX_GATES);
+    let num_gates = circuit.1.len();
+    let non_free_gates = circuit.gate_counts().nonfree_gate_count();
+    let finest_ratio = num_gates / (non_free_gates as usize);
+    utils::gen_sub_circuits(&mut circuit, SUB_CIRCUIT_MAX_GATES, finest_ratio);
 }
 
 fn main() {
@@ -88,31 +91,28 @@ fn main() {
         std::array::from_fn(|_| Vec::new());
 
     for part in 0..SUB_INPUT_GATES_PARTS {
-        sub_gates[part] = mem_fs::MemFile::read(format!("msm_garbled_gates_{}.bin", part)).unwrap();
-        // sub_gates = std::fs::read(format!("garbled_gates_{}.bin", part)).unwrap();
+        sub_gates[part] = mem_fs::MemFile::read(format!("garbled_gates_{}.bin", part)).unwrap();
+        // sub_gates[part] = std::fs::read(format!("garbled_gates_{}.bin", part)).unwrap();
         info!("sub_gates part {} size: {:?} bytes", part, sub_gates[part].len());
     }
-    let sub_wires = mem_fs::MemFile::read("msm_garbled_wires.bin").unwrap();
+    let sub_wires = mem_fs::MemFile::read("garbled_wires.bin").unwrap();
     // let sub_wires = std::fs::read("garbled_wires.bin").unwrap();
     info!("sub_wires size: {:?} bytes", sub_wires.len());
 
-    let sub_ciphertexts = mem_fs::MemFile::read("msm_garbled_ciphertexts.bin").unwrap();
+    let sub_ciphertexts = mem_fs::MemFile::read("garbled_ciphertexts.bin").unwrap();
     // let sub_ciphertexts = std::fs::read("garbled_ciphertexts.bin").unwrap();
     info!("sub_ciphertexts size: {:?} bytes", sub_ciphertexts.len());
 
     // Write the read sub-circuit to a file for inspection or later use.
     for part in 0..SUB_INPUT_GATES_PARTS {
-        std::fs::write(format!("msm_garbled_gates_{}.bin", part), &sub_gates[part])
-            .expect("Failed to write sub-gate to msm_garbled_gates.bin");
+        std::fs::write(format!("garbled_gates_{}.bin", part), &sub_gates[part])
+            .expect("Failed to write sub-gate to garbled_gates.bin");
     }
-    std::fs::write("msm_garbled_wires.bin", &sub_wires)
-        .expect("Failed to write sub-wires to msm_garbled_wires.bin");
-    std::fs::write("msm_garbled_ciphertexts.bin", &sub_ciphertexts)
-        .expect("Failed to write sub-ciphertexts to msm_garbled_ciphertexts.bin");
+    std::fs::write("garbled_wires.bin", &sub_wires)
+        .expect("Failed to write sub-wires to garbled_wires.bin");
+    std::fs::write("garbled_ciphertexts.bin", &sub_ciphertexts)
+        .expect("Failed to write sub-ciphertexts to garbled_ciphertexts.bin");
     info!("Saved sub-circuit to file");
-
-    // info!("Check guest");
-    // garbled_snark_verifier::core::utils::check_guest(&ser_sc_0);
 
     for i in 0..SUB_INPUT_GATES_PARTS {
         stdin.write_vec(sub_gates[i].clone());

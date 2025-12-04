@@ -128,11 +128,11 @@ pub struct SerializableSubWires {
 
 impl SerializableSubWires {
     pub fn from_serialzable_wires(wires: &[SerializableWire]) -> Self {
-        let mut labels = vec![S::one(); wires.len()];
-        let mut value = vec![None; wires.len()];
-        for i in 0..wires.len() {
-            labels[i] = wires[i].label;
-            value[i] = wires[i].value;
+        let mut labels = Vec::with_capacity(wires.len());
+        let mut value = Vec::with_capacity(wires.len());
+        for wire in wires {
+            labels.push(wire.label);
+            value.push(wire.value);
         }
         SerializableSubWires { labels, value }
     }
@@ -151,19 +151,25 @@ pub fn check_guest(
     // create input for ciphertext check syscall
     let mut input = Vec::new();
     let mut index = 0;
+    input.extend_from_slice(&DELTA.0);
     for part in 0..SUB_INPUT_GATES_PARTS {
         let sub_gates: SerializableSubCircuitGates<SUB_INPUT_GATES_PART_SIZE> = deserialize_from_bytes(&sub_gates_parts[part]);
         for i in 0..sub_gates.gates.len() {
-            if sub_gates.gates[i].gate_type == 0 { // and gate
+            if sub_gates.gates[i].gate_type < 8 { // and | or gate
                 let gate = &sub_gates.gates[i];
                 let base = 8usize;
                 let start_a0 = base + (gate.wire_a_id as usize) * LABEL_SIZE;
                 let start_b0 = base + (gate.wire_b_id as usize) * LABEL_SIZE;
+
                 let a0 = S(sub_wires[start_a0..start_a0 + LABEL_SIZE].try_into().unwrap());
                 let gid = gate.gid;
                 let a1 = a0 ^ DELTA;
+
                 let h0 = a0.hash_ext(gid);
                 let h1 = a1.hash_ext(gid);
+
+                // align memory
+                input.extend_from_slice(&(sub_gates.gates[i].gate_type as u32).to_le_bytes().to_vec());
                 input.extend_from_slice(&h0.0);
                 input.extend_from_slice(&h1.0);
                 input.extend_from_slice(&sub_wires[start_b0..start_b0 + LABEL_SIZE]);

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::core::{s::S, utils::DELTA};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct Wire {
     // garble
     pub label: Option<S>,

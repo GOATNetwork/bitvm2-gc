@@ -10,9 +10,12 @@ use indexmap::IndexMap;
 pub const SUB_CIRCUIT_MAX_GATES: usize = 1_000_000;
 pub const SUB_INPUT_GATES_PART_SIZE: usize = 200_000;
 pub const SUB_INPUT_GATES_PARTS: usize = 5;
-pub const FINEST_RATIO_TARGET: usize = 503; // gates / non-free gates
 
-pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
+pub fn gen_sub_circuits(
+    circuit: &mut Circuit,
+    max_gates: usize,
+    finest_ratio_target: usize,
+) {
     let start = Instant::now();
     let mut garbled_gates = circuit.garbled_gates();
     let elapsed = start.elapsed();
@@ -22,7 +25,7 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
 
     let start = Instant::now();
     let wires: Vec<Wire> = circuit.0.iter().map(|w| w.borrow().clone()).collect();
-    let mut finest = FINEST_RATIO_TARGET;
+    let mut finest = finest_ratio_target;
     let mut finest_id = 0;
     /// find the sub-circuit with the finest non-free gates ratio
     circuit.1.chunks(max_gates).enumerate().zip(garbled_gates.chunks_mut(max_gates)).for_each(
@@ -38,10 +41,10 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
             if non_free_gates != 0 {
                 let ratio = SUB_CIRCUIT_MAX_GATES / non_free_gates;
                 let dif = {
-                    if FINEST_RATIO_TARGET > ratio {
-                        FINEST_RATIO_TARGET - ratio
+                    if finest_ratio_target > ratio {
+                        finest_ratio_target - ratio
                     } else {
-                        ratio - FINEST_RATIO_TARGET
+                        ratio - finest_ratio_target
                     }
                 };
                 if dif < finest {
@@ -133,18 +136,18 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
 
                     // serialize each sub-gate array to its own file
                     let bytes = serialize_to_bytes(&sub_gates);
-                    let mut file = mem_fs::MemFile::create(format!("msm_garbled_gates_{}.bin", part)).unwrap();
+                    let mut file = mem_fs::MemFile::create(format!("garbled_gates_{}.bin", part)).unwrap();
                     file.write_all(&bytes).unwrap();
                 }
 
                 bincode::serialize_into(
-                    mem_fs::MemFile::create(format!("msm_garbled_wires.bin")).unwrap(),
+                    mem_fs::MemFile::create(format!("garbled_wires.bin")).unwrap(),
                     &sub_wires,
                 )
                     .unwrap();
 
                 bincode::serialize_into(
-                    mem_fs::MemFile::create(format!("msm_garbled_ciphertexts.bin")).unwrap(),
+                    mem_fs::MemFile::create(format!("garbled_ciphertexts.bin")).unwrap(),
                     &ciphertexts,
                 )
                     .unwrap();
