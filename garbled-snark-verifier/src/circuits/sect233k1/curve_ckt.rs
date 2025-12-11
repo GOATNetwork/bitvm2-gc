@@ -185,43 +185,6 @@ pub(crate) fn emit_point_add<T: CircuitTrait>(
     CurvePoint { x: p3_x, s: p3_s, z: p3_z, t: p3_t }
 }
 
-// Negation of (X, S, Z, T) is (X, S + T, Z, T)
-// Ref: https://github.com/blake-pro/c-xs233/blob/c484485fde47c032594368a915c34d2430378458/xsb233.c#L478
-pub(crate) fn emit_neg_point_with_neg_selector<T: CircuitTrait>(
-    bld: &mut T,
-    p1: &CurvePoint,
-    neg: usize,
-) -> CurvePoint {
-    let mut r = CurvePoint::identity(bld);
-    r.x = p1.x;
-    r.z = p1.z;
-    r.t = p1.t;
-    let neg_s = emit_gf_add(bld, &p1.s, &p1.t);
-    for i in 0..GF_LEN {
-        let d = bld.xor_wire(p1.s[i], neg_s[i]);
-        let xd = bld.and_wire(d, neg);
-        r.s[i] = bld.xor_wire(p1.s[i], xd);
-    }
-    r
-}
-pub(crate) fn emit_neg_point_with_pos_selector<T: CircuitTrait>(
-    bld: &mut T,
-    p1: &CurvePoint,
-    pos: usize,
-) -> CurvePoint {
-    let mut r = CurvePoint::identity(bld);
-    r.x = p1.x;
-    r.z = p1.z;
-    r.t = p1.t;
-    let neg_s = emit_gf_add(bld, &p1.s, &p1.t);
-    for i in 0..GF_LEN {
-        let d = bld.xor_wire(p1.s[i], neg_s[i]);
-        let xd = bld.and_wire(d, pos);
-        r.s[i] = bld.xor_wire(neg_s[i], xd);
-    }
-    r
-}
-
 /// Apply the Frobenius endomorphism on a point (i.e. square all coordinates).
 ///
 /// Squares all coordinates of a xsk233 curve point.
@@ -332,17 +295,20 @@ pub(crate) fn template_emit_point_add() -> Template {
 mod test {
     use std::{str::FromStr, time::Instant};
 
-    use crate::circuits::sect233k1::{builder::CircuitTrait, gf_ref::bits_to_gfref};
+    use crate::circuits::sect233k1::{
+        builder::CircuitTrait,
+        gf_ref::bits_to_gfref,
+    };
     use num_bigint::{BigUint, RandomBits};
     use rand::Rng;
 
-    use super::{CurvePoint, emit_point_add};
-    use crate::circuits::sect233k1::curve_ref::CurvePointRef;
     use crate::circuits::sect233k1::{
         builder::CircuitAdapter,
         curve_ref::{CurvePointRef as InnerPointRef, point_add as ref_point_add},
         gf_ref::{gfref_mul, gfref_to_bits},
     };
+
+    use super::{CurvePoint, emit_point_add};
 
     // Creates a random point ensuring T = X*Z
     fn random_point() -> InnerPointRef {
@@ -410,58 +376,5 @@ mod test {
 
         let c_ptadd_val = InnerPointRef { x: c_ptadd_x, s: c_ptadd_s, z: c_ptadd_z, t: c_ptadd_t };
         assert_eq!(c_ptadd_val, ptadd);
-    }
-
-    #[test]
-    fn test_negative_point_with_neg_selector() {
-        let p1 = InnerPointRef {
-            x: BigUint::from_str(
-                "13283792768796718556929275469989697816663440403339868882741001477299174",
-            )
-            .unwrap(),
-            s: BigUint::from_str(
-                "6416386389908495168242210184454780244589215014363767030073322872085145",
-            )
-            .unwrap(),
-            z: BigUint::from_str("1").unwrap(),
-            t: BigUint::from_str(
-                "13283792768796718556929275469989697816663440403339868882741001477299174",
-            )
-            .unwrap(),
-        };
-        let p1_double = ref_point_add(&p1, &p1);
-        let identity = CurvePointRef::identity();
-
-        let mut rng = rand::thread_rng();
-        let neg_witness = rng.gen_bool(0.5);
-        println!("neg_witness: {:?}", neg_witness);
-
-        let mut bld = CircuitAdapter::default();
-        let c_p1 = CurvePoint { x: bld.fresh(), s: bld.fresh(), z: bld.fresh(), t: bld.fresh() };
-        let neg = bld.fresh_one();
-
-        let c_neg_p1 = super::emit_neg_point_with_neg_selector(&mut bld, &c_p1, neg);
-        println!("number of neg gates: {:?}", bld.gate_counts());
-        let sum = super::emit_point_add(&mut bld, &c_p1, &c_neg_p1);
-
-        let mut witness = Vec::<bool>::with_capacity(233 * 4 + 1);
-        witness.extend(gfref_to_bits(&p1.x));
-        witness.extend(gfref_to_bits(&p1.s));
-        witness.extend(gfref_to_bits(&p1.z));
-        witness.extend(gfref_to_bits(&p1.t));
-        witness.push(neg_witness);
-        let wires = bld.eval_gates(&witness);
-
-        let c_ptadd_x = bits_to_gfref(&sum.x.map(|w_id| wires[w_id]));
-        let c_ptadd_s = bits_to_gfref(&sum.s.map(|w_id| wires[w_id]));
-        let c_ptadd_z = bits_to_gfref(&sum.z.map(|w_id| wires[w_id]));
-        let c_ptadd_t = bits_to_gfref(&sum.t.map(|w_id| wires[w_id]));
-
-        let c_ptadd_val = InnerPointRef { x: c_ptadd_x, s: c_ptadd_s, z: c_ptadd_z, t: c_ptadd_t };
-        if neg_witness {
-            assert_eq!(c_ptadd_val, identity);
-        } else {
-            assert_eq!(c_ptadd_val, p1_double);
-        }
     }
 }

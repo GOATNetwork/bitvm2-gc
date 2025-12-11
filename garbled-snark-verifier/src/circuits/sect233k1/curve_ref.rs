@@ -192,16 +192,6 @@ pub(crate) fn point_add(p1: &CurvePointRef, p2: &CurvePointRef) -> CurvePointRef
     p3
 }
 
-// Negation of (X, S, Z, T) is (X, S + T, Z, T)
-pub(crate) fn neg_point(p: &CurvePointRef) -> CurvePointRef {
-    let mut np = CurvePointRef::new();
-    np.x = p.x.clone();
-    np.s = gfref_add(&p.s, &p.t);
-    np.z = p.z.clone();
-    np.t = p.t.clone();
-    np
-}
-
 /// Apply the Frobenius endomorphism on a point (i.e. square all coordinates).
 ///
 /// Squares all coordinates of a xsk233 curve point.

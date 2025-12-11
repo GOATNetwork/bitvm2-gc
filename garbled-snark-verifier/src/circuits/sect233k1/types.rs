@@ -39,9 +39,6 @@ pub(crate) struct RawProof {
     pub kzg_k: AffinePointRef,
     pub a0: FrBits,
     pub b0: FrBits,
-    pub x1: (FrBits, bool),
-    pub x2: (FrBits, bool),
-    pub z: (FrBits, bool),
 }
 
 impl Into<ProofRef> for RawProof {
@@ -64,9 +61,6 @@ impl Into<ProofRef> for RawProof {
             kzg_k: self.kzg_k,
             a0: fr_from_bits_le(&self.a0.0),
             b0: fr_from_bits_le(&self.b0.0),
-            x1: (fr_from_bits_le(&self.x1.0.0), self.x1.1),
-            x2: (fr_from_bits_le(&self.x2.0.0), self.x2.1),
-            z: (fr_from_bits_le(&self.z.0.0), self.z.1),
         }
     }
 }

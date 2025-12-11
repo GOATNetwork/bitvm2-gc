@@ -13,7 +13,7 @@ zkm_zkvm::entrypoint!(main);
 
 use alloc::vec::Vec;
 use garbled_snark_verifier::core::utils::{check_guest, SUB_INPUT_GATES_PARTS};
-use zkm_zkvm::lib::ciphertext_check::ciphertext_check;
+use zkm_zkvm::lib::boolean_circuit_garble::boolean_circuit_garble;
 fn main() {
     let mut sub_gates: [Vec<u8>; SUB_INPUT_GATES_PARTS] = core::array::from_fn(|_| Vec::new());
     for i in 0..SUB_INPUT_GATES_PARTS {
@@ -22,6 +22,6 @@ fn main() {
     let sub_wires = zkm_zkvm::io::read_vec();
     let sub_ciphertexts = zkm_zkvm::io::read_vec();
     let input = check_guest(&sub_gates, &sub_wires, &sub_ciphertexts);
-    let output = ciphertext_check(&input);
+    let output = boolean_circuit_garble(&input);
     assert!(output);
 }

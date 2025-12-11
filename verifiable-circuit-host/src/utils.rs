@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 pub const SUB_CIRCUIT_MAX_GATES: usize = 1_000_000;
 pub const SUB_INPUT_GATES_PART_SIZE: usize = 200_000;
 pub const SUB_INPUT_GATES_PARTS: usize = 5;
-pub const FINEST_RATIO_TARGET: usize = 503; // gates / non-free gates
+pub const FINEST_RATIO_TARGET: usize = 270; // gates / non-free gates
 
 pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
     let start = Instant::now();
@@ -133,18 +133,18 @@ pub fn gen_sub_circuits(circuit: &mut Circuit, max_gates: usize) {
 
                     // serialize each sub-gate array to its own file
                     let bytes = serialize_to_bytes(&sub_gates);
-                    let mut file = mem_fs::MemFile::create(format!("msm_garbled_gates_{}.bin", part)).unwrap();
+                    let mut file = mem_fs::MemFile::create(format!("garbled_gates_{}.bin", part)).unwrap();
                     file.write_all(&bytes).unwrap();
                 }
 
                 bincode::serialize_into(
-                    mem_fs::MemFile::create(format!("msm_garbled_wires.bin")).unwrap(),
+                    mem_fs::MemFile::create(format!("garbled_wires.bin")).unwrap(),
                     &sub_wires,
                 )
                     .unwrap();
 
                 bincode::serialize_into(
-                    mem_fs::MemFile::create(format!("msm_garbled_ciphertexts.bin")).unwrap(),
+                    mem_fs::MemFile::create(format!("garbled_ciphertexts.bin")).unwrap(),
                     &ciphertexts,
                 )
                     .unwrap();

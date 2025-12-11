@@ -341,12 +341,6 @@ pub(crate) fn const_mod_n<T: CircuitTrait>(b: &mut T) -> Vec<usize> {
     out
 }
 
-// little-endian bit vector of the 2^156
-pub(crate) fn two_to_156<T: CircuitTrait>(b: &mut T) -> Vec<usize> {
-    let mut out = vec![b.zero(); FR_LEN];
-    out[156] = b.one();
-    out
-}
 pub(crate) fn emit_reduce_pseudo_mersenne<T: CircuitTrait>(
     b: &mut T,
     prod: &[usize],
@@ -449,14 +443,6 @@ pub(crate) fn emit_fr_sub<T: CircuitTrait>(bld: &mut T, a: &Fr, b: &Fr) -> Fr {
     res
 }
 
-pub(crate) fn emit_neg_fr_with_selector<T: CircuitTrait>(bld: &mut T, a: &Fr, neg: usize) -> Fr {
-    let fr_zero = Fr::from([bld.zero(); FR_LEN]);
-    let neg_a = emit_fr_sub(bld, &fr_zero, a);
-    let res = mux_vec(bld, neg, &neg_a, a);
-    assert_eq!(res.len(), FR_LEN);
-    let res: Fr = res.try_into().unwrap();
-    res
-}
 #[cfg(test)]
 mod tests {
     use super::super::{builder::CircuitAdapter, fr_ref::frref_to_bits};
@@ -557,110 +543,5 @@ mod tests {
             let c_bits_calc: [bool; FR_LEN] = c_labels.map(|id| wires[id]);
             assert_eq!(c_bits_calc, frref_to_bits(&ref_r));
         }
-    }
-
-    #[test]
-    fn test_neg_fr_with_selector() {
-        let a_be_bytes = vec![
-            0, 0, 0, 112, 122, 134, 9, 72, 42, 50, 80, 245, 101, 17, 165, 12, 108, 176, 165, 95,
-            152, 65, 135, 42, 147, 166, 230, 198, 50, 28, 173, 159,
-        ];
-        let a_w = BigUint::from_bytes_be(&a_be_bytes);
-        let expected_neg_a_be_bytes = vec![
-            0, 0, 0, 15, 133, 121, 246, 183, 213, 205, 175, 10, 154, 238, 90, 243, 147, 85, 247,
-            252, 32, 212, 53, 169, 219, 84, 52, 15, 191, 86, 254, 64,
-        ];
-
-        let mut bld = CircuitAdapter::default();
-        let a: Fr = bld.fresh();
-        let neg: usize = bld.fresh_one();
-        let neg = emit_neg_fr_with_selector(&mut bld, &a, neg);
-        let stats = bld.gate_counts();
-        println!("{stats}");
-
-        let mut witness = Vec::<bool>::new();
-        let awitness = frref_to_bits(&a_w);
-        witness.extend_from_slice(&awitness);
-        witness.push(true); // neg selector
-
-        let wires = bld.eval_gates(&witness);
-        let neg_a_bits: [bool; FR_LEN] = neg.map(|id| wires[id]);
-        let neg_a_w = BigUint::from_bytes_be(&expected_neg_a_be_bytes);
-        assert_eq!(neg_a_bits, frref_to_bits(&neg_a_w));
-    }
-
-    #[test]
-    fn test_fr_decompose_mod() {
-        // test k1 = x1/z mod r and k2 = x2/z mod r
-        let k1_be_bytes = vec![
-            0, 0, 0, 51, 96, 176, 10, 90, 39, 174, 104, 4, 29, 148, 187, 28, 109, 98, 171, 127,
-            230, 48, 143, 66, 84, 143, 149, 177, 187, 210, 141, 20,
-        ];
-        let k2_be_bytes = vec![
-            0, 0, 0, 26, 108, 65, 9, 244, 48, 225, 36, 47, 208, 219, 69, 144, 176, 74, 146, 191,
-            44, 28, 58, 190, 137, 175, 120, 202, 225, 15, 139, 63,
-        ];
-        let x1_be_bytes = vec![
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 131, 96, 158, 213, 110, 156, 186, 202, 3, 203,
-            165, 199, 221, 172, 156, 232, 214, 228, 39,
-        ];
-        let x2_be_bytes = vec![
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 174, 223, 194, 147, 141, 52, 233, 166, 56, 189,
-            163, 209, 209, 141, 210, 79, 165, 145, 131,
-        ];
-        let z_be_bytes = vec![
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 100, 192, 131, 198, 143, 204, 6, 70, 212, 104,
-            61, 59, 3, 251, 190, 41, 255, 150, 205,
-        ];
-        let x1 = BigUint::from_bytes_be(&x1_be_bytes);
-        let x2 = BigUint::from_bytes_be(&x2_be_bytes);
-        let z = BigUint::from_bytes_be(&z_be_bytes);
-        let k1 = BigUint::from_bytes_be(&k1_be_bytes);
-        let k2 = BigUint::from_bytes_be(&k2_be_bytes);
-        let x1_neg_w = false;
-        let x2_neg_w = true;
-        let z_neg_w = false;
-
-        let mut bld = CircuitAdapter::default();
-        let k1_fr: Fr = bld.fresh();
-        let k2_fr: Fr = bld.fresh();
-        let x1_fr: Fr = bld.fresh();
-        let x1_neg = bld.fresh_one();
-        let x2_fr: Fr = bld.fresh();
-        let x2_neg = bld.fresh_one();
-        let z_fr: Fr = bld.fresh();
-        let z_neg = bld.fresh_one();
-        let new_x1 = emit_neg_fr_with_selector(&mut bld, &x1_fr, x1_neg);
-        let new_x2 = emit_neg_fr_with_selector(&mut bld, &x2_fr, x2_neg);
-        let new_z = emit_neg_fr_with_selector(&mut bld, &z_fr, z_neg);
-        let k1z = emit_fr_mul(&mut bld, &k1_fr, &new_z);
-        let diff1 = emit_fr_sub(&mut bld, &k1z, &new_x1);
-        let k2z = emit_fr_mul(&mut bld, &k2_fr, &new_z);
-        let diff2 = emit_fr_sub(&mut bld, &k2z, &new_x2);
-        let stats = bld.gate_counts();
-        println!("{stats}");
-
-        let mut witness = Vec::<bool>::new();
-        let k1witness = frref_to_bits(&k1);
-        let k2witness = frref_to_bits(&k2);
-        let x1witness = frref_to_bits(&x1);
-        let x2witness = frref_to_bits(&x2);
-        let zwitness = frref_to_bits(&z);
-
-        witness.extend_from_slice(&k1witness);
-        witness.extend_from_slice(&k2witness);
-        witness.extend_from_slice(&x1witness);
-        witness.push(x1_neg_w);
-        witness.extend_from_slice(&x2witness);
-        witness.push(x2_neg_w);
-        witness.extend_from_slice(&zwitness);
-        witness.push(z_neg_w);
-
-        let wires = bld.eval_gates(&witness);
-        let diff1_bits: [bool; FR_LEN] = diff1.map(|id| wires[id]);
-        let diff2_bits: [bool; FR_LEN] = diff2.map(|id| wires[id]);
-        let zero = [false; FR_LEN];
-        assert_eq!(diff1_bits, zero);
-        assert_eq!(diff2_bits, zero);
     }
 }

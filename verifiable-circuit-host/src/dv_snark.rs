@@ -63,27 +63,27 @@ fn main() {
     let mut sub_gates: [Vec<u8>; SUB_INPUT_GATES_PARTS] =
         std::array::from_fn(|_| Vec::new());
     for part in 0..SUB_INPUT_GATES_PARTS {
-        sub_gates[part] = mem_fs::MemFile::read(format!("msm_garbled_gates_{}.bin", part)).unwrap();
-        // sub_gates = std::fs::read(format!("msm_garbled_gates_{}.bin", part)).unwrap();
+        sub_gates[part] = mem_fs::MemFile::read(format!("garbled_gates_{}.bin", part)).unwrap();
+        // sub_gates[part] = std::fs::read(format!("tau_garbled_gates_{}.bin", part)).unwrap();
         info!("sub_gates part {} size: {:?} bytes", part, sub_gates[part].len());
     }
-    let sub_wires = mem_fs::MemFile::read("msm_garbled_wires.bin").unwrap();
-    // let sub_wires = std::fs::read("msm_garbled_wires.bin").unwrap();
+    let sub_wires = mem_fs::MemFile::read("garbled_wires.bin").unwrap();
+    // let sub_wires = std::fs::read("tau_garbled_wires.bin").unwrap();
     info!("sub_wires size: {:?} bytes", sub_wires.len());
 
-    let sub_ciphertexts = mem_fs::MemFile::read("msm_garbled_ciphertexts.bin").unwrap();
-    // let sub_ciphertexts = std::fs::read("msm_garbled_ciphertexts.bin").unwrap();
+    let sub_ciphertexts = mem_fs::MemFile::read("garbled_ciphertexts.bin").unwrap();
+    // let sub_ciphertexts = std::fs::read("tau_garbled_ciphertexts.bin").unwrap();
     info!("sub_ciphertexts size: {:?} bytes", sub_ciphertexts.len());
 
     // Write the read sub-circuit to a file for inspection or later use.
     for part in 0..SUB_INPUT_GATES_PARTS {
-        std::fs::write(format!("msm_garbled_gates_{}.bin", part), &sub_gates[part])
-            .expect("Failed to write sub-gate to msm_garbled_gates.bin");
+        std::fs::write(format!("tau_garbled_gates_{}.bin", part), &sub_gates[part])
+            .expect("Failed to write sub-gate to tau_garbled_gates.bin");
     }
-    std::fs::write("msm_garbled_wires.bin", &sub_wires)
-        .expect("Failed to write sub-wires to msm_garbled_wires.bin");
-    std::fs::write("msm_garbled_ciphertexts.bin", &sub_ciphertexts)
-        .expect("Failed to write sub-ciphertexts to msm_garbled_ciphertexts.bin");
+    std::fs::write("tau_garbled_wires.bin", &sub_wires)
+        .expect("Failed to write sub-wires to tau_garbled_wires.bin");
+    std::fs::write("tau_garbled_ciphertexts.bin", &sub_ciphertexts)
+        .expect("Failed to write sub-ciphertexts to tau_garbled_ciphertexts.bin");
     info!("Saved sub-circuit to file");
 
     // info!("Check guest");
