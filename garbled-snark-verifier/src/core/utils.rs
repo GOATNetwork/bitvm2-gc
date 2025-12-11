@@ -2,10 +2,7 @@ use std::{slice, sync::atomic::AtomicU32};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bag::{Circuit, Gate, S, Wire},
-    core::gate::{GateType, gate_garbled},
-};
+use crate::bag::S;
 
 use std::sync::atomic::Ordering;
 
