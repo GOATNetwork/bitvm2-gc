@@ -146,9 +146,12 @@ pub fn check_guest(
     c_start += 8;
 
     // create input for ciphertext check syscall
-    let mut input = Vec::new();
+    let input_size = 16 + num_ciphertexts * 68;
+    let mut input = vec![0u8; input_size as usize];
+    let mut offset = 0;
     let mut index = 0;
-    input.extend_from_slice(&DELTA.0);
+    input[offset..offset + LABEL_SIZE].copy_from_slice(&DELTA.0);
+    offset += LABEL_SIZE;
     for part in 0..SUB_INPUT_GATES_PARTS {
         let sub_gates: SerializableSubCircuitGates<SUB_INPUT_GATES_PART_SIZE> = deserialize_from_bytes(&sub_gates_parts[part]);
         for i in 0..sub_gates.gates.len() {
@@ -158,21 +161,21 @@ pub fn check_guest(
                 let start_a0 = base + (gate.wire_a_id as usize) * LABEL_SIZE;
                 let start_b0 = base + (gate.wire_b_id as usize) * LABEL_SIZE;
 
-                let a0 = S(sub_wires[start_a0..start_a0 + LABEL_SIZE].try_into().unwrap());
-                let gid = gate.gid;
+                let a0 = S::from_slice(&sub_wires[start_a0..start_a0 + LABEL_SIZE]);
                 let a1 = a0 ^ DELTA;
 
-                let h0 = a0.hash_ext(gid);
-                let h1 = a1.hash_ext(gid);
+                let h0 = a0.hash_ext(gate.gid);
+                let h1 = a1.hash_ext(gate.gid);
 
                 // align memory
-                input.extend_from_slice(&(sub_gates.gates[i].gate_type as u32).to_le_bytes().to_vec());
-                input.extend_from_slice(&h0.0);
-                input.extend_from_slice(&h1.0);
-                input.extend_from_slice(&sub_wires[start_b0..start_b0 + LABEL_SIZE]);
-                input.extend_from_slice(&sub_ciphertexts[c_start..c_start + LABEL_SIZE]);
+                input[offset..offset + 4].copy_from_slice(&(sub_gates.gates[i].gate_type as u32).to_le_bytes().to_vec());
+                input[offset + 4..offset + 20].copy_from_slice(&h0.0);
+                input[offset + 20..offset + 36].copy_from_slice(&h1.0);
+                input[offset + 36..offset + 52].copy_from_slice(&sub_wires[start_b0..start_b0 + LABEL_SIZE]);
+                input[offset + 52..offset + 68].copy_from_slice(&sub_ciphertexts[c_start..c_start + LABEL_SIZE]);
                 index += 1;
                 c_start += LABEL_SIZE;
+                offset += 68;
             }
         }
     }

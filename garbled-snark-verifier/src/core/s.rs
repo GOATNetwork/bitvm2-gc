@@ -11,6 +11,14 @@ use crate::core::utils::{LABEL_SIZE, hash};
 pub struct S(pub [u8; LABEL_SIZE]);
 
 impl S {
+    #[inline]
+    pub fn from_slice(bytes: &[u8]) -> Self {
+        assert_eq!(bytes.len(), LABEL_SIZE, "S::from_slice: wrong length");
+        let mut arr = [0u8; LABEL_SIZE];
+        arr.copy_from_slice(bytes);
+        S(arr)
+    }
+
     pub const fn one() -> Self {
         let mut s = [0_u8; LABEL_SIZE];
         s[LABEL_SIZE - 1] = 1;
