@@ -334,17 +334,36 @@ pub(crate) fn verify<T: CircuitTrait>(
     public_inputs: PublicInputs,
     secrets: Trapdoor,
 ) -> usize {
+    let one_wire = bld.one();
+    let fr_modulus = const_mod_n(bld);
     let (proof_commit_p, is_proof_commit_p_on_curve) =
         emit_affine_point_is_on_curve(bld, &proof.commit_p);
     let (proof_kzg_k, is_proof_kzg_k_on_curve) = emit_affine_point_is_on_curve(bld, &proof.kzg_k);
+    let decoded_points_valid = bld.and_wire(is_proof_commit_p_on_curve, is_proof_kzg_k_on_curve); // both valid
 
-    let one_wire = bld.one();
-    let fr_modulus = const_mod_n(bld);
+    // proof a0, b0
     let proof_a0_invalid = ge_unsigned(bld, &proof.a0, &fr_modulus); // a0 should be less than modulus
     let proof_b0_invalid = ge_unsigned(bld, &proof.b0, &fr_modulus);
-    let proof_scalars_invalid = bld.or_wire(proof_a0_invalid, proof_b0_invalid); // either invalid
-    let proof_scalars_valid = bld.xor_wire(proof_scalars_invalid, one_wire); // both scalars valid
-    let decoded_points_valid = bld.and_wire(is_proof_commit_p_on_curve, is_proof_kzg_k_on_curve); // both points valid
+    let a0_b0_invalid = bld.or_wire(proof_a0_invalid, proof_b0_invalid); // either invalid
+
+    // public inputs
+    let mut proof_pubinp_invalid = ge_unsigned(bld, &public_inputs.public_inputs[0], &fr_modulus);
+    for i in 1..public_inputs.public_inputs.len() {
+        let pubinp_invalid = ge_unsigned(bld, &public_inputs.public_inputs[i], &fr_modulus);
+        proof_pubinp_invalid = bld.or_wire(proof_pubinp_invalid, pubinp_invalid);
+    }
+
+    // trapdoor
+    let proof_tau_invalid = ge_unsigned(bld, &secrets.tau, &fr_modulus);
+    let proof_delta_invalid = ge_unsigned(bld, &secrets.delta, &fr_modulus);
+    let proof_epsilon_invalid = ge_unsigned(bld, &secrets.epsilon, &fr_modulus);
+    let tau_delta_invalid = bld.or_wire(proof_tau_invalid, proof_delta_invalid);
+    let trapdoor_invalid = bld.or_wire(tau_delta_invalid, proof_epsilon_invalid);
+
+    let a0_b0_pubinp_invalid =
+        bld.or_wire(a0_b0_invalid, proof_pubinp_invalid); // either a0, b0, pubinp invalid
+    let proof_scalars_invalid = bld.or_wire(a0_b0_pubinp_invalid, trapdoor_invalid);
+    let proof_scalars_valid = bld.xor_wire(proof_scalars_invalid, one_wire); // all valid
 
     let fs_challenge_alpha =
         get_fs_challenge(bld, proof.commit_p, public_inputs.public_inputs.clone(), vec![], vec![]);
