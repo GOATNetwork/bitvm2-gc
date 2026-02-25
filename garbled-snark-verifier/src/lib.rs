@@ -1,6 +1,8 @@
 pub mod circuits;
 pub mod core;
 pub mod dv_bn254;
+pub mod argo_mac;
+pub mod transcript_commit;
 
 pub mod bag {
     pub use crate::core::circuit::Circuit;

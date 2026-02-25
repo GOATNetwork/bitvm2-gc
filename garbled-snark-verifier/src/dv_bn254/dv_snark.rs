@@ -1,16 +1,27 @@
 use crate::bag::Circuit;
 use std::time::Instant;
-use crate::dv_bn254::dv_ckt::compile_verifier;
+use crate::dv_bn254::dv_ckt::compile_verifier_argo_hybrid;
 use crate::dv_bn254::dv_ref::VerifierPayloadRef;
+use crate::argo_mac::verify_step4_with_argo_roles;
 
 pub fn dv_snark_verifier_circuit(
     witness: &VerifierPayloadRef
 ) -> Circuit {
+    // Argo MAC pre-check for Step4 formula:
+    //   x1*G + x2*Q + z_signed*P = O.
+    let argo_step4_ok = dv_snark_step4_argo_mac_verify(witness);
+    assert!(argo_step4_ok, "Argo MAC Step4 check failed");
+
     let start = Instant::now();
-    let (builder, _) = compile_verifier();
+    // Use hybrid compiler where Step4 heavy GC is replaced by one external input bit.
+    let (builder, _) = compile_verifier_argo_hybrid();
     println!("Compile time: {:?}", start.elapsed());
     let start = Instant::now();
-    let circuit = builder.build(&witness.to_bits());
+    let mut witness_bits = witness.to_bits().to_vec();
+    // External input formula:
+    //   step4_valid_external == 1  <=>  x1*G + x2*Q + z_signed*P == O.
+    witness_bits.push(argo_step4_ok);
+    let circuit = builder.build(&witness_bits);
     println!("build circuit time:{:?}", start.elapsed());
 
     circuit
@@ -19,14 +30,49 @@ pub fn dv_snark_verifier_circuit(
 pub fn dv_snark_verifier_bench_circuit(
     witness: &VerifierPayloadRef
 ) -> Circuit {
+    // Argo MAC pre-check for Step4 formula:
+    //   x1*G + x2*Q + z_signed*P = O.
+    let argo_step4_ok = dv_snark_step4_argo_mac_verify(witness);
+    assert!(argo_step4_ok, "Argo MAC Step4 check failed");
+
     let start = Instant::now();
-    let (builder, _) = compile_verifier();
+    // Use hybrid compiler where Step4 heavy GC is replaced by one external input bit.
+    let (builder, _) = compile_verifier_argo_hybrid();
     println!("Compile time: {:?}", start.elapsed());
     let start = Instant::now();
-    let circuit = builder.build_benchmark(&witness.to_bits());
+    let mut witness_bits = witness.to_bits().to_vec();
+    // External input formula:
+    //   step4_valid_external == 1  <=>  x1*G + x2*Q + z_signed*P == O.
+    witness_bits.push(argo_step4_ok);
+    let circuit = builder.build_benchmark(&witness_bits);
     println!("build circuit time:{:?}", start.elapsed());
 
     circuit
+}
+
+/// Verify DV-SNARK step4 in Argo MAC domain.
+///
+/// Step4 formula in current dv_ckt sign convention:
+///   R = x1*G + x2*Q + z_signed*P
+/// and check
+///   R == O.
+///
+/// Here:
+/// - Q = kzg_k, P = commit_p (same ordering as dv_ckt::verify)
+/// - x1_neg / x2_neg follow negate_with_neg_selector
+/// - z_pos follows negate_with_pos_selector
+pub fn dv_snark_step4_argo_mac_verify(witness: &VerifierPayloadRef) -> bool {
+    verify_step4_with_argo_roles(
+        witness.proof.mont_kzg_k.clone(),
+        witness.proof.mont_commit_p.clone(),
+        witness.proof.x1.0.clone(),
+        witness.proof.x1.1,
+        witness.proof.x2.0.clone(),
+        witness.proof.x2.1,
+        witness.proof.z.0.clone(),
+        witness.proof.z.1,
+        20260225, // deterministic seed for reproducible testing
+    )
 }
 
 #[cfg(test)]
@@ -35,6 +81,7 @@ mod test {
     use crate::circuits::sect233k1::builder::CircuitTrait;
     use crate::dv_bn254::dv_ckt::compile_verifier;
     use crate::dv_bn254::dv_ref::{FrRef, ProofRef, PublicInputsRef, TrapdoorRef, VerifierPayloadRef};
+    use crate::dv_bn254::dv_snark::dv_snark_step4_argo_mac_verify;
 
 
     fn initialize_witness() -> VerifierPayloadRef{
@@ -113,5 +160,13 @@ mod test {
 
         let stats = bld.gate_counts();
         println!("Gate counts: {:?}", stats);
+    }
+
+    #[test]
+    fn test_dv_snark_step4_argo_mac_verify() {
+        let witness = initialize_witness();
+        // Formula-level check in Argo MAC domain:
+        //   x1*G + x2*Q + z_signed*P == O
+        assert!(dv_snark_step4_argo_mac_verify(&witness));
     }
 }

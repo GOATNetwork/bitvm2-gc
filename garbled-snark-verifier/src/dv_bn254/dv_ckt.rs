@@ -226,6 +226,30 @@ pub fn compile_verifier() -> (CircuitAdapter, IndexInfo) {
     (bld, index_info)
 }
 
+/// Function to compile dvsnark verifier circuit with Argo-hybrid Step4:
+/// - Step4 heavy GC sub-circuit is replaced by one external boolean input wire.
+/// - External wire semantics:
+///     step4_valid_external == 1  <=>  x1*G + x2*Q + z_signed*P == O.
+pub fn compile_verifier_argo_hybrid() -> (CircuitAdapter, IndexInfo) {
+    let mut bld = CircuitAdapter::default();
+
+    let input_wire_start = bld.next_wire();
+    let (proof, rpin, secrets) = get_input_indexes(&mut bld);
+    // External Argo result bit used to replace Step4 heavy sub-circuit.
+    let step4_valid_external = bld.fresh_one();
+    let input_wire_end = bld.next_wire();
+
+    let passed_index =
+        verify_with_external_step4(&mut bld, proof, rpin, secrets, step4_valid_external);
+    let index_info = IndexInfo {
+        input_wire_range: (input_wire_start, input_wire_end - 1), // -1 because inclusive range
+        const_zero: bld.zero(),
+        const_one: bld.one(),
+        output_index: passed_index,
+    };
+    (bld, index_info)
+}
+
 /// evaluate verifier
 pub fn evaluate_verifier(
     bld: &mut CircuitAdapter,
@@ -242,6 +266,33 @@ pub(crate) fn verify<T: CircuitTrait>(
     proof: Proof,
     public_inputs: PublicInputs,
     secrets: Trapdoor,
+) -> usize {
+    verify_internal(bld, proof, public_inputs, secrets, None)
+}
+
+/// verify with external Step4 boolean.
+pub(crate) fn verify_with_external_step4<T: CircuitTrait>(
+    bld: &mut T,
+    proof: Proof,
+    public_inputs: PublicInputs,
+    secrets: Trapdoor,
+    step4_valid_external: usize,
+) -> usize {
+    verify_internal(
+        bld,
+        proof,
+        public_inputs,
+        secrets,
+        Some(step4_valid_external),
+    )
+}
+
+fn verify_internal<T: CircuitTrait>(
+    bld: &mut T,
+    proof: Proof,
+    public_inputs: PublicInputs,
+    secrets: Trapdoor,
+    step4_valid_external: Option<usize>,
 ) -> usize {
     let one_wire = bld.one();
     let fr_modulus = U254::wires_set_from_number(bld, &Fr::modulus_as_biguint());
@@ -321,33 +372,41 @@ pub(crate) fn verify<T: CircuitTrait>(
     println!("u0_v0_stats: {:?}", u0_v0_stats);
 
 
-    // Step 4. Check: x_1 G + x_2Q - zP = 0, using multi_scalar_mul_with_precompute
-    let mont_generator_wires = G1Projective::wires_set_montgomery_generator(bld);
-    let neg_ws_gen = G1Projective::negate_with_neg_selector(
-        bld,
-        &mont_generator_wires,
-        proof.x1.1,
-    );
+    // Step 4. Check: x_1 G + x_2Q - zP = 0.
+    // Hybrid optimization:
+    //   - baseline: compute in GC using hinted MSM sub-circuit.
+    //   - hybrid:   use external Argo boolean wire:
+    //         step4_valid_external == 1  <=>  x1*G + x2*Q + z_signed*P == O.
+    let step4_valid = if let Some(step4_wire) = step4_valid_external {
+        step4_wire
+    } else {
+        let mont_generator_wires = G1Projective::wires_set_montgomery_generator(bld);
+        let neg_ws_gen = G1Projective::negate_with_neg_selector(
+            bld,
+            &mont_generator_wires,
+            proof.x1.1,
+        );
 
-    let neg_ws_k = G1Projective::negate_with_neg_selector(
-        bld,
-        &proof.mont_kzg_k.to_vec_wires(),
-        proof.x2.1,
-    );
+        let neg_ws_k = G1Projective::negate_with_neg_selector(
+            bld,
+            &proof.mont_kzg_k.to_vec_wires(),
+            proof.x2.1,
+        );
 
-    let neg_ws_p = G1Projective::negate_with_pos_selector(
-        bld,
-        &proof.mont_commit_p.to_vec_wires(),
-        proof.z.1,
-    );
+        let neg_ws_p = G1Projective::negate_with_pos_selector(
+            bld,
+            &proof.mont_commit_p.to_vec_wires(),
+            proof.z.1,
+        );
 
-    let lhs = emit_hinted_double_scalar_mul(
-        bld,
-        &vec![proof.x1.0.0.to_vec(), proof.x2.0.0.to_vec(), proof.z.0.0.to_vec()],
-        &vec![neg_ws_gen, neg_ws_k, neg_ws_p],
-    );
-    let rhs = G1Projective::wires_set_montgomery(bld, ark_bn254::G1Projective::ZERO);
-    let step4_valid = G1Projective::equal(bld, &lhs, &rhs.to_vec_wires());
+        let lhs = emit_hinted_double_scalar_mul(
+            bld,
+            &vec![proof.x1.0.0.to_vec(), proof.x2.0.0.to_vec(), proof.z.0.0.to_vec()],
+            &vec![neg_ws_gen, neg_ws_k, neg_ws_p],
+        );
+        let rhs = G1Projective::wires_set_montgomery(bld, ark_bn254::G1Projective::ZERO);
+        G1Projective::equal(bld, &lhs, &rhs.to_vec_wires())
+    };
 
     let step4_stats = bld.gate_counts();
     println!("step4_stats: {:?}", step4_stats);
@@ -385,7 +444,9 @@ mod test {
     use ark_ff::AdditiveGroup;
     use crate::circuits::sect233k1::builder::{CircuitAdapter, CircuitTrait};
     use crate::dv_bn254::bigint::U254;
-    use crate::dv_bn254::dv_ckt::{get_fs_challenge, get_input_indexes};
+    use crate::dv_bn254::dv_ckt::{
+        compile_verifier, compile_verifier_argo_hybrid, get_fs_challenge, get_input_indexes,
+    };
     use crate::dv_bn254::dv_ref::{FrRef, ProofRef, PublicInputsRef, TrapdoorRef, VerifierPayloadRef};
     use crate::dv_bn254::fp254impl::Fp254Impl;
     use crate::dv_bn254::fr::Fr;
@@ -682,5 +743,40 @@ mod test {
         assert_eq!(out_point, G1Projective::as_montgomery(ark_bn254::G1Projective::ZERO));
         let stats = bld.gate_counts();
         println!("{stats}");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_hybrid_step4_reduces_gate_count() {
+        let (baseline_bld, _) = compile_verifier();
+        let (hybrid_bld, _) = compile_verifier_argo_hybrid();
+
+        let baseline = baseline_bld.gate_counts();
+        let hybrid = hybrid_bld.gate_counts();
+        let baseline_native = baseline.total_native_gates();
+        let hybrid_native = hybrid.total_native_gates();
+        let reduced_native = baseline_native.saturating_sub(hybrid_native);
+        let reduced_ratio = if baseline_native == 0 {
+            0.0
+        } else {
+            (reduced_native as f64) * 100.0 / (baseline_native as f64)
+        };
+
+        println!("baseline gate counts: {baseline}");
+        println!("hybrid gate counts:   {hybrid}");
+        println!(
+            "native gates baseline={}, hybrid={}, reduced={} ({:.4}%)",
+            baseline_native, hybrid_native, reduced_native, reduced_ratio
+        );
+
+        // Hybrid replacement formula:
+        //   step4_valid_external == 1  <=>  x1*G + x2*Q + z_signed*P == O
+        // replaces the heavy Step4 hinted MSM sub-circuit with one input bit.
+        assert!(
+            hybrid_native < baseline_native,
+            "expected hybrid native gates < baseline; baseline={}, hybrid={}",
+            baseline_native,
+            hybrid_native
+        );
     }
 }

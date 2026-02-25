@@ -3,7 +3,12 @@ use tracing::info;
 
 use zkm_sdk::{ProverClient, ZKMProofWithPublicValues, ZKMStdin, include_elf, utils as sdk_utils};
 
-use garbled_snark_verifier::dv_bn254::dv_snark::{dv_snark_verifier_bench_circuit};
+use garbled_snark_verifier::dv_bn254::dv_snark::{
+    dv_snark_step4_argo_mac_verify, dv_snark_verifier_bench_circuit,
+};
+use garbled_snark_verifier::transcript_commit::{
+    CommitInputs, compute_commit_root, h, merkle_root_from_leaves,
+};
 use garbled_snark_verifier::{bag::Circuit, dv_bn254::dv_ref::VerifierPayloadRef};
 use crate::utils::{SUB_CIRCUIT_MAX_GATES, SUB_INPUT_GATES_PARTS};
 
@@ -21,6 +26,12 @@ fn custom_dv_snark_circuit() -> Circuit {
         "src/data/bn254/trapdoor.bin",
     );
     info!("loaded witness from files");
+
+    // External hybrid input semantics:
+    //   step4_valid_external == 1  <=>  x1*G + x2*Q + z_signed*P == O.
+    let step4_valid_external = dv_snark_step4_argo_mac_verify(&witness);
+    info!("argo step4 external bit: {}", step4_valid_external);
+    mem_fs::MemFile::write("argo_step4_valid.bin", &[step4_valid_external as u8]).unwrap();
 
     let start = Instant::now();
     // Todo: change to dv_snark_verifier_circuit later
@@ -88,6 +99,29 @@ fn main() {
     std::fs::write("garbled_ciphertexts.bin", &sub_ciphertexts)
         .expect("Failed to write sub-ciphertexts to garbled_ciphertexts.bin");
     info!("Saved sub-circuit to file");
+
+    // Build transcript commitments for on-chain binding:
+    // commit_root = H(domain_sep || session_id || vk_hash || root_yao || root_argo || public_input_hash).
+    let argo_step4_valid = mem_fs::MemFile::read("argo_step4_valid.bin")
+        .unwrap_or_else(|_| vec![0u8]);
+    let root_argo = merkle_root_from_leaves(&[argo_step4_valid.clone()]);
+    let mut yao_leaves = Vec::new();
+    for part in 0..SUB_INPUT_GATES_PARTS {
+        yao_leaves.push(sub_gates[part].clone());
+    }
+    yao_leaves.push(sub_wires.clone());
+    yao_leaves.push(sub_ciphertexts.clone());
+    let root_yao = merkle_root_from_leaves(&yao_leaves);
+    let session_id = h(b"bn254-dv-snark-session-v1");
+    let vk_hash = h(b"bn254-dv-snark-vk-placeholder");
+    let public_input_hash = h(b"bn254-dv-snark-public-input-placeholder");
+    let commit_inputs = CommitInputs::new(session_id, vk_hash, root_yao, root_argo, public_input_hash);
+    let commit_root = compute_commit_root(&commit_inputs);
+    std::fs::write("argo_step4_valid.bin", &argo_step4_valid).expect("Failed to write argo step4 bit");
+    std::fs::write("root_argo.bin", root_argo).expect("Failed to write root_argo");
+    std::fs::write("root_yao.bin", root_yao).expect("Failed to write root_yao");
+    std::fs::write("commit_root.bin", commit_root).expect("Failed to write commit_root");
+    info!("commit roots saved: root_yao/root_argo/commit_root");
 
     // info!("Check guest");
     // garbled_snark_verifier::core::utils::check_guest(&ser_sc_0);
