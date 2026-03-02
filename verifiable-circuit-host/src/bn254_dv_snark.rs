@@ -102,7 +102,7 @@ fn main() {
 
     let start = Instant::now();
     // Execute the guest using the `ProverClient.execute` method, without generating a proof.
-    let (_public_values, report) = client.execute(ELF, stdin.clone()).run().unwrap();
+    let (_public_values, report) = client.execute(ELF, &stdin).run().unwrap();
 
     let elapsed = start.elapsed();
     info!(elapsed = ?elapsed, "executed program with {} cycles", report.total_instruction_count());
