@@ -13,6 +13,7 @@ members = [
     "garbled-snark-verifier",
     "verifiable-circuit",
     "verifiable-circuit-host",
+    "verifiable-circuit-babe",
 ]
 
 resolver = "2"
