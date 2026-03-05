@@ -77,17 +77,12 @@ pub fn build_diag(lambda: Fq) -> [[Fq; 3]; 3] {
     ]
 }
 
-/// D_i = diag(λ_i³, λ_i², λ_i) × D(r_i, ρ_i) ∈ F_p^{3×L}
-///
-/// Left-multiplying D by diag(λ³, λ², λ) simply scales each row:
-///   Row 0 ← λ³ · Row 0
-///   Row 1 ← λ² · Row 1
-///   Row 2 ← λ  · Row 2
+/// D_i = diag(λ_i², λ_i³, λ_i) × D(r_i, ρ_i) ∈ F_p^{3×L}
 pub fn build_d_i(lambda: Fq, r_i: Fq, rho_i: &G1Affine) -> Vec<Fq> {
     let d = build_d(r_i, rho_i);
     let lambda2 = lambda * lambda;
     let lambda3 = lambda2 * lambda;
-    let scales = [lambda3, lambda2, lambda];
+    let scales = [lambda2, lambda3, lambda];
 
     let mut d_i = d.clone();
     for row in 0..3 {
@@ -106,7 +101,7 @@ fn u_vec(pi: &G1Affine) -> [Fq; 6] {
 
 /// ū(π) binary decomposition of u(π).
 /// Layout: (1, bits(x), bits(y), bits(x²), bits(y²), bits(xy)) in LSB-first
-fn u_bar_vec(pi: &G1Affine) -> Vec<Fq> {
+pub fn u_bar_vec(pi: &G1Affine) -> Vec<Fq> {
     let u = u_vec(pi);
     let mut u_bar = Vec::with_capacity(L);
     u_bar.push(Fq::one()); // u_0 = 1
@@ -119,44 +114,40 @@ fn u_bar_vec(pi: &G1Affine) -> Vec<Fq> {
     u_bar
 }
 
-fn mul_c_u(c: &[[Fq; 6]; 3], u: &[Fq; 6]) -> [Fq; 3] {
-    let mut out = [Fq::zero(); 3];
-    for row in 0..3 {
-        for j in 0..6 {
-            out[row] += c[row][j] * u[j];
-        }
-    }
-    out
-}
-
-fn mul_d_ubar(d: &[Fq], u_bar: &[Fq]) -> [Fq; 3] {
-    let mut out = [Fq::zero(); 3];
-    for row in 0..3 {
-        for j in 0..L {
-            out[row] += d[row * L + j] * u_bar[j];
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use ark_bn254::G1Projective;
     use ark_ec::CurveGroup;
     use ark_ff::{Field, UniformRand};
+    use crate::dre::utils::jacobian_to_affine;
 
     /// Verify Jacobian (X:Y:Z) → affine via (X/Z², Y/Z³) matches expected point.
-    ///
-    /// Note: the formula uses the BN254 curve equation (y²=x³+3) to collapse
-    /// terms, so the "6" in C[0][0] encodes 2·b where b=3 is the curve constant.
     fn check_jacobian(xyz: [Fq; 3], expected: &G1Affine) {
-        let z_inv = xyz[2].inverse().expect("Z should be non-zero");
-        let z2_inv = z_inv * z_inv;
-        let z3_inv = z2_inv * z_inv;
-        assert_eq!(xyz[0] * z2_inv, expected.x, "X/Z² mismatch");
-        assert_eq!(xyz[1] * z3_inv, expected.y, "Y/Z³ mismatch");
+        let aff = jacobian_to_affine((xyz[0], xyz[1], xyz[2]));
+        assert_eq!(aff, *expected, "Jacobian coordinates do not match expected affine point");
     }
+
+    fn mul_c_u(c: &[[Fq; 6]; 3], u: &[Fq; 6]) -> [Fq; 3] {
+        let mut out = [Fq::zero(); 3];
+        for row in 0..3 {
+            for j in 0..6 {
+                out[row] += c[row][j] * u[j];
+            }
+        }
+        out
+    }
+
+    fn mul_d_ubar(d: &[Fq], u_bar: &[Fq]) -> [Fq; 3] {
+        let mut out = [Fq::zero(); 3];
+        for row in 0..3 {
+            for j in 0..L {
+                out[row] += d[row * L + j] * u_bar[j];
+            }
+        }
+        out
+    }
+
 
     /// Pick two random G1 affine points with x(φ) ≠ x(π) (Lemma 4 precondition).
     fn random_pair() -> (G1Affine, G1Affine) {
@@ -204,7 +195,6 @@ mod tests {
     fn test_diag() {
         let mut rng = rand::thread_rng();
 
-        // Pick a random G1 point and a random λ ∈ F_p*
         let pi = G1Projective::rand(&mut rng);
         let lambda = loop {
             let l = Fq::rand(&mut rng);
@@ -224,7 +214,7 @@ mod tests {
         ];
 
         // Both must represent the same affine point
-        let new_pi = G1Projective::new(xyz_scaled[0], xyz_scaled[1], xyz_scaled[2]).into_affine();
+        let new_pi = G1Projective::new(xyz_scaled[0], xyz_scaled[1], xyz_scaled[2]);
         assert_eq!(new_pi, pi, "diag(λ) should not change the affine point");
     }
 
