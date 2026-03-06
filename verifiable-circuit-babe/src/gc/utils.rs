@@ -25,6 +25,7 @@ fn bytes_to_fq(bytes: &[u8; 32]) -> Fq {
 // Block 0 uses the key directly.
 // Block 1 tweaks the key (XOR last byte with 0x01) to avoid encrypting
 // two plaintext blocks under the identical key (standard ECB weakness).
+// Todo: Use Ziren AES precompile
 pub fn aes_enc(fq: &Fq, key: &S) -> Ct {
     let plain = fq_to_bytes(fq);
 
@@ -45,6 +46,7 @@ pub fn aes_enc(fq: &Fq, key: &S) -> Ct {
     ct
 }
 
+// Todo: Use Ziren AES precompile
 pub fn aes_dec(ct: &Ct, key: &S) -> Fq {
     let cipher0 = Aes128::new(GenericArray::from_slice(&key.0));
     let mut block0 = *GenericArray::from_slice(&ct[..16]);
@@ -71,11 +73,8 @@ mod tests {
         let key = S([0u8; 16]);
         let fq = Fq::from(123456789u64);
         let ct = aes_enc(&fq, &key);
-
-        let new_key = S([1u8; 16]);
-
-        let decrypted = aes_dec(&ct, &new_key);
+        let decrypted = aes_dec(&ct, &key);
         println!("Decrypted: {:?}", decrypted);
-        // assert_eq!(fq, decrypted, "AES encryption/decryption failed");
+        assert_eq!(fq, decrypted, "AES encryption/decryption failed");
     }
 }
