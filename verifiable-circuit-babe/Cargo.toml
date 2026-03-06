@@ -18,3 +18,5 @@ serde = { version = "1.0.197", features = ["derive"] }
 sha2 = { workspace = true }
 rand = "0.8.5"
 rand_chacha = { version = "0.3", default-features = false }
+garbled-snark-verifier = { workspace = true, features = ["_poseidon2", "garbled", "_getrandom"] }
+aes = "0.8"

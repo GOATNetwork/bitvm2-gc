@@ -50,7 +50,7 @@ impl DRE for AffineDRE {
         AffineDREEncoding { dre_g_i }
     }
 
-    /// Dec: Dec_{i,j}((y_1,...,y_L)) = ∑_k y_k
+    /// Dec: r_i\pi + rho_i = Dec_{i,j}((y_1,...,y_L)) = ∑_k y_k
     fn dec(encoding: Self::Encoding) -> Self::Decoding {
         let coords: Vec<Fq> = encoding.dre_g_i
             .iter()

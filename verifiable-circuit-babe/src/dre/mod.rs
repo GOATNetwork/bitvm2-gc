@@ -2,8 +2,8 @@ use ark_bn254::{Fq, G1Affine};
 
 pub mod utils;
 pub mod matrices;
-mod weighted_dre;
-mod affine_dre;
+pub mod weighted_dre;
+pub mod affine_dre;
 
 pub const N: usize = 254;
 pub const L: usize = 1 + 5 * N; // 1271
