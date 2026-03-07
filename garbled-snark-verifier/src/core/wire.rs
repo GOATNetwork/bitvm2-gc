@@ -53,4 +53,12 @@ impl Wire {
         assert!(self.value.is_none());
         self.value = Some(bit);
     }
+
+    pub fn set_value_for_uninitialized(&mut self, bit: bool) {
+        if self.value.is_none() {
+            self.value = Some(bit);
+        } else {
+            panic!("Attempting to set value for a wire that already has a value");
+        }
+    }
 }

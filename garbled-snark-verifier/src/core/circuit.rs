@@ -79,6 +79,13 @@ impl Circuit {
 
         garbled_evaluations.last().unwrap().1
     }
+
+    pub fn set_witness_value(&mut self, witness: &[bool]) {
+        // Gate wires are Rc<RefCell<Wire>> sharing the same data as self.0, so this covers all.
+        witness.iter()
+            .zip(self.0.iter().skip(2))
+            .for_each(|(bit, wirex)| wirex.borrow_mut().set_value_for_uninitialized(*bit));
+    }
 }
 
 #[cfg(feature = "garbled")]
