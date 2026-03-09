@@ -80,6 +80,23 @@ impl Circuit {
         garbled_evaluations.last().unwrap().1
     }
 
+    pub fn garbled_evaluate_without_delta(&self, ciphertext: &[Option<S>]) {
+        for (i, gate) in self.1.iter().enumerate() {
+            let (output, output_label) = gate.e()(
+                gate.wire_a.borrow().get_value(),
+                gate.wire_b.borrow().get_value(),
+                gate.wire_a.borrow().eval_select(),
+                gate.wire_b.borrow().eval_select(),
+                ciphertext[i],
+                gate.gid,
+            );
+            // check the output is correct
+            assert_eq!(output, gate.wire_c.borrow().get_value());
+            // add new label to output wire
+            gate.wire_c.borrow_mut().set_label(output_label);
+        }
+    }
+
     pub fn set_witness_value(&mut self, witness: &[bool]) {
         // Gate wires are Rc<RefCell<Wire>> sharing the same data as self.0, so this covers all.
         witness.iter()

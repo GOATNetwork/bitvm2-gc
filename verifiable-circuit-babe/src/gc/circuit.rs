@@ -253,4 +253,82 @@ mod tests {
             );
         }
     }
+
+    #[cfg(feature = "garbled")]
+    #[test]
+    fn test_output_labels() {
+        use garbled_snark_verifier::core::utils::DELTA;
+
+        let g = random_g1_affine();
+
+        // Generate the circuit.
+        let (bld, output_indices) = compile_babe_gc(g);
+        let mut circuit = bld.build(&[]);
+
+        // Encoding keys: random 0-labels for each of the 2*N input wires (x bits then y bits).
+        // The 1-label for wire i is encoding_keys[i] XOR DELTA (Free XOR).
+        let encoding_keys: Vec<S> = (0..2 * crate::dre::N).map(|_| S::random()).collect();
+        // Override the circuit's input wire labels with our encoding keys.
+        for (i, &key) in encoding_keys.iter().enumerate() {
+            circuit.0[2 + i].borrow_mut().label = Some(key);
+        }
+
+        // Two random G1 points.
+        let mut rng = rand::thread_rng();
+        let p1a = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+        let p1b = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+
+        // Evaluate the circuit for a given point and return the output labels.
+        // For each output wire k, select the label corresponding to the output bit value.
+        let eval = |circuit: &mut Circuit, p: &ark_bn254::G1Affine| -> Vec<S> {
+            let witness: Vec<bool> = Fq::to_bits(p.x)
+                .into_iter()
+                .chain(Fq::to_bits(p.y).into_iter())
+                .collect();
+
+            // Reset all non-constant wire values so the circuit can be re-evaluated.
+            for wire in circuit.0.iter().skip(2) {
+                wire.borrow_mut().value = None;
+            }
+            circuit.set_witness_value(&witness);
+            for gate in &mut circuit.1 {
+                gate.evaluate();
+            }
+            let garblings = circuit.garbled_gates();
+            let _ = circuit.garbled_evaluate(&garblings);
+
+            output_indices
+                .iter()
+                .map(|&i| {
+                    let w = &circuit.0[i];
+                    w.borrow().select(w.borrow().get_value())
+                })
+                .collect()
+        };
+
+        let labels_a = eval(&mut circuit, &p1a);
+        let labels_b = eval(&mut circuit, &p1b);
+
+        // Verify the Free XOR property on output labels:
+        //   same u_bar bit  → labels are equal
+        //   different u_bar → labels XOR DELTA
+        let u_bar_a = u_bar_vec(&p1a);
+        let u_bar_b = u_bar_vec(&p1b);
+        assert_eq!(u_bar_a.len(), L);
+        assert_eq!(u_bar_b.len(), L);
+
+        for k in 0..L {
+            let bit_a = !u_bar_a[k].is_zero();
+            let bit_b = !u_bar_b[k].is_zero();
+            if bit_a == bit_b {
+                assert_eq!(labels_a[k], labels_b[k], "k={k}: same u_bar bit → equal output labels");
+            } else {
+                assert_eq!(
+                    labels_a[k] ^ labels_b[k],
+                    DELTA,
+                    "k={k}: different u_bar bits → labels must differ by DELTA"
+                );
+            }
+        }
+    }
 }

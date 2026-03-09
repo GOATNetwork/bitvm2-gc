@@ -1,9 +1,10 @@
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
-use ark_bn254::Fq;
-use ark_ff::{PrimeField, Zero};
+use ark_bn254::{Fq, Fr};
+use ark_ff::{One, PrimeField, UniformRand, Zero};
 use garbled_snark_verifier::core::s::S;
-use crate::dre::affine_dre::AffineDREEncoding;
-use crate::dre::{L, N};
+use crate::dre::affine_dre::{AffineDRE, AffineDREEncoding, AffineDREInput};
+use crate::dre::{DRE, L, N};
+use crate::dre::utils::{sample_rhos, sample_s};
 use crate::gc::utils::{aes_dec, aes_enc};
 
 /// Ciphertext of one Fq element (32 bytes = 2 AES-128 blocks)
@@ -65,6 +66,49 @@ impl AdaptorTable {
 
         AdaptorTable { entries }
     }
+    
+    pub fn build_from_r_and_labels(
+        r: Fr,
+        labels: &[[S; 2]],
+    ) -> Self {
+        let mut rng = rand::thread_rng();
+        // Generate DRE encodings for u_bar_k = 0 and u_bar_k = 1 for each i in 0..N.
+        let r_bits = garbled_snark_verifier::dv_bn254::fr::Fr::to_bits(r);
+        let rhos = sample_rhos(&mut rng);
+        let deltas: Vec<Fq> = (0..N)
+            .map(|_| loop {
+                let l = Fq::rand(&mut rng);
+                if !l.is_zero() {
+                    break l;
+                }
+            })
+            .collect();
+
+        let u_bar_zeros: Vec<Fq> = vec![Fq::zero(); L];
+        let u_bar_ones: Vec<Fq> = vec![Fq::one(); L];
+
+        let mut all_encodings: Vec<AffineDREEncoding> = Vec::with_capacity(2 * N);
+        for i in 0..N {
+            let s_i: Vec<Vec<Fq>> = (0..3).map(|_| sample_s(&mut rng)).collect();
+            let enc_0 = AffineDRE::enc(AffineDREInput {
+                r_i: Fr::from(r_bits[i] as u8),
+                bar_u: u_bar_zeros.clone(),
+                rho_i: rhos[i],
+                delta_i: deltas[i],
+                s_i: s_i.clone(),
+            });
+            let enc_1 = AffineDRE::enc(AffineDREInput {
+                r_i: Fr::from(r_bits[i] as u8),
+                bar_u: u_bar_ones.clone(),
+                rho_i: rhos[i],
+                delta_i: deltas[i],
+                s_i,
+            });
+            all_encodings.push(enc_0);
+            all_encodings.push(enc_1);
+        }
+        Self::build(&all_encodings, labels)
+    }
 
     pub fn eval(&self, labels: &[S], u_bar: &[Fq]) -> Vec<AffineDREEncoding> {
         assert_eq!(labels.len(), L);
@@ -117,7 +161,7 @@ mod tests {
         // create random r and \pi
         let mut rng = rand::thread_rng();
         let pi = G1Projective::rand(&mut rng).into_affine();
-        let r: Vec<Fr> = (0..N).map(|_| Fr::from(rand::random::<bool>() as u64)).collect();
+        let r = Fr::rand(&mut rng);
 
         // create u_bar_pi based on pi
         let u_bar_pi = u_bar_vec(&pi);
@@ -130,49 +174,9 @@ mod tests {
                 [l0, l1]
             })
             .collect();
-
-        // generate rhos: N points satisfying ∑ 2^i·ρ_i = O
-        let rhos = sample_rhos(&mut rng);
-
-        // generate deltas: N non-zero random Fq scalars
-        let deltas: Vec<Fq> = (0..N)
-            .map(|_| loop {
-                let l = Fq::rand(&mut rng);
-                if !l.is_zero() { break l; }
-            })
-            .collect();
-
-        // u_bar = 0 and 1
-        let u_bar_zeros: Vec<Fq> = vec![Fq::zero(); L];
-        let u_bar_ones: Vec<Fq> = vec![Fq::one(); L];
-
-        let mut all_encodings: Vec<AffineDREEncoding> = Vec::with_capacity(2 * N);
-        for i in 0..N {
-            let s_i: Vec<Vec<Fq>> = (0..3).map(|_| sample_s(&mut rng)).collect();
-
-            // enc for ū_k = 0: dre_g_i[j][k] = s_{i,j,k}
-            let enc_0 = AffineDRE::enc(AffineDREInput {
-                r_i: r[i],
-                bar_u: u_bar_zeros.clone(),
-                rho_i: rhos[i],
-                delta_i: deltas[i],
-                s_i: s_i.clone(),
-            });
-            // enc for ū_k = 1: dre_g_i[j][k] = D_{i,j,k} + s_{i,j,k}
-            let enc_1 = AffineDRE::enc(AffineDREInput {
-                r_i: r[i],
-                bar_u: u_bar_ones.clone(),
-                rho_i: rhos[i],
-                delta_i: deltas[i],
-                s_i,
-            });
-
-            all_encodings.push(enc_0); // index 2*i   → ū_k = 0
-            all_encodings.push(enc_1); // index 2*i+1 → ū_k = 1
-        }
-
-        // build the adaptor table from the encodings and labels
-        let table = AdaptorTable::build(&all_encodings, &labels);
+        
+        // build the adaptor table 
+        let table = AdaptorTable::build_from_r_and_labels(r, &labels);
 
         // evaluate the adaptor table with the held labels and bar_u
         // For each bit position k, the evaluator holds labels[k][u_bar_pi[k]]
@@ -182,20 +186,20 @@ mod tests {
 
         let decrypted_encodings = table.eval(&eval_labels, &u_bar_pi);
 
-        // compute the AffineDREDecoding from the decrypted encodings and check it matches r_i·π + ρ_i
-        for i in 0..decrypted_encodings.len() {
-            let decoding = AffineDRE::dec(AffineDREEncoding {
-                dre_g_i: decrypted_encodings[i].dre_g_i.clone(),
-            });
+        // compute the AffineDREDecoding from the decrypted encodings r_i·π + ρ_i
+        // weighted sum of them, and check if it equals to r·π
+        let mut sum = G1Projective::zero();
+        let mut weight = Fr::one(); // 2^i
 
-            let expected = (G1Projective::from(pi) * r[i] + G1Projective::from(rhos[i]))
-                .into_affine();
-
-            assert_eq!(
-                jacobian_to_affine(decoding.f_i),
-                expected,
-                "entry {i}: decoded point should equal r_i·π + ρ_i"
-            );
+        for encoding in decrypted_encodings {
+            let decoding = AffineDRE::dec(encoding);
+            let (x, y, z) = decoding.f_i;
+            let f_i = G1Projective::new(x, y, z);
+            sum += f_i * weight;
+            weight += weight;
         }
+
+        let expected = (G1Projective::from(pi) * r).into_affine();
+        assert_eq!(sum.into_affine(), expected, "Weighted sum ∑ 2^i·f_i should equal r·π");
     }
 }
