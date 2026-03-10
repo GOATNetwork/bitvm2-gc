@@ -110,6 +110,7 @@ impl BABEVerifier {
         for gate in &mut self.garbled_circuit.1 {
             gate.evaluate();
         }
+        let _ = self.garbled_circuit.garbled_gates();
 
         // Step 3: Recover the 0-label for each output wire (u_bar bit position).
         // In Free-XOR: label_1 = label_0 XOR DELTA.
@@ -163,6 +164,7 @@ impl BABEVerifier {
             gate.evaluate();
         }
         let garblings = self.garbled_circuit.garbled_gates();
+
         (labels_wo_deltas, garblings)
     }
 }
