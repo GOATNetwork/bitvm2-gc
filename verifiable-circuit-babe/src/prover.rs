@@ -1,5 +1,5 @@
 use ark_bn254::G1Projective;
-use ark_ec::CurveGroup;
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{One, Zero};
 use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
 use ark_serialize::CanonicalSerialize;
@@ -36,20 +36,13 @@ impl BABEProver {
         &mut self,
         garbled_circuit: &mut Circuit,
         gc_output_indices: &[usize],
-        constant_labels: [S; 2],
         input_labels: &Vec<S>,
         ciphertext: &[Option<S>],
         adaptor_table: &AdaptorTable,
     ) {
         let pi1 = self.groth16_proof.a;
-
-        // Step 2: Set constant wire labels.
-        garbled_circuit.0[0].borrow_mut().label = Some(constant_labels[0]);
-        garbled_circuit.0[1].borrow_mut().label = Some(constant_labels[1]);
-
-        // Step 3: Set input wire labels received from the verifier (one per bit of π₁).
         for (i, &lbl) in input_labels.iter().enumerate() {
-            garbled_circuit.0[2 + i].borrow_mut().label = Some(lbl);
+            garbled_circuit.0[i].borrow_mut().label = Some(lbl);
         }
 
         // Step 4: Reset all non-constant wire values left from any previous evaluation,
@@ -58,6 +51,7 @@ impl BABEProver {
             .into_iter()
             .chain(Fq::to_bits(pi1.y).into_iter())
             .collect();
+
         garbled_circuit.set_witness_value(&witness);
         for gate in &mut garbled_circuit.1 {
             gate.evaluate();
@@ -68,12 +62,9 @@ impl BABEProver {
 
         // Step 6: Collect the output label held for each of the L output wires.
         let output_labels: Vec<S> = gc_output_indices.iter().map(|i| {
-                garbled_circuit.0[*i].borrow().select(garbled_circuit.0[*i].borrow().get_value())
+            garbled_circuit.0[*i].borrow().get_label()
         })
             .collect();
-        for i in 0..10 {
-            println!("output label {}: {:?}", i, output_labels[i]);
-        }
 
         // Step 7: Compute ū(π₁) and eval the adaptor table to recover DRE encodings.
         let u_bar = u_bar_vec(&pi1);
@@ -89,8 +80,6 @@ impl BABEProver {
             sum += f_i * weight;
             weight += weight;
         }
-        let tmp = sum.into_affine();
-        println!("tmp: {:?}", tmp);
 
         // Step 9: Serialize r·π₁ and store as ct1.
         let mut ct1 = Vec::new();
@@ -100,7 +89,6 @@ impl BABEProver {
 }
 
 #[cfg(test)]
-#[cfg(feature = "garbled")]
 mod tests {
     use super::*;
     use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
@@ -139,69 +127,42 @@ mod tests {
         // 1. Groth16 setup and prove: a * b = c.
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
-        // let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
-        //     DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
-        //     &mut rng,
-        // ).unwrap();
-        // let proof = ark_groth16::Groth16::<Bn254>::prove(
-        //     &pk,
-        //     DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
-        //     &mut rng,
-        // ).unwrap();
+        let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        ).unwrap();
+        let proof = ark_groth16::Groth16::<Bn254>::prove(
+            &pk,
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        ).unwrap();
         let public_inputs = vec![a * b];
-
-        // // --- store proof and vk to files ---
-        // {
-        //     let mut f = std::fs::File::create("proof.bin").expect("Failed to create proof.bin");
-        //     proof.serialize_uncompressed(&mut f).expect("Failed to serialize proof");
-        // }
-        // {
-        //     let mut f = std::fs::File::create("vk.bin").expect("Failed to create vk.bin");
-        //     vk.serialize_uncompressed(&mut f).expect("Failed to serialize vk");
-        // }
-
-        // --- read them back ---
-        let proof: ark_groth16::Proof<Bn254> = {
-            let mut buf = Vec::new();
-            std::fs::File::open("proof.bin").expect("open proof.bin").read_to_end(&mut buf).expect("read proof.bin");
-            ark_groth16::Proof::<Bn254>::deserialize_uncompressed(&buf[..]).expect("Failed to deserialize proof")
-        };
-        let vk: ark_groth16::VerifyingKey<Bn254> = {
-            let mut buf = Vec::new();
-            std::fs::File::open("vk.bin").expect("open vk.bin").read_to_end(&mut buf).expect("read vk.bin");
-            ark_groth16::VerifyingKey::<Bn254>::deserialize_uncompressed(&buf[..]).expect("Failed to deserialize vk")
-        };
         println!("step 1 done: Groth16 proof generated");
-        println!("proof: {:?}", proof);
 
         // 2. Verifier: enc_setup generates (ct2 = r·[delta]_2, ct3 = RO(rY) ⊕ msg).
         let mut verifier = BABEVerifier::new();
         verifier.enc_setup(&vk, &public_inputs).unwrap();
         println!("step 2 done: Verifier generated ct_setup");
 
-        let rpi1 = proof.a.into_group() * verifier.r;
-        println!("r pi1 :{:?}", rpi1.into_affine());
+        // let rpi1 = proof.a.into_group() * verifier.r;
+        // println!("r pi1 :{:?}", rpi1.into_affine());
 
-        // 3. Verifier: build adaptor table binding r to the garbled circuit output labels.
+        // // 3. Verifier: build adaptor table binding r to the garbled circuit output labels.
         verifier.build_adaptor_table();
         println!("step 3 done: Adaptor table");
 
         // 4. Verifier: compute the input labels for proof.a = π₁.
-        //    Must happen before field-level borrows of verifier below.
-        let constant_labels = verifier.constant_labels;
+        let constant_labels = verifier.constant_0labels;
         let (input_labels, ciphertexts) = verifier.compute_pi1_labels_and_ciphertexts(proof.a);
         println!("step 4 done: Groth16 constant_labels");
 
         // 5. Prover: compute ct_prove = r·π₁ via garbled circuit + adaptor table.
         let mut prover = BABEProver::new(proof.clone());
-        // remove all the label of verifier.garbled_circuits:
-        for wire in &verifier.garbled_circuits.0 {
-            wire.borrow_mut().label = None;
-        }
+        // fresh the circuit
+        verifier.garbled_circuit.reset_circuit_except_constants();
         prover.compute_ct_prove(
-            &mut verifier.garbled_circuits,
+            &mut verifier.garbled_circuit,
             &verifier.gc_output_indices,
-            constant_labels,
             &input_labels,
             &ciphertexts,
             &verifier.adaptor_table,

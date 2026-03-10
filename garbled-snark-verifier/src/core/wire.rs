@@ -35,9 +35,6 @@ impl Wire {
         if !selector { self.label.unwrap() } else { self.label.unwrap() ^ DELTA }
     }
 
-    pub fn eval_select(&self) -> S {
-        self.label.unwrap()
-    }
     pub fn get_value(&self) -> bool {
         assert!(self.value.is_some());
         self.value.unwrap()

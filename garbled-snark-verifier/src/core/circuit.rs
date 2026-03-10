@@ -85,15 +85,20 @@ impl Circuit {
             let (output, output_label) = gate.e()(
                 gate.wire_a.borrow().get_value(),
                 gate.wire_b.borrow().get_value(),
-                gate.wire_a.borrow().eval_select(),
-                gate.wire_b.borrow().eval_select(),
+                gate.wire_a.borrow().get_label(),
+                gate.wire_b.borrow().get_label(),
                 ciphertext[i],
                 gate.gid,
             );
             // check the output is correct
             assert_eq!(output, gate.wire_c.borrow().get_value());
             // add new label to output wire
-            gate.wire_c.borrow_mut().set_label(output_label);
+            if gate.wire_c.borrow().label.is_some() {
+                assert_eq!(gate.wire_c.borrow().get_label(), output_label);
+            }
+            else {
+                gate.wire_c.borrow_mut().set_label(output_label);
+            }
         }
     }
 
@@ -102,6 +107,21 @@ impl Circuit {
         witness.iter()
             .zip(self.0.iter().skip(2))
             .for_each(|(bit, wirex)| wirex.borrow_mut().set_value_for_uninitialized(*bit));
+    }
+
+    pub fn reset_circuit_except_constants(&mut self) {
+        for wirex in self.0.iter().skip(2) {
+            wirex.borrow_mut().value = None;
+        }
+        for wirex in self.0.iter() {
+            wirex.borrow_mut().label = None;
+        }
+    }
+
+    pub fn is_fresh(&self) -> bool {
+        let fresh_val = self.0.iter().skip(2).all(|wirex| wirex.borrow().value.is_none());
+        let fresh_label = self.0.iter().all(|wirex| wirex.borrow().label.is_none());
+        fresh_val && fresh_label
     }
 }
 

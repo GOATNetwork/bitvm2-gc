@@ -101,6 +101,7 @@ mod tests {
     use ark_ec::CurveGroup;
     use ark_ff::{UniformRand, Zero};
     use garbled_snark_verifier::bag::S;
+    use garbled_snark_verifier::core::utils::reset_gid;
     use crate::dre::matrices::u_bar_vec;
 
     fn random_g1_affine() -> G1Affine {
@@ -119,6 +120,7 @@ mod tests {
             .collect();
 
         // build circuit
+        reset_gid();
         let (bld, output_indices) = compile_babe_gc(g);
         let mut circuit = bld.build(&witness);
         circuit.gate_counts().print();
@@ -182,6 +184,7 @@ mod tests {
             .collect();
 
         // circuit
+        reset_gid();
         let (bld, output_indices) = compile_babe_gc(g);
         let mut circuit = bld.build(&witness);
         for gate in &mut circuit.1 {
@@ -217,6 +220,7 @@ mod tests {
         let pi = random_g1_affine();
         let g = random_g1_affine();
 
+        reset_gid();
         let (bld, output_indices) = compile_babe_gc(g);
         let mut circuit = bld.build(&vec![]);
 
@@ -262,6 +266,7 @@ mod tests {
         let g = random_g1_affine();
 
         // Generate the circuit.
+        reset_gid();
         let (bld, output_indices) = compile_babe_gc(g);
         let mut circuit = bld.build(&[]);
 

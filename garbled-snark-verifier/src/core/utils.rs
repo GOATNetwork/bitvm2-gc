@@ -24,6 +24,11 @@ pub fn inc_gid() -> u32 {
     GID.fetch_add(1, Ordering::SeqCst) + 1
 }
 
+#[inline(always)]
+pub fn reset_gid() {
+    GID.store(0, Ordering::SeqCst);
+}
+
 pub fn bit_to_usize(bit: bool) -> usize {
     if bit { 1 } else { 0 }
 }
