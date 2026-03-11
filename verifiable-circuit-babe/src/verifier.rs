@@ -20,6 +20,7 @@ pub struct BABEVerifier {
     encoding_keys: Vec<S>,
     pub constant_0labels: [S; 2],
     pub adaptor_table: AdaptorTable,
+    pub ciphertexts: Vec<Option<S>>,
 }
 
 impl BABEVerifier {
@@ -51,6 +52,7 @@ impl BABEVerifier {
             encoding_keys,
             constant_0labels: [zero_label, one_label],
             adaptor_table: AdaptorTable { entries: vec![] },
+            ciphertexts: vec![],
         }
     }
 
@@ -84,7 +86,7 @@ impl BABEVerifier {
     }
 
     #[cfg(feature = "garbled")]
-    pub fn build_adaptor_table(&mut self) {
+    pub fn build_adaptor_table_and_ciphertexts(&mut self) {
         use ark_bn254::G1Projective;
         use ark_ff::{Zero, One};
         use crate::dre::matrices::u_bar_vec;
@@ -110,7 +112,8 @@ impl BABEVerifier {
         for gate in &mut self.garbled_circuit.1 {
             gate.evaluate();
         }
-        let _ = self.garbled_circuit.garbled_gates();
+        let ciphertexts = self.garbled_circuit.garbled_gates();
+        self.ciphertexts = ciphertexts;
 
         // Step 3: Recover the 0-label for each output wire (u_bar bit position).
         // In Free-XOR: label_1 = label_0 XOR DELTA.
@@ -131,10 +134,10 @@ impl BABEVerifier {
         self.adaptor_table = AdaptorTable::build_from_r_and_labels(self.r, &labels);
     }
 
-    pub fn compute_pi1_labels_and_ciphertexts(
+    pub fn compute_pi1_labels(
         &mut self,
         pi1: ark_bn254::G1Affine,
-    ) -> (Vec<S>, Vec<Option<S>>) {
+    ) -> Vec<S> {
         let x_bits = Fq::to_bits(pi1.x);
         let y_bits = Fq::to_bits(pi1.y);
         let witness: Vec<bool> = x_bits.into_iter().chain(y_bits.into_iter()).collect();
@@ -147,25 +150,7 @@ impl BABEVerifier {
             if b { key ^ DELTA } else { key }
         }).collect();
         labels_wo_deltas.extend(tail);
-
-        // Fresh circuit and apply encoding-key 0-labels to input wires.
-        if ! self.garbled_circuit.is_fresh() {
-            self.garbled_circuit.reset_circuit_except_constants();
-        }
-        self.garbled_circuit.set_witness_value(&witness);
-        // add labels
-        self.garbled_circuit.0[0].borrow_mut().label = Some(self.constant_0labels[0]);
-        self.garbled_circuit.0[1].borrow_mut().label = Some(self.constant_0labels[1]);
-        for i in 0..witness.len() {
-            self.garbled_circuit.0[2 + i].borrow_mut().label = Some(self.encoding_keys[i]);
-        }
-        // Evaluate and compute ciphertext
-        for gate in &mut self.garbled_circuit.1 {
-            gate.evaluate();
-        }
-        let garblings = self.garbled_circuit.garbled_gates();
-
-        (labels_wo_deltas, garblings)
+        labels_wo_deltas
     }
 }
 

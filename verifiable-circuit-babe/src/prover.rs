@@ -150,7 +150,7 @@ mod tests {
         // println!("r pi1 :{:?}", rpi1.into_affine());
 
         // // 3. Verifier: build adaptor table binding r to the garbled circuit output labels.
-        verifier.build_adaptor_table();
+        verifier.build_adaptor_table_and_ciphertexts();
         {
             let n = verifier.adaptor_table.entries.len();
             let l = verifier.adaptor_table.entries[0].x.len();
@@ -158,11 +158,12 @@ mod tests {
             println!("AdaptorTable size: {} bytes ({:.2} MB)", adaptor_bytes, adaptor_bytes as f64 / 1_048_576.0);
         }
 
-        println!("step 3 done: Adaptor table");
+        println!("step 3 done: Adaptor table and boolean circuit ciphertexts");
 
         // 4. Verifier: compute the input labels for proof.a = π₁.
         let constant_labels = verifier.constant_0labels;
-        let (input_labels, ciphertexts) = verifier.compute_pi1_labels_and_ciphertexts(proof.a);
+        let (input_labels) = verifier.compute_pi1_labels(proof.a);
+
         println!("step 4 done: Groth16 constant_labels");
 
         // 5. Prover: compute ct_prove = r·π₁ via garbled circuit + adaptor table.
@@ -173,7 +174,7 @@ mod tests {
             &mut verifier.garbled_circuit,
             &verifier.gc_output_indices,
             &input_labels,
-            &ciphertexts,
+            &verifier.ciphertexts,
             &verifier.adaptor_table,
         );
         println!("step 5 done: Groth16 constant_labels");
