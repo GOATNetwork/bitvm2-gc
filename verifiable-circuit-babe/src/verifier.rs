@@ -34,7 +34,7 @@ impl BABEVerifier {
         // The fallback point g can be any fixed generator; we use the BN254 G1 generator.
         let g = ark_bn254::G1Affine::generator();
         let (bld, gc_output_indices) = crate::gc::compile_babe_gc(g);
-        let garbled_circuits = bld.build(&[]);
+        let garbled_circuit = bld.build(&[]);
 
         // Encoding keys: random 0-labels for each of the 2*N input wires (x bits then y bits).
         // Only the 0-labels need to be stored here.
@@ -45,7 +45,7 @@ impl BABEVerifier {
         Self {
             msg,
             r,
-            garbled_circuit: garbled_circuits,
+            garbled_circuit,
             gc_output_indices,
             ct_setup: WeKnownPi1SetupCt { ct2_r_delta_g2: vec![], ct3_masked_msg: vec![] },
             encoding_keys,
@@ -115,15 +115,15 @@ impl BABEVerifier {
         // Step 3: Recover the 0-label for each output wire (u_bar bit position).
         // In Free-XOR: label_1 = label_0 XOR DELTA.
         let u_bar_pi1 = u_bar_vec(&pi1);
-        let labels: Vec<[S; 2]> = self.gc_output_indices
+        let labels: Vec<[u8;16]> = self.gc_output_indices
             .iter()
             .zip(u_bar_pi1.iter())
-            .map(|(idx, u)| {
+            .flat_map(|(idx, u)| {
                 let current = self.garbled_circuit.0[*idx]
                     .borrow()
                     .select(self.garbled_circuit.0[*idx].borrow().get_value());
                 let label_0 = if u.is_zero() { current } else { current ^ DELTA };
-                [label_0, label_0 ^ DELTA]
+                [label_0.0, (label_0 ^ DELTA).0]
             })
             .collect();
 

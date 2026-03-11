@@ -61,8 +61,8 @@ impl BABEProver {
         garbled_circuit.garbled_evaluate_without_delta(ciphertext);
 
         // Step 6: Collect the output label held for each of the L output wires.
-        let output_labels: Vec<S> = gc_output_indices.iter().map(|i| {
-            garbled_circuit.0[*i].borrow().get_label()
+        let output_labels: Vec<[u8; 16]> = gc_output_indices.iter().map(|i| {
+            garbled_circuit.0[*i].borrow().get_label().0
         })
             .collect();
 
@@ -144,11 +144,20 @@ mod tests {
         verifier.enc_setup(&vk, &public_inputs).unwrap();
         println!("step 2 done: Verifier generated ct_setup");
 
+        verifier.garbled_circuit.gate_counts().print();
+
         // let rpi1 = proof.a.into_group() * verifier.r;
         // println!("r pi1 :{:?}", rpi1.into_affine());
 
         // // 3. Verifier: build adaptor table binding r to the garbled circuit output labels.
         verifier.build_adaptor_table();
+        {
+            let n = verifier.adaptor_table.entries.len();
+            let l = verifier.adaptor_table.entries[0].x.len();
+            let adaptor_bytes = n * 3 * l * 2 * 32; // N entries * (x,y,z) * L cols * 2 cts * 32 bytes/ct
+            println!("AdaptorTable size: {} bytes ({:.2} MB)", adaptor_bytes, adaptor_bytes as f64 / 1_048_576.0);
+        }
+
         println!("step 3 done: Adaptor table");
 
         // 4. Verifier: compute the input labels for proof.a = π₁.

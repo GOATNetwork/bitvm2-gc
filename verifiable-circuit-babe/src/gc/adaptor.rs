@@ -1,5 +1,5 @@
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
-use ark_bn254::{Fq, Fr};
+use ark_bn254::{Fq, Fr, G1Affine, G1Projective};
 use ark_ff::{One, PrimeField, UniformRand, Zero};
 use garbled_snark_verifier::core::s::S;
 use crate::dre::affine_dre::{AffineDRE, AffineDREEncoding, AffineDREInput};
@@ -29,9 +29,9 @@ impl AdaptorTable {
     /// Build the adaptor table from the DRE encodings and labels.
     /// Require: dre_g has 2*N entries, where each pair of contiguous
     /// entries corresponds to u_bar = 0 and 1 for the same i.
-    pub fn build(dre_g: &[AffineDREEncoding], labels: &[[S; 2]]) -> Self {
+    pub fn build(dre_g: &[AffineDREEncoding], labels: &[[u8; 16]]) -> Self {
         assert_eq!(dre_g.len(), 2 * N);
-        assert_eq!(labels.len(), L);
+        assert_eq!(labels.len(), 2 * L);
 
         let entries = (0..N)
             .map(|i| {
@@ -51,7 +51,7 @@ impl AdaptorTable {
                         .zip(row_1.iter())
                         .enumerate()
                         .map(|(k, (g0, g1))| {
-                            [aes_enc(g0, &labels[k][0]), aes_enc(g1, &labels[k][1])]
+                            [aes_enc(g0, &labels[2 * k]), aes_enc(g1, &labels[2 * k + 1])]
                         })
                         .collect()
                 };
@@ -69,7 +69,7 @@ impl AdaptorTable {
     
     pub fn build_from_r_and_labels(
         r: Fr,
-        labels: &[[S; 2]],
+        labels: &[[u8; 16]],
     ) -> Self {
         let mut rng = rand::thread_rng();
         // Generate DRE encodings for u_bar_k = 0 and u_bar_k = 1 for each i in 0..N.
@@ -110,7 +110,78 @@ impl AdaptorTable {
         Self::build(&all_encodings, labels)
     }
 
-    pub fn eval(&self, labels: &[S], u_bar: &[Fq]) -> Vec<AffineDREEncoding> {
+    /// Build the adaptor table inside a zkVM execution.
+    ///
+    /// Takes all randomness as explicit inputs (no internal RNG) and verifies
+    /// the algebraic constraints required for DRE correctness before building:
+    ///   - ∑ 2^i · ρ_i = O  (identity point)
+    ///   - ∑_k s_all[i][j][k] = 0  for every (i, j)
+    ///   - delta_i ≠ 0  for every i
+    ///
+    /// The zkVM proof over this function attests that the published table was
+    /// built from valid randomness and the claimed (r, labels).
+    pub fn build_in_zkvm(
+        labels: &[[u8; 16]],
+        r_bits: &[u8],
+        rhos: &[G1Affine],
+        s_all: &[Vec<Vec<Fq>>],
+        deltas: &[Fq],
+    ) -> Self {
+        assert_eq!(rhos.len(), N);
+        assert_eq!(s_all.len(), N);
+        assert_eq!(deltas.len(), N);
+        assert_eq!(labels.len(), 2 * L);
+        assert_eq!(r_bits.len(), N, "r_bits must have exactly N bits");
+
+        // 1. Verify ∑ 2^i · ρ_i = O
+        let mut weighted_sum = G1Projective::zero();
+        let mut power = Fr::from(1u64);
+        for rho_i in rhos {
+            weighted_sum += *rho_i * power;
+            power *= Fr::from(2u64);
+        }
+        assert!(weighted_sum.is_zero(), "constraint ∑ 2^i·ρ_i = O not satisfied");
+
+        // 2. Verify s and delta constraints per row
+        for i in 0..N {
+            assert!(!deltas[i].is_zero(), "delta[{i}] must be non-zero");
+            assert_eq!(s_all[i].len(), 3);
+            for j in 0..3 {
+                assert_eq!(s_all[i][j].len(), L);
+                let sum: Fq = s_all[i][j].iter().copied().sum();
+                assert!(sum.is_zero(), "constraint ∑_k s_all[{i}][{j}][k] = 0 not satisfied");
+            }
+        }
+
+        // 3. Build encodings for u_bar = 0 and u_bar = 1 for each bit of r
+        // r_bits are passed directly — no Fr reconstruction or to_bits() call needed.
+        let u_bar_zeros: Vec<Fq> = vec![Fq::zero(); L];
+        let u_bar_ones: Vec<Fq> = vec![Fq::one(); L];
+
+        let mut all_encodings: Vec<AffineDREEncoding> = Vec::with_capacity(2 * N);
+        for i in 0..N {
+            let enc_0 = AffineDRE::enc(AffineDREInput {
+                r_i: Fr::from(r_bits[i] as u8),
+                bar_u: u_bar_zeros.clone(),
+                rho_i: rhos[i],
+                delta_i: deltas[i],
+                s_i: s_all[i].clone(),
+            });
+            let enc_1 = AffineDRE::enc(AffineDREInput {
+                r_i: Fr::from(r_bits[i] as u8),
+                bar_u: u_bar_ones.clone(),
+                rho_i: rhos[i],
+                delta_i: deltas[i],
+                s_i: s_all[i].clone(),
+            });
+            all_encodings.push(enc_0);
+            all_encodings.push(enc_1);
+        }
+
+        Self::build(&all_encodings, labels)
+    }
+
+    pub fn eval(&self, labels: &[[u8; 16]], u_bar: &[Fq]) -> Vec<AffineDREEncoding> {
         assert_eq!(labels.len(), L);
         assert_eq!(u_bar.len(), L);
 
@@ -167,11 +238,11 @@ mod tests {
         let u_bar_pi = u_bar_vec(&pi);
 
         // create 2 * L random labels for L bits (2 labels per bit position)
-        let labels: Vec<[S; 2]> = (0..L)
-            .map(|_| {
+        let labels: Vec<[u8; 16]> = (0..L)
+            .flat_map(|_| {
                 let l0 = S::random();
                 let l1 = l0 ^ DELTA;
-                [l0, l1]
+                [l0.0, l1.0]
             })
             .collect();
         
@@ -180,8 +251,8 @@ mod tests {
 
         // evaluate the adaptor table with the held labels and bar_u
         // For each bit position k, the evaluator holds labels[k][u_bar_pi[k]]
-        let eval_labels: Vec<S> = (0..L)
-            .map(|k| if u_bar_pi[k].is_zero() { labels[k][0] } else { labels[k][1] })
+        let eval_labels: Vec<[u8; 16]> = (0..L)
+            .map(|k| if u_bar_pi[k].is_zero() { labels[2 * k] } else { labels[2 * k + 1] })
             .collect();
 
         let decrypted_encodings = table.eval(&eval_labels, &u_bar_pi);

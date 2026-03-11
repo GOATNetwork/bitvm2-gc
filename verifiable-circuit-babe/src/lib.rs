@@ -1,5 +1,5 @@
 pub mod babe;
 pub mod dre;
-mod gc;
-mod prover;
-pub(crate) mod verifier;
+pub mod gc;
+pub mod prover;
+pub mod verifier;

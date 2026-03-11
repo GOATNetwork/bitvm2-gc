@@ -20,6 +20,9 @@ rand = "0.8.5"
 rand_chacha = { version = "0.3", default-features = false }
 garbled-snark-verifier = { workspace = true, features = ["_poseidon2", "_getrandom"] }
 aes = "0.8"
+cfg-if = "1.0.4"
+[target.'cfg(all(target_os = "zkvm"))'.dependencies]
+zkm-zkvm = { workspace = true }
 
 [features]
 garbled = ["garbled-snark-verifier/garbled"]
