@@ -16,6 +16,6 @@ use verifiable_circuit_babe::gc::utils::aes_enc;
 fn main() {
     let tmp = ark_bn254::Fq::from(20_u64);
     let key = S::from_slice(&[0u8; 16]);
-    let res = aes_enc(&tmp, &key);
+    let res = aes_enc(&tmp, &key.0);
     zkm_zkvm::io::commit::<[u8; 32]>(&res);
 }

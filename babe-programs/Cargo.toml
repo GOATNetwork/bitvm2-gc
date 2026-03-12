@@ -6,6 +6,8 @@ members = [
     "adaptor/host",
     "garbled-circuit/guest",
     "garbled-circuit/host",
+    "enc-setup/guest",
+    "enc-setup/host",
 ]
 
 resolver = "2"
