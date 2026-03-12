@@ -1,119 +1,354 @@
+use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::{BigInteger, PrimeField};
+use ark_ff::{BigInteger, PrimeField, UniformRand};
 use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_relations::lc;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use rand::SeedableRng;
+use rand::{RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const BABE_POLICY_DOMAIN_SEP: &[u8] = b"babe-policy";
-pub const BABE_ASSERT_DOMAIN_SEP: &[u8] = b"babe-assert";
-pub const BABE_WE_FINAL_DOMAIN_SEP: &[u8] = b"babe-we-final";
-pub const BABE_PHASE_DOMAIN_SEP: &[u8] = b"babe-phase";
+// ─── Constants ────────────────────────────────────────────────────────────────
 
+/// Number of bits in π₁ (G1Affine): 254 bits for x + 254 bits for y.
+pub const LAMPORT_N: usize = 508;
+
+/// Byte size of a Lamport signature on-chain: LAMPORT_N revealed 16-byte secrets.
+pub const LAMPORT_SIG_BYTES: usize = LAMPORT_N * 16; // 8,128 bytes
+
+/// Byte size of a Bitcoin signature placeholder (64 bytes in production).
+pub const BTC_SIG_BYTES: usize = 32;
+
+/// Byte size of a compressed G1Affine point (π₁).
+pub const PI1_BYTES: usize = 33;
+
+/// Byte size of the secret message.
+pub const MSG_BYTES: usize = 32;
+
+// ─── Bitcoin key stubs ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BtcPk(pub [u8; 33]);
+
+/// Named Bitcoin signature placeholders (64-byte Schnorr in production).
+/// Using named variants enforces that the right sig goes in the right field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MerklePathNode {
-    pub sibling: [u8; 32],
-    pub sibling_is_left: bool,
+pub enum BabeBtcSig {
+    /// σ_ChallengeAssert^P — Prover presigs, sent to Verifier at setup
+    ProverPresigChallengeAssert,
+    /// σ_NoWithdraw^P — Prover presigs, sent to Verifier at setup
+    ProverPresigNoWithdraw,
+    /// σ_Assert^V — Verifier presigs, verified off-chain by Prover before depositing
+    VerifierPresigAssert,
+    /// σ_Withdraw^V — Verifier presigs, sent to Prover at setup
+    VerifierPresigWithdraw,
+    /// Live signature from the Prover when posting a transaction
+    ProverLiveSig,
+    /// Live signature from the Verifier when posting a transaction
+    VerifierLiveSig,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[repr(u8)]
-pub enum BabePhase {
-    DepositCommitted = 0,
-    WithdrawAsserted = 1,
-    DisproveChallenged = 2,
-    Settled = 3,
-}
+// ─── Lamport Signature Scheme ─────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BabePhaseState {
-    pub session_id: [u8; 32],
-    pub assert_commit_root: [u8; 32],
-    pub phase: BabePhase,
-    pub step: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BabePolicyInputs {
-    pub session_id: [u8; 32],
-    pub vk_hash: [u8; 32],
-    pub relation_id: [u8; 32],
-    pub we_params_hash: [u8; 32],
-    pub gc_small_params_hash: [u8; 32],
-    pub timeout_assert_blocks: u32,
-    pub timeout_challenge_blocks: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BabeAssertInputs {
-    pub session_id: [u8; 32],
-    pub vk_hash: [u8; 32],
-    pub public_input_hash: [u8; 32],
-    pub proof_binding_hash: [u8; 32],
-    pub root_babe_setup: [u8; 32],
-    pub root_babe_instance: [u8; 32],
-    pub babe_hashlock: [u8; 32],
-    pub pi1_binding_hash: [u8; 32],
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BabeChallengeReveal {
-    pub assert_commit_root: [u8; 32],
-    pub session_id: [u8; 32],
-    pub babe_hashlock: [u8; 32],
-    pub revealed_secret: Vec<u8>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BabeDisproveWitness {
-    pub reveal: BabeChallengeReveal,
-    pub reveal_commit: [u8; 32],
-    pub root_babe_setup: [u8; 32],
-    pub hmsg_leaf: Vec<u8>,
-    pub hmsg_leaf_proof: Vec<MerklePathNode>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BabeSetupArtifacts {
-    pub ct_setup: Vec<u8>,
-    pub ctgc_small: Vec<u8>,
-    pub ek_commit: [u8; 32],
-    pub setup_gc_binding_commit: [u8; 32],
-    pub hmsg: [u8; 32],
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BabeProtocolBundle {
-    pub policy: BabePolicyInputs,
-    pub policy_commit: [u8; 32],
-    pub setup: BabeSetupArtifacts,
-    pub assert_inputs: BabeAssertInputs,
-    pub assert_commit_root: [u8; 32],
-    pub disprove_witness: BabeDisproveWitness,
-    pub phase_trace: Vec<BabePhaseState>,
-}
-
+/// Lamport signing key: LAMPORT_N pairs of 16-byte secrets.
+/// Each secret has the same width as a GC input label.
 #[derive(Debug, Clone)]
-pub struct BabeE2ERun {
-    pub statement_hash: [u8; 32],
-    pub hmsg: [u8; 32],
-    pub protocol_bundle: BabeProtocolBundle,
-    pub ct_setup: WeKnownPi1SetupCt,
-    pub ctprove: WeKnownPi1ProveCt,
+pub struct LamportSk(pub Vec<[[u8; 16]; 2]>);
+
+/// Lamport verification key: pk[i][b] = SHA256(sk[i][b]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LamportPk(pub Vec<[[u8; 32]; 2]>);
+
+/// Lamport signature: sig[i] = sk[i][bit_i(π₁)], for i in 0..LAMPORT_N.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LamportSig(pub Vec<[u8; 16]>);
+
+pub fn lamport_keygen(rng: &mut impl RngCore) -> (LamportSk, LamportPk) {
+    let mut sk_entries = Vec::with_capacity(LAMPORT_N);
+    let mut pk_entries = Vec::with_capacity(LAMPORT_N);
+    for _ in 0..LAMPORT_N {
+        let mut s0 = [0u8; 16];
+        let mut s1 = [0u8; 16];
+        rng.fill_bytes(&mut s0);
+        rng.fill_bytes(&mut s1);
+        pk_entries.push([sha256_bytes(&s0), sha256_bytes(&s1)]);
+        sk_entries.push([s0, s1]);
+    }
+    (LamportSk(sk_entries), LamportPk(pk_entries))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Groth16RelationBinding {
-    pub vk_hash: [u8; 32],
-    pub proof_binding_hash: [u8; 32],
-    pub public_input_hash: [u8; 32],
-    pub relation_id: [u8; 32],
-    pub statement_hash: [u8; 32],
+/// Commitment to the full Lamport pk: blake3 of all entries.
+pub fn lamport_pk_commit(pk: &LamportPk) -> [u8; 32] {
+    let mut buf = b"babe:lamport-pk".to_vec();
+    for pair in &pk.0 {
+        buf.extend_from_slice(&pair[0]);
+        buf.extend_from_slice(&pair[1]);
+    }
+    h(&buf)
 }
+
+/// Sign π₁: reveal sk[i][bit_i(π₁)] for each bit.
+pub fn lamport_sign(sk: &LamportSk, pi1: &G1Affine) -> LamportSig {
+    let bits = pi1_to_bits(pi1);
+    LamportSig(bits.iter().enumerate().map(|(i, &b)| sk.0[i][b as usize]).collect())
+}
+
+/// Verify a Lamport signature against lpk_P and π₁.
+pub fn lamport_verify(pk: &LamportPk, pi1: &G1Affine, sig: &LamportSig) -> bool {
+    if sig.0.len() != LAMPORT_N {
+        return false;
+    }
+    let bits = pi1_to_bits(pi1);
+    bits.iter().enumerate().all(|(i, &b)| sha256_bytes(&sig.0[i]) == pk.0[i][b as usize])
+}
+
+fn pi1_to_bits(pi1: &G1Affine) -> Vec<bool> {
+    use garbled_snark_verifier::dv_bn254::fq::Fq as GcFq;
+    GcFq::to_bits(pi1.x).into_iter().chain(GcFq::to_bits(pi1.y)).collect()
+}
+
+fn sha256_bytes(data: &[u8]) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(data);
+    h.finalize().into()
+}
+
+// ─── Encoding Key Public (lpk_V in the paper) ────────────────────────────────
+
+/// Commitment to the verifier's GC encoding key labels.
+/// epk[i][b] = blake3(label_i_b), for i in 0..LAMPORT_N, b ∈ {0, 1}.
+/// Published as h_ek = blake3(flatten(epk)) in tx_Assert output 1 script.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EncodingKeyPublic(pub Vec<[[u8; 32]; 2]>);
+
+impl EncodingKeyPublic {
+    /// h_ek: single commitment to all label hashes.
+    pub fn commit(&self) -> [u8; 32] {
+        let mut buf = b"babe:h-ek".to_vec();
+        for pair in &self.0 {
+            buf.extend_from_slice(&pair[0]);
+            buf.extend_from_slice(&pair[1]);
+        }
+        h(&buf)
+    }
+}
+
+/// Compute epk from the verifier's private 0-labels (encoding_keys).
+#[cfg(feature = "garbled")]
+pub fn compute_epk(encoding_keys: &[garbled_snark_verifier::bag::S]) -> EncodingKeyPublic {
+    use garbled_snark_verifier::core::utils::DELTA;
+    let pairs = encoding_keys.iter().map(|&key| {
+        let label_0 = key.0;
+        let label_1 = (key ^ DELTA).0;
+        [h(&label_0), h(&label_1)]
+    }).collect();
+    EncodingKeyPublic(pairs)
+}
+
+// ─── Transaction locking script ───────────────────────────────────────────────
+
+/// Constants embedded in the locking script of tx_Deposit output 0.
+/// Script: CheckSig(pk_P) ∧ CheckSig(pk_V)
+#[derive(Debug, Clone)]
+pub struct TxDepositLock {
+    pub pk_p: BtcPk,
+    pub pk_v: BtcPk,
+    pub amount: u64,
+}
+
+// ─── Transaction witnesses (on-chain data) ────────────────────────────────────
+
+/// tx_Assert — witness for input 0.
+/// Input spends a UTXO with: CheckLampSig(lpk_P)
+/// Script verifies: SHA256(μ[i]) == lpk_P[i][bit_i(π₁)] for all i.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TxAssertWitness {
+    /// Compressed G1Affine, 33 bytes — the asserted proof element.
+    pub pi1: Vec<u8>,
+    /// μ₁…μ_ℓ — Lamport signature, LAMPORT_N × 16 bytes.
+    pub lamport_sig: LamportSig,
+}
+
+/// tx_ChallengeAssert — witness for input 0.
+/// Input spends tx_Assert output 1: CheckLampSigsMatch(lpk_P, lpk_V) ∧ CheckSig(pk_V) ∧ CheckSig(pk_P)
+/// Script verifies:
+///   (a) SHA256(μ[i]) == lpk_P[i][bit_i]     — μ is a valid Lamport sig for some π₁
+///   (b) blake3(L[i]) == lpk_V[i][bit_i]     — L[i] is the correct GC label for bit_i under epk
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TxChallengeAssertWitness {
+    /// L₁…L_ℓ — one GC input label per π₁ bit, LAMPORT_N × 16 bytes.
+    pub input_labels: Vec<[u8; 16]>,
+    /// μ₁…μ_ℓ — Lamport sig re-posted to bind L to π₁.
+    pub lamport_sig: LamportSig,
+    /// VerifierLiveSig
+    pub sig_v: BabeBtcSig,
+    /// ProverPresigChallengeAssert
+    pub sig_p: BabeBtcSig,
+}
+
+/// tx_WronglyChallenged — witness for input 0.
+/// Input spends tx_ChallengeAssert output 0: HashLock(h_msg) ∧ CheckSig(pk_P)
+/// Script verifies: SHA256(msg) == h_msg.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TxWronglyChallengedWitness {
+    /// ProverLiveSig
+    pub sig_p: BabeBtcSig,
+    /// Decrypted secret — preimage of h_msg = SHA256(msg).
+    pub msg: [u8; 32],
+}
+
+/// tx_NoWithdraw — witnesses for inputs 0 and 1.
+/// Input 0 spends tx_Assert output 0:          CheckSig(pk_P) ∧ CheckSig(pk_V)
+/// Input 1 spends tx_ChallengeAssert output 0: RelTimelock(Δ₁) ∧ CheckSig(pk_V)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TxNoWithdrawWitness {
+    /// ProverPresigNoWithdraw — for input 0
+    pub input0_sig_p: BabeBtcSig,
+    /// VerifierLiveSig — for input 0
+    pub input0_sig_v: BabeBtcSig,
+    /// VerifierLiveSig — for input 1, after RelTimelock(Δ₁)
+    pub input1_sig_v: BabeBtcSig,
+}
+
+/// tx_Withdraw — witnesses for inputs 0 and 1.
+/// Input 0 spends tx_Deposit output 0: CheckSig(pk_P) ∧ CheckSig(pk_V)
+/// Input 1 spends tx_Assert output 0:  RelTimelock(Δ₂) ∧ CheckSig(pk_P) ∧ CheckSig(pk_V)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TxWithdrawWitness {
+    /// ProverLiveSig — for input 0
+    pub input0_sig_p: BabeBtcSig,
+    /// VerifierPresigWithdraw — for input 0
+    pub input0_sig_v: BabeBtcSig,
+    /// ProverLiveSig — for input 1, after RelTimelock(Δ₂)
+    pub input1_sig_p: BabeBtcSig,
+    /// VerifierPresigWithdraw — for input 1
+    pub input1_sig_v: BabeBtcSig,
+}
+
+// ─── OnchainSize trait ────────────────────────────────────────────────────────
+
+pub trait OnchainSize {
+    fn size_bytes(&self) -> usize;
+}
+
+impl OnchainSize for TxAssertWitness {
+    fn size_bytes(&self) -> usize {
+        PI1_BYTES           // pi1:         33 bytes
+        + LAMPORT_SIG_BYTES // lamport_sig: 8,128 bytes
+        // total: 8,161 bytes
+    }
+}
+
+impl OnchainSize for TxChallengeAssertWitness {
+    fn size_bytes(&self) -> usize {
+        LAMPORT_N * 16      // input_labels: 8,128 bytes
+        + LAMPORT_SIG_BYTES // lamport_sig:  8,128 bytes
+        + BTC_SIG_BYTES     // sig_v:           32 bytes
+        + BTC_SIG_BYTES     // sig_p:           32 bytes
+        // total: 16,320 bytes
+    }
+}
+
+impl OnchainSize for TxWronglyChallengedWitness {
+    fn size_bytes(&self) -> usize {
+        BTC_SIG_BYTES // sig_p: 32 bytes
+        + MSG_BYTES   // msg:   32 bytes
+        // total: 64 bytes
+    }
+}
+
+impl OnchainSize for TxNoWithdrawWitness {
+    fn size_bytes(&self) -> usize {
+        BTC_SIG_BYTES * 3 // 3 sigs × 32 bytes = 96 bytes
+    }
+}
+
+impl OnchainSize for TxWithdrawWitness {
+    fn size_bytes(&self) -> usize {
+        BTC_SIG_BYTES * 4 // 4 sigs × 32 bytes = 128 bytes
+    }
+}
+
+// ─── Presig structs ───────────────────────────────────────────────────────────
+
+/// Prover presigns tx_ChallengeAssert and tx_NoWithdraw — sent to Verifier at setup.
+#[derive(Debug, Clone)]
+pub struct ProverPresigs {
+    /// → TxChallengeAssertWitness.sig_p
+    pub sig_challenge_assert: BabeBtcSig,
+    /// → TxNoWithdrawWitness.input0_sig_p
+    pub sig_no_withdraw: BabeBtcSig,
+}
+
+/// Verifier presigns tx_Assert (off-chain) and tx_Withdraw — sent to Prover at setup.
+#[derive(Debug, Clone)]
+pub struct VerifierPresigs {
+    /// Verified off-chain by Prover before depositing (not in any on-chain witness).
+    pub sig_assert: BabeBtcSig,
+    /// → TxWithdrawWitness.input0_sig_v and input1_sig_v
+    pub sig_withdraw: BabeBtcSig,
+}
+
+// ─── Setup packages ───────────────────────────────────────────────────────────
+
+/// What the Verifier sends to the Prover during setup.
+pub struct VerifierSetupPackage {
+    /// (r·[delta]_2, RO(rY) ⊕ msg) — WE ciphertext setup component.
+    pub ct_setup: WeKnownPi1SetupCt,
+    /// Garbled gate ciphertexts — published once, used by Prover during WronglyChallenged.
+    #[cfg(feature = "garbled")]
+    pub gc_ciphertexts: Vec<Option<garbled_snark_verifier::bag::S>>,
+    /// DRE adaptor table — maps GC output labels to r-encoded field elements.
+    #[cfg(feature = "garbled")]
+    pub adaptor_table: crate::gc::AdaptorTable,
+    /// lpk_V in the paper: blake3 hashes of input labels.
+    pub epk: EncodingKeyPublic,
+    /// blake3(flatten(epk)) — embedded in tx_Assert output 1 script.
+    pub h_ek: [u8; 32],
+    /// SHA256(secret_msg) — embedded in tx_ChallengeAssert output 0 script.
+    pub h_msg: [u8; 32],
+    /// Actual labels for constant wires 0 and 1.
+    /// constant_labels[0] = label for wire 0 (value=false)
+    /// constant_labels[1] = label for wire 1 (value=true)
+    #[cfg(feature = "garbled")]
+    pub constant_labels: [[u8; 16]; 2],
+    /// Garbled circuit structure (labels and values cleared after reset).
+    /// Stored here so the Prover does not need to recompute it.
+    #[cfg(feature = "garbled")]
+    pub circuit: garbled_snark_verifier::bag::Circuit,
+    /// Indices into `circuit.0` that correspond to the GC output wires.
+    #[cfg(feature = "garbled")]
+    pub gc_output_indices: Vec<usize>,
+}
+
+/// What the Prover sends to the Verifier during setup.
+#[derive(Debug, Clone)]
+pub struct ProverSetupPackage {
+    /// Lamport verification key — Verifier embeds lpk_P into transaction scripts.
+    pub lpk_p: LamportPk,
+    /// blake3(flatten(lpk_p)) — used in scripts as a compact commitment.
+    pub lpk_p_commit: [u8; 32],
+    /// Prover's Bitcoin pubkey.
+    pub pk_p: BtcPk,
+}
+
+/// What the Verifier keeps private after setup.
+pub struct BabeVerifierPrivate {
+    /// The WE scalar r.
+    pub r: Fr,
+    /// The 32-byte secret whose SHA256 is h_msg.
+    pub msg: [u8; 32],
+    /// 0-labels for GC input wires (size LAMPORT_N).
+    #[cfg(feature = "garbled")]
+    pub encoding_keys: Vec<garbled_snark_verifier::bag::S>,
+    /// 0-labels for constant GC wires (index 0 = false wire, 1 = true wire).
+    #[cfg(feature = "garbled")]
+    pub constant_0labels: [garbled_snark_verifier::bag::S; 2],
+}
+
+// ─── WE ciphertext types ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WeKnownPi1SetupCt {
@@ -126,436 +361,309 @@ pub struct WeKnownPi1ProveCt {
     pub ct1_r_pi1: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BabeNoCatScriptArtifacts {
-    pub assert_script_pseudo: String,
-    pub disprove_script_pseudo: String,
+// ─── E2E run result ───────────────────────────────────────────────────────────
+
+pub struct BabeE2ERun {
+    pub session_id: [u8; 32],
+    pub deposit_lock: TxDepositLock,
+    pub prover_setup_pkg: ProverSetupPackage,
+    pub h_ek: [u8; 32],
+    pub h_msg: [u8; 32],
+    pub prover_presigs: ProverPresigs,
+    pub verifier_presigs: VerifierPresigs,
+    /// Happy path: Prover asserted a valid proof.
+    pub assert_witness: TxAssertWitness,
+    /// Happy path: Verifier challenged by revealing labels.
+    pub challenge_assert_witness: TxChallengeAssertWitness,
+    /// Happy path: Prover decrypted msg and posted it (valid proof wins).
+    pub wrongly_challenged_witness: TxWronglyChallengedWitness,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProverCtSetupPackage {
-    pub statement_hash: [u8; 32],
-    pub hmsg: [u8; 32],
-    pub ct_setup: WeKnownPi1SetupCt,
-    pub ctprove: WeKnownPi1ProveCt,
-    pub pi1: Vec<u8>,
-    pub pi2: Vec<u8>,
-    pub pi3: Vec<u8>,
-    pub paper_we_commit: [u8; 32],
-    pub ek_commit: [u8; 32],
-    pub setup_gc_binding_commit: [u8; 32],
+// ─── Lamport phase functions ──────────────────────────────────────────────────
+
+/// Prover: generate Lamport keypair and build ProverSetupPackage.
+pub fn babe_prover_keygen(rng: &mut impl RngCore, pk_p: BtcPk) -> (LamportSk, ProverSetupPackage) {
+    let (lsk_p, lpk_p) = lamport_keygen(rng);
+    let lpk_p_commit = lamport_pk_commit(&lpk_p);
+    let pkg = ProverSetupPackage { lpk_p, lpk_p_commit, pk_p };
+    (lsk_p, pkg)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VerifiedCtSetup {
-    pub statement_hash: [u8; 32],
-    pub hmsg: [u8; 32],
-    pub ct_setup: WeKnownPi1SetupCt,
-    pub ctprove: WeKnownPi1ProveCt,
-    pub pi1_binding_hash: [u8; 32],
-    pub gc_small_params_hash: [u8; 32],
-    pub paper_we_commit: [u8; 32],
-    pub setup_artifacts: BabeSetupArtifacts,
+// ─── Setup phase ─────────────────────────────────────────────────────────────
+
+/// Verifier: enc_setup + garble circuit + build adaptor table + compute epk.
+#[cfg(feature = "garbled")]
+pub fn babe_verifier_setup(
+    vk: &Groth16VerifyingKey<Bn254>,
+    public_inputs: &[Fr],
+) -> (VerifierSetupPackage, BabeVerifierPrivate) {
+    use crate::verifier::BABEVerifier;
+    use garbled_snark_verifier::core::utils::{DELTA, reset_gid};
+
+    reset_gid();
+    let start = std::time::Instant::now();
+    let mut verifier = BABEVerifier::new();
+    verifier.enc_setup(vk, public_inputs).expect("enc_setup failed");
+    verifier.build_adaptor_table_and_ciphertexts();
+    let elapsed = start.elapsed();
+    println!("Verifier setup (enc_setup + garble + adaptor table) completed in {:.2?}", elapsed);
+
+    // Garbled gates captured inside build_adaptor_table_and_ciphertexts.
+    let gc_ciphertexts = std::mem::take(&mut verifier.ciphertexts);
+
+    // Constant wire labels: wire 0 = false → 0-label; wire 1 = true → 1-label.
+    let const_label_0 = verifier.constant_0labels[0].0;
+    let const_label_1 = (verifier.constant_0labels[1] ^ DELTA).0;
+
+    let start = std::time::Instant::now();
+    let epk = compute_epk(&verifier.encoding_keys);
+    let h_ek = epk.commit();
+    let h_msg = derive_hashlock(&verifier.msg);
+
+    let elapsed = start.elapsed();
+    println!("Computed epk and h_ek in {:.2?}", elapsed);
+
+    let mut circuit = verifier.garbled_circuit;
+    circuit.reset_circuit_except_constants();
+    let gc_output_indices = verifier.gc_output_indices;
+
+    let pkg = VerifierSetupPackage {
+        ct_setup: verifier.ct_setup.clone(),
+        gc_ciphertexts,
+        adaptor_table: verifier.adaptor_table,
+        epk,
+        h_ek,
+        h_msg,
+        constant_labels: [const_label_0, const_label_1],
+        circuit,
+        gc_output_indices,
+    };
+
+    let private = BabeVerifierPrivate {
+        r: verifier.r,
+        msg: verifier.msg,
+        encoding_keys: verifier.encoding_keys,
+        constant_0labels: verifier.constant_0labels,
+    };
+
+    (pkg, private)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DepositCommitments {
-    pub policy: BabePolicyInputs,
-    pub policy_commit: [u8; 32],
-    pub root_babe_setup: [u8; 32],
-    pub root_babe_instance: [u8; 32],
-    pub assert_inputs: BabeAssertInputs,
-    pub assert_commit_root: [u8; 32],
-}
+// ─── Presign exchange ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BabeSetupVerifyError {
-    StatementHashMismatch,
-    HashlockMismatch,
-    PaperWeCommitMismatch,
-    PaperWeDecryptFailed,
-    SetupGcBindingInvalid,
-}
-
-#[derive(Copy, Clone)]
-struct DummyMulCircuit<F: PrimeField> {
-    pub a: Option<F>,
-    pub b: Option<F>,
-}
-
-impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
-    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-        let a = cs.new_witness_variable(|| self.a.ok_or(SynthesisError::AssignmentMissing))?;
-        let b = cs.new_witness_variable(|| self.b.ok_or(SynthesisError::AssignmentMissing))?;
-        let c = cs.new_input_variable(|| {
-            let av = self.a.ok_or(SynthesisError::AssignmentMissing)?;
-            let bv = self.b.ok_or(SynthesisError::AssignmentMissing)?;
-            Ok(av * bv)
-        })?;
-        cs.enforce_constraint(lc!() + a, lc!() + b, lc!() + c)?;
-        Ok(())
+/// Prover presigns tx_ChallengeAssert and tx_NoWithdraw.
+/// In production: BTC Schnorr Sign(sk_P, tx_skeleton).
+pub fn babe_prover_presign() -> ProverPresigs {
+    ProverPresigs {
+        sig_challenge_assert: BabeBtcSig::ProverPresigChallengeAssert,
+        sig_no_withdraw: BabeBtcSig::ProverPresigNoWithdraw,
     }
 }
+
+/// Verifier presigns tx_Assert (given to Prover for off-chain verification)
+/// and tx_Withdraw (given to Prover for the happy path).
+pub fn babe_verifier_presign() -> VerifierPresigs {
+    VerifierPresigs {
+        sig_assert: BabeBtcSig::VerifierPresigAssert,
+        sig_withdraw: BabeBtcSig::VerifierPresigWithdraw,
+    }
+}
+
+/// Prover verifies the Verifier's presigs before posting tx_Deposit.
+/// In production: Sig_BTC.Verify(pk_V, tx_skeleton, sig).
+pub fn babe_verify_verifier_presigs(presigs_v: &VerifierPresigs) -> bool {
+    presigs_v.sig_assert == BabeBtcSig::VerifierPresigAssert
+        && presigs_v.sig_withdraw == BabeBtcSig::VerifierPresigWithdraw
+}
+
+/// Verifier verifies the Prover's presigs before completing setup.
+/// In production: Sig_BTC.Verify(pk_P, tx_skeleton, sig).
+pub fn babe_verify_prover_presigs(presigs_p: &ProverPresigs) -> bool {
+    presigs_p.sig_challenge_assert == BabeBtcSig::ProverPresigChallengeAssert
+        && presigs_p.sig_no_withdraw == BabeBtcSig::ProverPresigNoWithdraw
+}
+
+
+// ─── Deposit phase ───────────────────────────────────────────────────────────
+
+pub fn babe_build_deposit_lock(pk_p: BtcPk, pk_v: BtcPk, amount: u64) -> TxDepositLock {
+    TxDepositLock { pk_p, pk_v, amount }
+}
+
+// ─── Assert phase (Prover posts π₁) ─────────────────────────────────────────
+
+/// Prover signs π₁ with lsk_P → satisfies CheckLampSig(lpk_P) on the input UTXO.
+pub fn babe_prover_assert(proof: &Groth16Proof<Bn254>, lsk_p: &LamportSk) -> TxAssertWitness {
+    let pi1 = proof.a;
+    let mut pi1_bytes = Vec::new();
+    pi1.serialize_compressed(&mut pi1_bytes).expect("serialize π₁");
+    let lamport_sig = lamport_sign(lsk_p, &pi1);
+    TxAssertWitness { pi1: pi1_bytes, lamport_sig }
+}
+
+// ─── ChallengeAssert phase (Verifier reveals labels L) ───────────────────────
+
+/// Verifier: verify Lamport sig in assert_witness, compute input labels L for π₁.
+/// Returns None if the Lamport signature is invalid.
+#[cfg(feature = "garbled")]
+pub fn babe_verifier_challenge_assert(
+    assert_witness: &TxAssertWitness,
+    lpk_p: &LamportPk,
+    verifier_private: &BabeVerifierPrivate,
+    sig_p_presig: BabeBtcSig,
+) -> Option<TxChallengeAssertWitness> {
+    use garbled_snark_verifier::core::utils::DELTA;
+
+    let pi1 = G1Affine::deserialize_compressed(assert_witness.pi1.as_slice()).ok()?;
+
+    // This verification happens locally. On-chain, the script Assert already checked this.
+    if !lamport_verify(lpk_p, &pi1, &assert_witness.lamport_sig) {
+        return None;
+    }
+
+    let bits = pi1_to_bits(&pi1);
+    let input_labels: Vec<[u8; 16]> = bits.iter().enumerate().map(|(i, &b)| {
+        let key = verifier_private.encoding_keys[i];
+        if b { (key ^ DELTA).0 } else { key.0 }
+    }).collect();
+
+    Some(TxChallengeAssertWitness {
+        input_labels,
+        lamport_sig: assert_witness.lamport_sig.clone(),
+        sig_v: BabeBtcSig::VerifierLiveSig,
+        sig_p: sig_p_presig,
+    })
+}
+
+// ─── WronglyChallenged phase (Prover evaluates GC, decrypts msg) ─────────────
+
+/// Prover: evaluate GC with labels L → adaptor table → r·π₁ → decrypt msg.
+/// Satisfies HashLock(h_msg) ∧ CheckSig(pk_P) on tx_ChallengeAssert output 0.
+#[cfg(feature = "garbled")]
+pub fn babe_prover_wrongly_challenged(
+    challenge_witness: &TxChallengeAssertWitness,
+    proof: &Groth16Proof<Bn254>,
+    verifier_pkg: &mut VerifierSetupPackage,
+) -> TxWronglyChallengedWitness {
+    use ark_ff::{One, Zero};
+    use garbled_snark_verifier::bag::S;
+    use crate::dre::matrices::u_bar_vec;
+    use crate::dre::DRE;
+    use crate::dre::affine_dre::AffineDRE;
+    use ark_bn254::G1Projective;
+
+    let pi1 = proof.a;
+    let pi2 = proof.b.into_group();
+    let pi3 = proof.c.into_group();
+
+    // 1. Use the pre-built circuit from verifier_pkg (already reset after verifier setup).
+    let circuit = &mut verifier_pkg.circuit;
+    let gc_output_indices = &verifier_pkg.gc_output_indices;
+
+    // 2. Set constant wire labels from verifier's setup package.
+    circuit.0[0].borrow_mut().label = Some(S(verifier_pkg.constant_labels[0]));
+    circuit.0[1].borrow_mut().label = Some(S(verifier_pkg.constant_labels[1]));
+
+    // 3. Set input wire labels from the challenge witness (L from verifier).
+    for (i, &label) in challenge_witness.input_labels.iter().enumerate() {
+        circuit.0[2 + i].borrow_mut().label = Some(S(label));
+    }
+
+    // 4. Set witness values (π₁ bits) and evaluate all gates.
+    let bits = pi1_to_bits(&pi1);
+    circuit.set_witness_value(&bits);
+    for gate in &mut circuit.1 {
+        gate.evaluate();
+    }
+
+    // 5. Garbled evaluation: propagate labels through encrypted gate tables.
+    circuit.garbled_evaluate_without_delta(&verifier_pkg.gc_ciphertexts);
+
+    // 6. Collect output labels for all L output wires.
+    let output_labels: Vec<[u8; 16]> = gc_output_indices.iter().map(|i| {
+        circuit.0[*i].borrow().get_label().0
+    }).collect();
+
+    // 7. Compute ū(π₁) and decrypt adaptor table entries.
+    let u_bar = u_bar_vec(&pi1);
+    let decrypted_encodings = verifier_pkg.adaptor_table.eval(&output_labels, &u_bar);
+
+    // 8. Decode DRE: weighted sum ∑ 2^i · f_i = r·π₁.
+    let mut sum = G1Projective::zero();
+    let mut weight = ark_bn254::Fr::one();
+    for encoding in decrypted_encodings {
+        let decoding = AffineDRE::dec(encoding);
+        let (x, y, z) = decoding.f_i;
+        sum += G1Projective::new(x, y, z) * weight;
+        weight += weight;
+    }
+
+    // 9. Decrypt: msg = ct3 ⊕ h(e(ct1, π₂) - e(π₃, ct2)).
+    //    BABEVerifier::enc_setup uses blake3(rY) as the mask (babe::h), so we must use
+    //    the same function here rather than we_known_pi1_dec (which uses ro_from_pairing_bytes).
+    use ark_serialize::CanonicalSerialize as _;
+    let ct1_affine = sum.into_affine();
+    let ct2_affine = G2Affine::deserialize_compressed(
+        verifier_pkg.ct_setup.ct2_r_delta_g2.as_slice()
+    ).expect("deserialize ct2");
+    let r_y = Bn254::pairing(ct1_affine, pi2) - Bn254::pairing(pi3, ct2_affine.into_group());
+    let mut ry_bytes = Vec::new();
+    r_y.serialize_compressed(&mut ry_bytes).expect("serialize rY");
+    let mask = h(&ry_bytes);
+    let mut msg = [0u8; 32];
+    for (i, byte) in verifier_pkg.ct_setup.ct3_masked_msg.iter().enumerate() {
+        msg[i] = byte ^ mask[i];
+    }
+
+    TxWronglyChallengedWitness { sig_p: BabeBtcSig::ProverLiveSig, msg }
+}
+
+// ─── NoWithdraw phase (Verifier blocks withdrawal) ───────────────────────────
+
+pub fn babe_verifier_no_withdraw(sig_p_presig: BabeBtcSig) -> TxNoWithdrawWitness {
+    TxNoWithdrawWitness {
+        input0_sig_p: sig_p_presig,
+        input0_sig_v: BabeBtcSig::VerifierLiveSig,
+        input1_sig_v: BabeBtcSig::VerifierLiveSig,
+    }
+}
+
+// ─── Withdraw phase (Prover withdraws after RelTimelock(Δ₂)) ─────────────────
+
+pub fn babe_prover_withdraw(sig_v_presig: BabeBtcSig) -> TxWithdrawWitness {
+    TxWithdrawWitness {
+        input0_sig_p: BabeBtcSig::ProverLiveSig,
+        input0_sig_v: sig_v_presig.clone(),
+        input1_sig_p: BabeBtcSig::ProverLiveSig,
+        input1_sig_v: sig_v_presig,
+    }
+}
+
+// ─── Utility functions (WE primitives) ───────────────────────────────────────
 
 pub fn h(data: &[u8]) -> [u8; 32] {
     *blake3::hash(data).as_bytes()
 }
 
-fn hash_leaf(leaf_data: &[u8]) -> [u8; 32] {
-    let mut buf = b"leaf".to_vec();
-    buf.extend_from_slice(leaf_data);
-    h(&buf)
-}
-
-fn hash_node(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
-    let mut buf = b"node".to_vec();
-    buf.extend_from_slice(&left);
-    buf.extend_from_slice(&right);
-    h(&buf)
-}
-
-pub fn merkle_root_from_leaves(leaves: &[Vec<u8>]) -> [u8; 32] {
-    if leaves.is_empty() {
-        return h(b"empty-merkle");
-    }
-    let mut level: Vec<[u8; 32]> = leaves.iter().map(|leaf| hash_leaf(leaf)).collect();
-    while level.len() > 1 {
-        if level.len() % 2 == 1 {
-            let last = *level.last().expect("non-empty level");
-            level.push(last);
-        }
-        let mut next = Vec::with_capacity(level.len() / 2);
-        for pair in level.chunks_exact(2) {
-            next.push(hash_node(pair[0], pair[1]));
-        }
-        level = next;
-    }
-    level[0]
-}
-
-pub fn merkle_root_and_proof(
-    leaves: &[Vec<u8>],
-    leaf_index: usize,
-) -> Option<([u8; 32], Vec<MerklePathNode>)> {
-    if leaves.is_empty() || leaf_index >= leaves.len() {
-        return None;
-    }
-    let mut proof = Vec::<MerklePathNode>::new();
-    let mut index = leaf_index;
-    let mut level: Vec<[u8; 32]> = leaves.iter().map(|leaf| hash_leaf(leaf)).collect();
-    while level.len() > 1 {
-        if level.len() % 2 == 1 {
-            let last = *level.last().expect("non-empty level");
-            level.push(last);
-        }
-        let sibling_index = if index % 2 == 0 { index + 1 } else { index - 1 };
-        let sibling_is_left = sibling_index < index;
-        proof.push(MerklePathNode { sibling: level[sibling_index], sibling_is_left });
-
-        let mut next = Vec::with_capacity(level.len() / 2);
-        for pair in level.chunks_exact(2) {
-            next.push(hash_node(pair[0], pair[1]));
-        }
-        index /= 2;
-        level = next;
-    }
-    Some((level[0], proof))
-}
-
-pub fn merkle_verify_path(
-    leaf_data: &[u8],
-    proof: &[MerklePathNode],
-    expected_root: [u8; 32],
-) -> bool {
-    let mut acc = hash_leaf(leaf_data);
-    for node in proof {
-        acc = if node.sibling_is_left {
-            hash_node(node.sibling, acc)
-        } else {
-            hash_node(acc, node.sibling)
-        };
-    }
-    acc == expected_root
-}
-
+/// h_msg = SHA256(secret_msg) — the hashlock value.
 pub fn derive_hashlock(secret: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(secret);
-    let out = hasher.finalize();
-    let mut v = [0u8; 32];
-    v.copy_from_slice(&out);
-    v
+    hasher.finalize().into()
 }
 
-fn hex_bytes(v: &[u8]) -> String {
-    v.iter().map(|b| format!("{:02x}", b)).collect::<String>()
-}
-
-fn btc_sha256(data: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    let digest = hasher.finalize();
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&digest);
-    out
-}
-
-fn btc_hash_leaf(data: &[u8]) -> [u8; 32] {
-    let mut buf = b"leaf".to_vec();
-    buf.extend_from_slice(data);
-    btc_sha256(&buf)
-}
-
-fn btc_hash_node(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
-    let mut buf = b"node".to_vec();
-    buf.extend_from_slice(&left);
-    buf.extend_from_slice(&right);
-    btc_sha256(&buf)
-}
-
-pub fn build_babe_scripts_nocat(
-    assert_commit_root: [u8; 32],
-    session_id: [u8; 32],
-    policy_commit: [u8; 32],
-    root_babe_setup: [u8; 32],
-    root_babe_instance: [u8; 32],
-    babe_hashlock: [u8; 32],
-    reveal_commit: [u8; 32],
-    secret_sha256: [u8; 32],
-    hmsg_leaf: &[u8],
-    sibling0: [u8; 32],
-    sibling1: [u8; 32],
-) -> BabeNoCatScriptArtifacts {
-    // no-cat profile: all Merkle intermediate hashes are precomputed and supplied/checked
-    // as fixed 32-byte values in witness/constants.
-    let hmsg_leaf_hash_btc = btc_hash_leaf(hmsg_leaf);
-    let parent = btc_hash_node(hmsg_leaf_hash_btc, sibling0);
-    let root_btc = btc_hash_node(parent, sibling1);
-
-    let assert_script_pseudo = format!(
-        "# BABE assert script (no-cat)\n\
-         # witness: assert_root session_id policy_commit root_setup root_instance hashlock\n\
-         PUSH {}\nOP_EQUALVERIFY\n\
-         PUSH {}\nOP_EQUALVERIFY\n\
-         PUSH {}\nOP_EQUALVERIFY\n\
-         PUSH {}\nOP_EQUALVERIFY\n\
-         PUSH {}\nOP_EQUALVERIFY\n\
-         PUSH {}\nOP_EQUAL\n",
-        hex_bytes(&babe_hashlock),
-        hex_bytes(&root_babe_instance),
-        hex_bytes(&root_babe_setup),
-        hex_bytes(&policy_commit),
-        hex_bytes(&session_id),
-        hex_bytes(&assert_commit_root),
-    );
-
-    let disprove_script_pseudo = format!(
-        "# BABE disprove script (no-cat)\n\
-         # witness: secret hashlock assert_root session_id hmsg_leaf_hash sib0 sib1 root_setup_btc reveal_commit\n\
-         PUSH {}\nOP_EQUALVERIFY  # reveal_commit\n\
-         PUSH {}\nOP_EQUALVERIFY  # root_setup_btc\n\
-         PUSH {}\nOP_EQUALVERIFY  # sibling1\n\
-         PUSH {}\nOP_EQUALVERIFY  # sibling0\n\
-         PUSH {}\nOP_EQUALVERIFY  # hmsg_leaf_hash\n\
-         PUSH {}\nOP_EQUALVERIFY  # session_id\n\
-         PUSH {}\nOP_EQUALVERIFY  # assert_root\n\
-         PUSH {}\nOP_EQUALVERIFY  # hashlock\n\
-         OP_DUP OP_SHA256 PUSH {} OP_EQUALVERIFY\n\
-         OP_SIZE 32 OP_NUMEQUALVERIFY\n\
-         OP_DROP OP_TRUE\n",
-        hex_bytes(&reveal_commit),
-        hex_bytes(&root_btc),
-        hex_bytes(&sibling1),
-        hex_bytes(&sibling0),
-        hex_bytes(&hmsg_leaf_hash_btc),
-        hex_bytes(&session_id),
-        hex_bytes(&assert_commit_root),
-        hex_bytes(&babe_hashlock),
-        hex_bytes(&secret_sha256),
-    );
-
-    BabeNoCatScriptArtifacts { assert_script_pseudo, disprove_script_pseudo }
-}
-
-pub fn verify_hashlock_reveal(revealed_secret: &[u8], babe_hashlock: [u8; 32]) -> bool {
-    derive_hashlock(revealed_secret) == babe_hashlock
-}
-
-pub fn compute_challenge_reveal_commit(reveal: &BabeChallengeReveal) -> [u8; 32] {
-    let mut buf = b"babe-challenge-reveal".to_vec();
-    buf.extend_from_slice(&reveal.assert_commit_root);
-    buf.extend_from_slice(&reveal.session_id);
-    buf.extend_from_slice(&reveal.babe_hashlock);
-    buf.extend_from_slice(&(reveal.revealed_secret.len() as u32).to_le_bytes());
-    buf.extend_from_slice(&reveal.revealed_secret);
-    h(&buf)
-}
-
-pub fn verify_challenge_reveal_binding(
-    reveal: &BabeChallengeReveal,
-    expected_assert_commit_root: [u8; 32],
-    expected_session_id: [u8; 32],
-) -> bool {
-    reveal.assert_commit_root == expected_assert_commit_root
-        && reveal.session_id == expected_session_id
-}
-
-pub fn verify_babe_disprove_witness(
-    witness: &BabeDisproveWitness,
-    expected_assert_commit_root: [u8; 32],
-    expected_session_id: [u8; 32],
-) -> bool {
-    if !verify_challenge_reveal_binding(
-        &witness.reveal,
-        expected_assert_commit_root,
-        expected_session_id,
-    ) {
-        return false;
+fn groth16_vk_x(
+    vk: &Groth16VerifyingKey<Bn254>,
+    public_inputs: &[Fr],
+) -> Option<ark_bn254::G1Projective> {
+    if vk.gamma_abc_g1.len() != public_inputs.len() + 1 {
+        return None;
     }
-    if compute_challenge_reveal_commit(&witness.reveal) != witness.reveal_commit {
-        return false;
+    let mut acc = vk.gamma_abc_g1[0].into_group();
+    for (i, x) in public_inputs.iter().enumerate() {
+        acc += vk.gamma_abc_g1[i + 1].into_group() * *x;
     }
-    if !verify_hashlock_reveal(&witness.reveal.revealed_secret, witness.reveal.babe_hashlock) {
-        return false;
-    }
-    let mut expected_leaf = b"babe:hmsg".to_vec();
-    expected_leaf.extend_from_slice(&witness.reveal.babe_hashlock);
-    if witness.hmsg_leaf != expected_leaf {
-        return false;
-    }
-    merkle_verify_path(&witness.hmsg_leaf, &witness.hmsg_leaf_proof, witness.root_babe_setup)
-}
-
-pub fn compute_babe_phase_state_commit(state: &BabePhaseState) -> [u8; 32] {
-    let mut d = Vec::with_capacity(BABE_PHASE_DOMAIN_SEP.len() + 32 + 32 + 1 + 4);
-    d.extend_from_slice(BABE_PHASE_DOMAIN_SEP);
-    d.extend_from_slice(&state.session_id);
-    d.extend_from_slice(&state.assert_commit_root);
-    d.push(state.phase.clone() as u8);
-    d.extend_from_slice(&state.step.to_le_bytes());
-    h(&d)
-}
-
-pub fn verify_babe_phase_transition(prev: BabePhase, next: BabePhase) -> bool {
-    matches!(
-        (prev, next),
-        (BabePhase::DepositCommitted, BabePhase::WithdrawAsserted)
-            | (BabePhase::WithdrawAsserted, BabePhase::DisproveChallenged)
-            | (BabePhase::WithdrawAsserted, BabePhase::Settled)
-            | (BabePhase::DisproveChallenged, BabePhase::Settled)
-    )
-}
-
-pub fn verify_babe_phase_trace(states: &[BabePhaseState]) -> bool {
-    if states.is_empty() {
-        return false;
-    }
-    if states[0].phase != BabePhase::DepositCommitted {
-        return false;
-    }
-    for i in 1..states.len() {
-        if states[i].session_id != states[0].session_id
-            || states[i].assert_commit_root != states[0].assert_commit_root
-            || states[i].step != states[i - 1].step + 1
-            || !verify_babe_phase_transition(states[i - 1].phase.clone(), states[i].phase.clone())
-        {
-            return false;
-        }
-    }
-    states.last().map(|s| s.phase == BabePhase::Settled).unwrap_or(false)
-}
-
-pub fn compute_babe_policy_commit(input: &BabePolicyInputs) -> [u8; 32] {
-    let mut buf = Vec::with_capacity(BABE_POLICY_DOMAIN_SEP.len() + 32 * 5 + 4 + 4);
-    buf.extend_from_slice(BABE_POLICY_DOMAIN_SEP);
-    buf.extend_from_slice(&input.session_id);
-    buf.extend_from_slice(&input.vk_hash);
-    buf.extend_from_slice(&input.relation_id);
-    buf.extend_from_slice(&input.we_params_hash);
-    buf.extend_from_slice(&input.gc_small_params_hash);
-    buf.extend_from_slice(&input.timeout_assert_blocks.to_le_bytes());
-    buf.extend_from_slice(&input.timeout_challenge_blocks.to_le_bytes());
-    h(&buf)
-}
-
-pub fn compute_babe_assert_root(input: &BabeAssertInputs) -> [u8; 32] {
-    let mut buf = Vec::with_capacity(BABE_ASSERT_DOMAIN_SEP.len() + 32 * 8);
-    buf.extend_from_slice(BABE_ASSERT_DOMAIN_SEP);
-    buf.extend_from_slice(&input.session_id);
-    buf.extend_from_slice(&input.vk_hash);
-    buf.extend_from_slice(&input.public_input_hash);
-    buf.extend_from_slice(&input.proof_binding_hash);
-    buf.extend_from_slice(&input.root_babe_setup);
-    buf.extend_from_slice(&input.root_babe_instance);
-    buf.extend_from_slice(&input.babe_hashlock);
-    buf.extend_from_slice(&input.pi1_binding_hash);
-    h(&buf)
-}
-
-pub fn hash_public_inputs(inputs: &[ark_bn254::Fr]) -> [u8; 32] {
-    let mut d = b"babe:groth16-public-inputs".to_vec();
-    d.extend_from_slice(&(inputs.len() as u32).to_le_bytes());
-    for i in inputs {
-        let le = i.into_bigint().to_bytes_le();
-        let mut b = [0u8; 32];
-        b.copy_from_slice(&le[..32]);
-        d.extend_from_slice(&b);
-    }
-    h(&d)
-}
-
-pub fn hash_groth16_vk(vk: &Groth16VerifyingKey<ark_bn254::Bn254>) -> [u8; 32] {
-    let mut out = Vec::new();
-    vk.serialize_compressed(&mut out).expect("serialize vk");
-    let mut d = b"babe:groth16-vk".to_vec();
-    d.extend_from_slice(&out);
-    h(&d)
-}
-
-pub fn hash_groth16_proof(proof: &Groth16Proof<ark_bn254::Bn254>) -> [u8; 32] {
-    let mut out = Vec::new();
-    proof.serialize_compressed(&mut out).expect("serialize proof");
-    let mut d = b"babe:groth16-proof".to_vec();
-    d.extend_from_slice(&out);
-    h(&d)
-}
-
-pub fn derive_relation_id_from_vk(vk_hash: [u8; 32]) -> [u8; 32] {
-    let mut d = b"babe:groth16-relation-id".to_vec();
-    d.extend_from_slice(&vk_hash);
-    h(&d)
-}
-
-pub fn derive_statement_hash_from_relation(
-    relation_id: [u8; 32],
-    public_input_hash: [u8; 32],
-    proof_binding_hash: [u8; 32],
-) -> [u8; 32] {
-    let mut d = b"babe:groth16-statement".to_vec();
-    d.extend_from_slice(&relation_id);
-    d.extend_from_slice(&public_input_hash);
-    d.extend_from_slice(&proof_binding_hash);
-    h(&d)
-}
-
-pub fn bind_groth16_relation(
-    vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
-    proof: &Groth16Proof<ark_bn254::Bn254>,
-    public_inputs: &[ark_bn254::Fr],
-) -> Groth16RelationBinding {
-    let vk_hash = hash_groth16_vk(vk);
-    let proof_binding_hash = hash_groth16_proof(proof);
-    let public_input_hash = hash_public_inputs(public_inputs);
-    let relation_id = derive_relation_id_from_vk(vk_hash);
-    let statement_hash =
-        derive_statement_hash_from_relation(relation_id, public_input_hash, proof_binding_hash);
-    Groth16RelationBinding {
-        vk_hash,
-        proof_binding_hash,
-        public_input_hash,
-        relation_id,
-        statement_hash,
-    }
+    Some(acc)
 }
 
 fn g1_to_ser(p: ark_bn254::G1Projective) -> Vec<u8> {
@@ -571,51 +679,19 @@ fn g2_to_ser(p: ark_bn254::G2Projective) -> Vec<u8> {
 }
 
 fn g1_from_ser_checked(v: &[u8]) -> Option<ark_bn254::G1Projective> {
-    let a = ark_bn254::G1Affine::deserialize_compressed(v).ok()?;
-    if a.is_zero() {
-        return None;
-    }
-    if !a.is_on_curve() {
-        return None;
-    }
-    if !a.is_in_correct_subgroup_assuming_on_curve() {
+    let a = G1Affine::deserialize_compressed(v).ok()?;
+    if a.is_zero() || !a.is_on_curve() || !a.is_in_correct_subgroup_assuming_on_curve() {
         return None;
     }
     Some(a.into_group())
 }
 
 fn g2_from_ser_checked(v: &[u8]) -> Option<ark_bn254::G2Projective> {
-    let a = ark_bn254::G2Affine::deserialize_compressed(v).ok()?;
-    if a.is_zero() {
-        return None;
-    }
-    if !a.is_on_curve() {
-        return None;
-    }
-    if !a.is_in_correct_subgroup_assuming_on_curve() {
+    let a = G2Affine::deserialize_compressed(v).ok()?;
+    if a.is_zero() || !a.is_on_curve() || !a.is_in_correct_subgroup_assuming_on_curve() {
         return None;
     }
     Some(a.into_group())
-}
-
-fn compute_pi1_binding_hash_from_ser(pi1_ser: &[u8]) -> [u8; 32] {
-    let mut buf = b"babe:pi1-binding".to_vec();
-    buf.extend_from_slice(pi1_ser);
-    h(&buf)
-}
-
-fn groth16_vk_x(
-    vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
-    public_inputs: &[ark_bn254::Fr],
-) -> Option<ark_bn254::G1Projective> {
-    if vk.gamma_abc_g1.len() != public_inputs.len() + 1 {
-        return None;
-    }
-    let mut acc = vk.gamma_abc_g1[0].into_group();
-    for (i, x) in public_inputs.iter().enumerate() {
-        acc += vk.gamma_abc_g1[i + 1].into_group() * *x;
-    }
-    Some(acc)
 }
 
 fn derive_stream_xor_keyed(key: [u8; 32], nonce: [u8; 12], msg_len: usize) -> Vec<u8> {
@@ -643,45 +719,36 @@ fn ro_from_pairing_bytes(seed: &[u8], msg_len: usize) -> Vec<u8> {
     derive_stream_xor_keyed(key, nonce, msg_len)
 }
 
-/// Paper primitive (Construction 1):
-/// Encsetup(crs, x, msg; r): ctsetup = (r[delta]_2, RO(rY) + msg), where
-/// Y = e([alpha]_1,[beta]_2) * e(vk_x,[gamma]_2).
+/// Encsetup(crs, x, msg; r): ctsetup = (r·[delta]_2, RO(rY) ⊕ msg).
 pub fn we_known_pi1_encsetup(
-    vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
-    public_inputs: &[ark_bn254::Fr],
+    vk: &Groth16VerifyingKey<Bn254>,
+    public_inputs: &[Fr],
     msg: &[u8],
     r_bytes: [u8; 32],
 ) -> Option<WeKnownPi1SetupCt> {
-    let r = ark_bn254::Fr::from_le_bytes_mod_order(&r_bytes);
+    let r = Fr::from_le_bytes_mod_order(&r_bytes);
     let vk_x = groth16_vk_x(vk, public_inputs)?;
     let r_delta = vk.delta_g2.into_group() * r;
 
-    let t1 = ark_bn254::Bn254::pairing(vk.alpha_g1, vk.beta_g2.into_group() * r);
-    let t2 = ark_bn254::Bn254::pairing(vk_x, vk.gamma_g2.into_group() * r);
+    let t1 = Bn254::pairing(vk.alpha_g1, vk.beta_g2.into_group() * r);
+    let t2 = Bn254::pairing(vk_x, vk.gamma_g2.into_group() * r);
     let r_y = t1 + t2;
 
     let mut ry_bytes = Vec::new();
     r_y.serialize_compressed(&mut ry_bytes).ok()?;
     let mask = ro_from_pairing_bytes(&ry_bytes, msg.len());
-    let ct3 = msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect::<Vec<_>>();
+    let ct3 = msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect();
 
-    Some(WeKnownPi1SetupCt {
-        ct2_r_delta_g2: g2_to_ser(r_delta),
-        ct3_masked_msg: ct3,
-    })
+    Some(WeKnownPi1SetupCt { ct2_r_delta_g2: g2_to_ser(r_delta), ct3_masked_msg: ct3 })
 }
 
-/// Paper primitive (Construction 1):
-/// Encprove(crs, pi1; r): ctprove = r*pi1.
+/// Encprove(crs, π₁; r): ctprove = r·π₁.
 pub fn we_known_pi1_encprove(pi1: ark_bn254::G1Projective, r_bytes: [u8; 32]) -> WeKnownPi1ProveCt {
-    let r = ark_bn254::Fr::from_le_bytes_mod_order(&r_bytes);
-    WeKnownPi1ProveCt {
-        ct1_r_pi1: g1_to_ser(pi1 * r),
-    }
+    let r = Fr::from_le_bytes_mod_order(&r_bytes);
+    WeKnownPi1ProveCt { ct1_r_pi1: g1_to_ser(pi1 * r) }
 }
 
-/// Paper primitive (Construction 1):
-/// Dec(ctsetup, ctprove, pi2, pi3): msg = ct3 - RO(e(ct1,pi2)/e(pi3,ct2)).
+/// Dec(ctsetup, ctprove, π₂, π₃): msg = ct3 ⊕ RO(e(ct1,π₂) - e(π₃,ct2)).
 pub fn we_known_pi1_dec(
     ctsetup: &WeKnownPi1SetupCt,
     ctprove: &WeKnownPi1ProveCt,
@@ -690,686 +757,259 @@ pub fn we_known_pi1_dec(
 ) -> Option<Vec<u8>> {
     let ct1 = g1_from_ser_checked(&ctprove.ct1_r_pi1)?;
     let ct2 = g2_from_ser_checked(&ctsetup.ct2_r_delta_g2)?;
-    let left = ark_bn254::Bn254::pairing(ct1, pi2);
-    let right = ark_bn254::Bn254::pairing(pi3, ct2);
-    let r_y = left - right;
+    let r_y = Bn254::pairing(ct1, pi2) - Bn254::pairing(pi3, ct2);
 
     let mut ry_bytes = Vec::new();
     r_y.serialize_compressed(&mut ry_bytes).ok()?;
     let mask = ro_from_pairing_bytes(&ry_bytes, ctsetup.ct3_masked_msg.len());
-    Some(
-        ctsetup
-            .ct3_masked_msg
-            .iter()
-            .zip(mask.iter())
-            .map(|(a, b)| a ^ b)
-            .collect::<Vec<_>>(),
-    )
+    Some(ctsetup.ct3_masked_msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect())
 }
 
-pub fn commit_we_known_pi1_ciphertexts(
-    ctsetup: &WeKnownPi1SetupCt,
-    ctprove: &WeKnownPi1ProveCt,
-) -> [u8; 32] {
-    let mut d = b"babe:we-known-pi1-ct-commit".to_vec();
-    d.extend_from_slice(&(ctsetup.ct2_r_delta_g2.len() as u32).to_le_bytes());
-    d.extend_from_slice(&ctsetup.ct2_r_delta_g2);
-    d.extend_from_slice(&(ctsetup.ct3_masked_msg.len() as u32).to_le_bytes());
-    d.extend_from_slice(&ctsetup.ct3_masked_msg);
-    d.extend_from_slice(&(ctprove.ct1_r_pi1.len() as u32).to_le_bytes());
-    d.extend_from_slice(&ctprove.ct1_r_pi1);
-    h(&d)
+// ─── Full e2e harness ─────────────────────────────────────────────────────────
+
+#[derive(Copy, Clone)]
+struct DummyMulCircuit<F: PrimeField> {
+    pub a: Option<F>,
+    pub b: Option<F>,
 }
 
-pub fn compute_setup_gc_binding_commit(
-    statement_hash: [u8; 32],
-    hmsg: [u8; 32],
-    ct_setup: &WeKnownPi1SetupCt,
-    ctprove: &WeKnownPi1ProveCt,
-    paper_we_commit: [u8; 32],
-) -> [u8; 32] {
-    let mut c = b"babe:setup-gc-binding".to_vec();
-    c.extend_from_slice(&statement_hash);
-    c.extend_from_slice(&hmsg);
-    c.extend_from_slice(&paper_we_commit);
-    c.extend_from_slice(&(ct_setup.ct2_r_delta_g2.len() as u32).to_le_bytes());
-    c.extend_from_slice(&ct_setup.ct2_r_delta_g2);
-    c.extend_from_slice(&(ct_setup.ct3_masked_msg.len() as u32).to_le_bytes());
-    c.extend_from_slice(&ct_setup.ct3_masked_msg);
-    c.extend_from_slice(&(ctprove.ct1_r_pi1.len() as u32).to_le_bytes());
-    c.extend_from_slice(&ctprove.ct1_r_pi1);
-    h(&c)
-}
-
-pub fn verify_setup_gc_binding(
-    statement_hash: [u8; 32],
-    hmsg: [u8; 32],
-    ct_setup: &WeKnownPi1SetupCt,
-    ctprove: &WeKnownPi1ProveCt,
-    paper_we_commit: [u8; 32],
-    expected_commit: [u8; 32],
-) -> bool {
-    compute_setup_gc_binding_commit(statement_hash, hmsg, ct_setup, ctprove, paper_we_commit)
-        == expected_commit
-}
-
-pub fn build_babe_instance_root(statement_hash: [u8; 32], proof_binding_hash: [u8; 32]) -> [u8; 32] {
-    let mut leaf_stmt = b"babe:statement_hash".to_vec();
-    leaf_stmt.extend_from_slice(&statement_hash);
-    let mut leaf_proof = b"babe:proof_binding_hash".to_vec();
-    leaf_proof.extend_from_slice(&proof_binding_hash);
-    merkle_root_from_leaves(&[leaf_stmt, leaf_proof])
-}
-
-pub fn prover_build_ct_setup(
-    statement_hash: [u8; 32],
-    hmsg: [u8; 32],
-    vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
-    public_inputs: &[ark_bn254::Fr],
-    pi1: ark_bn254::G1Projective,
-    pi2: ark_bn254::G2Projective,
-    pi3: ark_bn254::G1Projective,
-    r_we_bytes: [u8; 32],
-    secret: &[u8],
-    ek_commit: [u8; 32],
-) -> Option<ProverCtSetupPackage> {
-    // Strict-paper path: use WE for Groth16 with known pi1.
-    let ct_setup = we_known_pi1_encsetup(vk, public_inputs, secret, r_we_bytes)?;
-    let ctprove = we_known_pi1_encprove(pi1, r_we_bytes);
-    let paper_we_commit = commit_we_known_pi1_ciphertexts(&ct_setup, &ctprove);
-    let setup_gc_binding_commit = compute_setup_gc_binding_commit(
-        statement_hash,
-        hmsg,
-        &ct_setup,
-        &ctprove,
-        paper_we_commit,
-    );
-    Some(ProverCtSetupPackage {
-        statement_hash,
-        hmsg,
-        ct_setup,
-        ctprove,
-        pi1: g1_to_ser(pi1),
-        pi2: g2_to_ser(pi2),
-        pi3: g1_to_ser(pi3),
-        paper_we_commit,
-        ek_commit,
-        setup_gc_binding_commit,
-    })
-}
-
-pub fn evaluator_verify_ct_setup(
-    pkg: &ProverCtSetupPackage,
-    expected_statement_hash: [u8; 32],
-    expected_hmsg: [u8; 32],
-) -> Result<VerifiedCtSetup, BabeSetupVerifyError> {
-    // Adversarial model: every field from prover is untrusted and must be checked.
-    if pkg.statement_hash != expected_statement_hash {
-        return Err(BabeSetupVerifyError::StatementHashMismatch);
-    }
-    if pkg.hmsg != expected_hmsg {
-        return Err(BabeSetupVerifyError::HashlockMismatch);
-    }
-    if commit_we_known_pi1_ciphertexts(&pkg.ct_setup, &pkg.ctprove) != pkg.paper_we_commit {
-        return Err(BabeSetupVerifyError::PaperWeCommitMismatch);
-    }
-    let pi2 = g2_from_ser_checked(&pkg.pi2).ok_or(BabeSetupVerifyError::PaperWeDecryptFailed)?;
-    let pi3 = g1_from_ser_checked(&pkg.pi3).ok_or(BabeSetupVerifyError::PaperWeDecryptFailed)?;
-    let msg = we_known_pi1_dec(&pkg.ct_setup, &pkg.ctprove, pi2, pi3)
-        .ok_or(BabeSetupVerifyError::PaperWeDecryptFailed)?;
-    if derive_hashlock(&msg) != expected_hmsg {
-        return Err(BabeSetupVerifyError::PaperWeDecryptFailed);
-    }
-    if !verify_setup_gc_binding(
-        expected_statement_hash,
-        expected_hmsg,
-        &pkg.ct_setup,
-        &pkg.ctprove,
-        pkg.paper_we_commit,
-        pkg.setup_gc_binding_commit,
-    ) {
-        return Err(BabeSetupVerifyError::SetupGcBindingInvalid);
-    }
-
-    let setup_artifacts = BabeSetupArtifacts {
-        ct_setup: bincode::serialize(&pkg.ct_setup).expect("serialize verified ct_setup"),
-        ctgc_small: bincode::serialize(&pkg.ctprove).expect("serialize verified ctprove"),
-        ek_commit: pkg.ek_commit,
-        setup_gc_binding_commit: pkg.setup_gc_binding_commit,
-        hmsg: expected_hmsg,
-    };
-    let pi1_binding_hash = compute_pi1_binding_hash_from_ser(&pkg.pi1);
-    Ok(VerifiedCtSetup {
-        statement_hash: expected_statement_hash,
-        hmsg: expected_hmsg,
-        ct_setup: pkg.ct_setup.clone(),
-        ctprove: pkg.ctprove.clone(),
-        pi1_binding_hash,
-        gc_small_params_hash: h(b"paper-we-known-pi1"),
-        paper_we_commit: pkg.paper_we_commit,
-        setup_artifacts,
-    })
-}
-
-pub fn deposit_commit_from_verified_setup(
-    verified: &VerifiedCtSetup,
-    session_id: [u8; 32],
-    vk_hash: [u8; 32],
-    relation_id: [u8; 32],
-    public_input_hash: [u8; 32],
-    proof_binding_hash: [u8; 32],
-    we_params_hash: [u8; 32],
-    timeout_assert_blocks: u32,
-    timeout_challenge_blocks: u32,
-) -> DepositCommitments {
-    let root_babe_setup = compute_babe_setup_root(&verified.setup_artifacts);
-    let root_babe_instance = build_babe_instance_root(verified.statement_hash, proof_binding_hash);
-    let assert_inputs = BabeAssertInputs {
-        session_id,
-        vk_hash,
-        public_input_hash,
-        proof_binding_hash,
-        root_babe_setup,
-        root_babe_instance,
-        babe_hashlock: verified.hmsg,
-        pi1_binding_hash: verified.pi1_binding_hash,
-    };
-    let assert_commit_root = compute_babe_assert_root(&assert_inputs);
-    let policy = BabePolicyInputs {
-        session_id,
-        vk_hash,
-        relation_id,
-        we_params_hash,
-        gc_small_params_hash: verified.gc_small_params_hash,
-        timeout_assert_blocks,
-        timeout_challenge_blocks,
-    };
-    let policy_commit = compute_babe_policy_commit(&policy);
-    DepositCommitments {
-        policy,
-        policy_commit,
-        root_babe_setup,
-        root_babe_instance,
-        assert_inputs,
-        assert_commit_root,
+impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
+    fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
+        let a = cs.new_witness_variable(|| self.a.ok_or(SynthesisError::AssignmentMissing))?;
+        let b = cs.new_witness_variable(|| self.b.ok_or(SynthesisError::AssignmentMissing))?;
+        let c = cs.new_input_variable(|| {
+            Ok(self.a.ok_or(SynthesisError::AssignmentMissing)?
+                * self.b.ok_or(SynthesisError::AssignmentMissing)?)
+        })?;
+        cs.enforce_constraint(lc!() + a, lc!() + b, lc!() + c)?;
+        Ok(())
     }
 }
 
-pub fn build_babe_setup_leaves(art: &BabeSetupArtifacts) -> Vec<Vec<u8>> {
-    let mut l0 = b"babe:ct_setup".to_vec();
-    l0.extend_from_slice(&(art.ct_setup.len() as u32).to_le_bytes());
-    l0.extend_from_slice(&art.ct_setup);
-
-    let mut l1 = b"babe:ctgc_small".to_vec();
-    l1.extend_from_slice(&(art.ctgc_small.len() as u32).to_le_bytes());
-    l1.extend_from_slice(&art.ctgc_small);
-
-    let mut l2 = b"babe:ek_commit+setup_gc_binding".to_vec();
-    l2.extend_from_slice(&art.ek_commit);
-    l2.extend_from_slice(&art.setup_gc_binding_commit);
-
-    let mut l3 = b"babe:hmsg".to_vec();
-    l3.extend_from_slice(&art.hmsg);
-
-    vec![l0, l1, l2, l3]
-}
-
-pub fn compute_babe_setup_root(art: &BabeSetupArtifacts) -> [u8; 32] {
-    merkle_root_from_leaves(&build_babe_setup_leaves(art))
-}
-
-pub fn verify_babe_protocol_bundle(bundle: &BabeProtocolBundle) -> bool {
-    // Paper mapping: verify all protocol layers from policy -> setup -> assert -> disprove.
-    if compute_babe_policy_commit(&bundle.policy) != bundle.policy_commit {
-        return false;
-    }
-    if bundle.policy.session_id != bundle.assert_inputs.session_id {
-        return false;
-    }
-    if bundle.policy.vk_hash != bundle.assert_inputs.vk_hash {
-        return false;
-    }
-    if compute_babe_assert_root(&bundle.assert_inputs) != bundle.assert_commit_root {
-        return false;
-    }
-    if bundle.assert_inputs.root_babe_setup != compute_babe_setup_root(&bundle.setup) {
-        return false;
-    }
-    if !verify_babe_disprove_witness(
-        &bundle.disprove_witness,
-        bundle.assert_commit_root,
-        bundle.assert_inputs.session_id,
-    ) {
-        return false;
-    }
-    if !verify_babe_phase_trace(&bundle.phase_trace) {
-        return false;
-    }
-
-    let ct_setup: WeKnownPi1SetupCt = match bincode::deserialize(&bundle.setup.ct_setup) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-    let ctprove: WeKnownPi1ProveCt = match bincode::deserialize(&bundle.setup.ctgc_small) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-
-    let statement_hash = derive_statement_hash_from_relation(
-        bundle.policy.relation_id,
-        bundle.assert_inputs.public_input_hash,
-        bundle.assert_inputs.proof_binding_hash,
-    );
-    if bundle.assert_inputs.root_babe_instance
-        != build_babe_instance_root(statement_hash, bundle.assert_inputs.proof_binding_hash)
-    {
-        return false;
-    }
-
-    let paper_we_commit = bundle.policy.we_params_hash;
-    if !verify_setup_gc_binding(
-        statement_hash,
-        bundle.setup.hmsg,
-        &ct_setup,
-        &ctprove,
-        paper_we_commit,
-        bundle.setup.setup_gc_binding_commit,
-    ) {
-        return false;
-    }
-    true
-}
-
+/// Run the full BABE e2e happy path:
+/// Setup → Deposit → Assert → ChallengeAssert → WronglyChallenged.
+#[cfg(feature = "garbled")]
 pub fn run_babe_e2e() -> BabeE2ERun {
-    // End-to-end harness:
-    // 1) build a real Groth16 relation object;
-    // 2) run BABE setup/assert/disprove wiring;
-    // 3) verify final bundle.
-    let session_id = h(b"e2e:session");
+    let session_id = h(b"babe:e2e:session");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);
-    let a = ark_bn254::Fr::from(7u64);
-    let b = ark_bn254::Fr::from(9u64);
-    let c = a * b;
-    let circ = DummyMulCircuit::<ark_bn254::Fr> { a: Some(a), b: Some(b) };
-    let (pk, vk) = ark_groth16::Groth16::<ark_bn254::Bn254>::setup(circ, &mut rng).expect("setup");
-    let proof = ark_groth16::Groth16::<ark_bn254::Bn254>::prove(
-        &pk,
-        DummyMulCircuit::<ark_bn254::Fr> { a: Some(a), b: Some(b) },
+
+    // 1. Groth16 setup and prove: a * b = c.
+    let a = Fr::from(7u64);
+    let b = Fr::from(9u64);
+    let circ = DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) };
+    let (groth16_pk, vk) = ark_groth16::Groth16::<Bn254>::setup(circ, &mut rng).expect("groth16 setup");
+    let proof = ark_groth16::Groth16::<Bn254>::prove(
+        &groth16_pk,
+        DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
         &mut rng,
-    )
-    .expect("prove");
-    let public_inputs = vec![c];
-    let binding = bind_groth16_relation(&vk, &proof, &public_inputs);
-    let vk_hash = binding.vk_hash;
-    let relation_id = binding.relation_id;
-    let statement_hash = binding.statement_hash;
-    let public_input_hash = binding.public_input_hash;
-    let proof_binding_hash = binding.proof_binding_hash;
+    ).expect("groth16 prove");
+    let public_inputs = vec![a * b];
 
-    let secret = b"babe-e2e-secret".to_vec();
-    let hmsg = derive_hashlock(&secret);
+    // 2. Verifier setup: enc_setup + garble + adaptor table + epk.
+    let (mut verifier_pkg, verifier_private) =
+        babe_verifier_setup(&vk, &public_inputs);
 
-    let prover_pkg = prover_build_ct_setup(
-        statement_hash,
-        hmsg,
-        &vk,
-        &public_inputs,
-        proof.a.into_group(),
-        proof.b.into_group(),
-        proof.c.into_group(),
-        h(b"e2e:r-we"),
-        &secret,
-        h(b"e2e:ek"),
-    )
-    .expect("prover build");
-    let verified = evaluator_verify_ct_setup(&prover_pkg, statement_hash, hmsg)
-        .expect("evaluator verify");
-    let we_params_hash = verified.paper_we_commit;
-    let ct_setup = verified.ct_setup.clone();
-    let ctprove = verified.ctprove.clone();
-    let recovered = we_known_pi1_dec(&ct_setup, &ctprove, proof.b.into_group(), proof.c.into_group())
-        .expect("paper dec in main flow");
-    assert_eq!(recovered, secret);
+    // Verifier setup package sizes.
+    {
+        let ct_setup_bytes = verifier_pkg.ct_setup.ct2_r_delta_g2.len()
+            + verifier_pkg.ct_setup.ct3_masked_msg.len();
 
-    let setup = verified.setup_artifacts.clone();
-    let root_babe_setup = compute_babe_setup_root(&setup);
-    let dep = deposit_commit_from_verified_setup(
-        &verified,
-        session_id,
-        vk_hash,
-        relation_id,
-        public_input_hash,
-        proof_binding_hash,
-        we_params_hash,
-        144,
-        72,
+        let gc_ct_bytes = verifier_pkg.gc_ciphertexts.iter()
+            .filter(|c| c.is_some()).count() * 16;
+
+        // Each AdaptorEntry: 3 coords × L columns × 2 ciphertexts × 32 bytes/ct
+        let adaptor_bytes = verifier_pkg.adaptor_table.entries.len()
+            * 3 * crate::dre::L * 2 * 32;
+
+        let epk_bytes = verifier_pkg.epk.0.len() * 2 * 32;
+
+        // Circuit in-memory sizes (64-bit):
+        let circuit_bytes_after_reset = verifier_pkg.circuit.size_in_bytes();
+
+        println!("--- VerifierSetupPackage sizes ---");
+        println!("  ct_setup:        {:>10} bytes ({:.2} KB)", ct_setup_bytes, ct_setup_bytes as f64 / 1024.0);
+        println!("  gc_ciphertexts:  {:>10} bytes ({:.2} MB)", gc_ct_bytes, gc_ct_bytes as f64 / 1_048_576.0);
+        println!("  adaptor_table:   {:>10} bytes ({:.2} MB)", adaptor_bytes, adaptor_bytes as f64 / 1_048_576.0);
+        println!("  epk:             {:>10} bytes ({:.2} KB)", epk_bytes, epk_bytes as f64 / 1024.0);
+        println!("  h_ek + h_msg:    {:>10} bytes", 64);
+        println!("  constant_labels: {:>10} bytes", 32);
+        println!("  circuit struct:  {:>10} bytes ({:.2} MB)  after reset",
+            circuit_bytes_after_reset, circuit_bytes_after_reset as f64 / 1_048_576.0);
+        let total = ct_setup_bytes + gc_ct_bytes + adaptor_bytes + epk_bytes + 64 + 32 + circuit_bytes_after_reset;
+        println!("  TOTAL:           {:>10} bytes ({:.2} MB)", total, total as f64 / 1_048_576.0);
+    }
+
+    // 3. Prover setup: generate Lamport keypair.
+    let pk_p = BtcPk([0u8; 33]); // stub BTC pubkey
+    let (lsk_p, prover_pkg) = babe_prover_keygen(&mut rng, pk_p.clone());
+
+    // Prover setup package sizes.
+    {
+        // lpk_p: LAMPORT_N entries, each [[u8;32];2] = 2×32 bytes.
+        let lpk_bytes = prover_pkg.lpk_p.0.len() * 2 * 32;
+        // lpk_p_commit: [u8;32]
+        let commit_bytes = 32;
+        // pk_p: BtcPk([u8;33])
+        let pk_p_bytes = 33;
+        let total = lpk_bytes + commit_bytes + pk_p_bytes;
+        println!("--- ProverSetupPackage sizes ---");
+        println!("  lpk_p:           {:>10} bytes ({:.2} KB)", lpk_bytes, lpk_bytes as f64 / 1024.0);
+        println!("  lpk_p_commit:    {:>10} bytes", commit_bytes);
+        println!("  pk_p:            {:>10} bytes", pk_p_bytes);
+        println!("  TOTAL:           {:>10} bytes ({:.2} KB)", total, total as f64 / 1024.0);
+    }
+
+    // 4. Presign exchange.
+    let pk_v = BtcPk([1u8; 33]); // stub BTC pubkey
+    let prover_presigs = babe_prover_presign();
+    let verifier_presigs = babe_verifier_presign();
+
+    // 5. Both parties verify the other's presigs before depositing.
+    assert!(babe_verify_verifier_presigs(&verifier_presigs), "verifier presigs invalid");
+    assert!(babe_verify_prover_presigs(&prover_presigs), "prover presigs invalid");
+
+    // 6. Deposit.
+    let deposit_lock = babe_build_deposit_lock(pk_p, pk_v, 100_000);
+
+    // Proving phase
+
+    // 7. Assert: Prover posts π₁ + Lamport sig. Script Assert checks Lamport sig against lpk_P and π₁.
+    let assert_witness = babe_prover_assert(&proof, &lsk_p);
+    println!("tx_Assert witness:            {} bytes", assert_witness.size_bytes());
+
+    // 8. ChallengeAssert: Verifier reveals labels L for π₁.
+    // ChallengeAssert script check L against prover lamport sig.
+    let challenge_witness = babe_verifier_challenge_assert(
+        &assert_witness,
+        &prover_pkg.lpk_p,
+        &verifier_private,
+        prover_presigs.sig_challenge_assert.clone(),
+    ).expect("Lamport sig invalid in assert witness");
+    println!("tx_ChallengeAssert witness:   {} bytes", challenge_witness.size_bytes());
+
+    // 9. WronglyChallenged: Prover evaluates GC and decrypts msg.
+    let wc_witness = babe_prover_wrongly_challenged(
+        &challenge_witness,
+        &proof,
+        &mut verifier_pkg,
     );
-    let assert_inputs = dep.assert_inputs.clone();
-    let assert_commit_root = dep.assert_commit_root;
+    println!("tx_WronglyChallenged witness: {} bytes", wc_witness.size_bytes());
 
-    let setup_leaves = build_babe_setup_leaves(&setup);
-    let hmsg_leaf = setup_leaves[3].clone();
-    let (_, hmsg_leaf_proof) = merkle_root_and_proof(&setup_leaves, 3).expect("proof");
-    let reveal = BabeChallengeReveal {
-        assert_commit_root,
+    // 10. Verify: msg must satisfy the hashlock.
+    assert_eq!(
+        derive_hashlock(&wc_witness.msg),
+        verifier_pkg.h_msg,
+        "decrypted msg does not match h_msg"
+    );
+
+    BabeE2ERun {
         session_id,
-        babe_hashlock: hmsg,
-        revealed_secret: secret.clone(),
-    };
-    let disprove_witness = BabeDisproveWitness {
-        reveal: reveal.clone(),
-        reveal_commit: compute_challenge_reveal_commit(&reveal),
-        root_babe_setup,
-        hmsg_leaf,
-        hmsg_leaf_proof,
-    };
-    assert!(verify_babe_disprove_witness(&disprove_witness, assert_commit_root, session_id));
-
-    let policy = dep.policy.clone();
-    let policy_commit = dep.policy_commit;
-    let phase_trace = vec![
-        BabePhaseState {
-            session_id,
-            assert_commit_root,
-            phase: BabePhase::DepositCommitted,
-            step: 0,
-        },
-        BabePhaseState {
-            session_id,
-            assert_commit_root,
-            phase: BabePhase::WithdrawAsserted,
-            step: 1,
-        },
-        BabePhaseState {
-            session_id,
-            assert_commit_root,
-            phase: BabePhase::DisproveChallenged,
-            step: 2,
-        },
-        BabePhaseState { session_id, assert_commit_root, phase: BabePhase::Settled, step: 3 },
-    ];
-
-    let bundle = BabeProtocolBundle {
-        policy,
-        policy_commit,
-        setup,
-        assert_inputs,
-        assert_commit_root,
-        disprove_witness,
-        phase_trace,
-    };
-    assert!(verify_babe_protocol_bundle(&bundle));
-
-    BabeE2ERun { statement_hash, hmsg, protocol_bundle: bundle, ct_setup, ctprove }
+        deposit_lock,
+        prover_setup_pkg: prover_pkg,
+        h_ek: verifier_pkg.h_ek,
+        h_msg: verifier_pkg.h_msg,
+        prover_presigs,
+        verifier_presigs,
+        assert_witness,
+        challenge_assert_witness: challenge_witness,
+        wrongly_challenged_witness: wc_witness,
+    }
 }
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn merkle_path_roundtrip() {
-        let leaves = vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec(), b"d".to_vec()];
-        let (root, proof) = merkle_root_and_proof(&leaves, 2).expect("proof");
-        assert!(merkle_verify_path(&leaves[2], &proof, root));
-    }
+    use ark_bn254::Bn254;
+    use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 
     #[test]
     fn hashlock_roundtrip() {
         let secret = b"hello-babe";
-        let lock = derive_hashlock(secret);
-        assert!(verify_hashlock_reveal(secret, lock));
+        let h_msg = derive_hashlock(secret);
+        assert_eq!(derive_hashlock(secret), h_msg);
+        assert_ne!(derive_hashlock(b"other"), h_msg);
     }
 
     #[test]
-    fn we_known_pi1_roundtrip() {
-        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(123);
-        let a = ark_bn254::Fr::from(3u64);
-        let b = ark_bn254::Fr::from(11u64);
-        let c = a * b;
-        let circuit = DummyMulCircuit::<ark_bn254::Fr> { a: Some(a), b: Some(b) };
-        let (pk, vk) = ark_groth16::Groth16::<ark_bn254::Bn254>::setup(circuit, &mut rng).expect("setup");
-        let proof = ark_groth16::Groth16::<ark_bn254::Bn254>::prove(
-            &pk,
-            DummyMulCircuit::<ark_bn254::Fr> { a: Some(a), b: Some(b) },
-            &mut rng,
-        )
-        .expect("prove");
-        let public_inputs = vec![c];
-        let msg = b"known-pi1-message".to_vec();
-        let r = h(b"known-pi1-r");
-
-        let ctsetup = we_known_pi1_encsetup(&vk, &public_inputs, &msg, r).expect("encsetup");
-        let ctprove = we_known_pi1_encprove(proof.a.into_group(), r);
-        let dec =
-            we_known_pi1_dec(&ctsetup, &ctprove, proof.b.into_group(), proof.c.into_group())
-                .expect("dec");
-        assert_eq!(dec, msg);
-    }
-
-    #[test]
-    fn phase_trace_accepts_valid_and_rejects_invalid_step() {
-        let sid = [1u8; 32];
-        let root = [2u8; 32];
-        let trace = vec![
-            BabePhaseState {
-                session_id: sid,
-                assert_commit_root: root,
-                phase: BabePhase::DepositCommitted,
-                step: 0,
-            },
-            BabePhaseState {
-                session_id: sid,
-                assert_commit_root: root,
-                phase: BabePhase::WithdrawAsserted,
-                step: 1,
-            },
-            BabePhaseState {
-                session_id: sid,
-                assert_commit_root: root,
-                phase: BabePhase::Settled,
-                step: 2,
-            },
-        ];
-        assert!(verify_babe_phase_trace(&trace));
-        let mut bad = trace.clone();
-        bad[2].step = 4;
-        assert!(!verify_babe_phase_trace(&bad));
-    }
-
-    #[test]
-    fn full_e2e_and_tamper_detection() {
-        let run = run_babe_e2e();
-        assert!(verify_babe_protocol_bundle(&run.protocol_bundle));
-
-        let mut bad_bundle = run.protocol_bundle.clone();
-        let mut ctprove: WeKnownPi1ProveCt =
-            bincode::deserialize(&bad_bundle.setup.ctgc_small).expect("deserialize");
-        ctprove.ct1_r_pi1[0] ^= 1;
-        bad_bundle.setup.ctgc_small = bincode::serialize(&ctprove).expect("serialize");
-        assert!(!verify_babe_protocol_bundle(&bad_bundle));
-
-        let mut bad_bundle2 = run.protocol_bundle.clone();
-        bad_bundle2.disprove_witness.reveal.revealed_secret[0] ^= 1;
-        bad_bundle2.disprove_witness.reveal_commit =
-            compute_challenge_reveal_commit(&bad_bundle2.disprove_witness.reveal);
-        assert!(!verify_babe_protocol_bundle(&bad_bundle2));
-    }
-
-    #[test]
-    fn scripts_nocat_do_not_use_op_cat() {
-        let hmsg_leaf = {
-            let mut v = b"babe:hmsg".to_vec();
-            v.extend_from_slice(&[3u8; 32]);
-            v
+    fn lamport_sign_verify_roundtrip() {
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(1);
+        let pi1 = {
+            use ark_ff::UniformRand;
+            G1Affine::from(ark_bn254::G1Projective::rand(&mut rng))
         };
-        let art = build_babe_scripts_nocat(
-            [1u8; 32],
-            [2u8; 32],
-            [3u8; 32],
-            [4u8; 32],
-            [5u8; 32],
-            [6u8; 32],
-            [7u8; 32],
-            [8u8; 32],
-            &hmsg_leaf,
-            [9u8; 32],
-            [10u8; 32],
-        );
-        assert!(!art.assert_script_pseudo.contains("OP_CAT"));
-        assert!(!art.disprove_script_pseudo.contains("OP_CAT"));
+        let (lsk, lpk) = lamport_keygen(&mut rng);
+        let sig = lamport_sign(&lsk, &pi1);
+        assert!(lamport_verify(&lpk, &pi1, &sig));
+
+        // Wrong pi1 must fail.
+        let pi1_other = G1Affine::from(ark_bn254::G1Projective::rand(&mut rng));
+        assert!(!lamport_verify(&lpk, &pi1_other, &sig));
     }
 
     #[test]
-    fn role_timeline_example_deposit_withdraw_disprove() {
-        // Roles in this scenario:
-        // - depositor/prover: commits policy and later submits withdraw(assert).
-        // - evaluator/challenger: watches withdraw and can submit disprove.
-        let run = run_babe_e2e();
-        let bundle = run.protocol_bundle.clone();
+    fn onchain_sizes() {
+        assert_eq!(LAMPORT_SIG_BYTES, 508 * 16);
 
-        // Time anchors (block heights) for the protocol timeline.
-        let deposit_height = 1000u32;
-        let withdraw_height = 1010u32;
-        let challenge_height = 1015u32;
+        // Construct minimal witnesses to call size_bytes().
+        let dummy_sig = BabeBtcSig::ProverLiveSig;
+        let dummy_lamport = LamportSig(vec![[0u8; 16]; LAMPORT_N]);
 
-        // 1) Deposit: constants are committed and locked.
-        assert_eq!(
-            bundle.phase_trace[0],
-            BabePhaseState {
-                session_id: bundle.assert_inputs.session_id,
-                assert_commit_root: bundle.assert_commit_root,
-                phase: BabePhase::DepositCommitted,
-                step: 0
-            }
-        );
-        assert!(withdraw_height > deposit_height);
+        let assert_w = TxAssertWitness {
+            pi1: vec![0u8; PI1_BYTES],
+            lamport_sig: dummy_lamport.clone(),
+        };
+        assert_eq!(assert_w.size_bytes(), 8161);
 
-        // 2) Withdraw(assert): prover opens assert path in challenge window.
-        assert_eq!(
-            bundle.phase_trace[1],
-            BabePhaseState {
-                session_id: bundle.assert_inputs.session_id,
-                assert_commit_root: bundle.assert_commit_root,
-                phase: BabePhase::WithdrawAsserted,
-                step: 1
-            }
-        );
-        assert!(challenge_height > withdraw_height);
+        let challenge_w = TxChallengeAssertWitness {
+            input_labels: vec![[0u8; 16]; LAMPORT_N],
+            lamport_sig: dummy_lamport,
+            sig_v: dummy_sig.clone(),
+            sig_p: dummy_sig.clone(),
+        };
+        assert_eq!(challenge_w.size_bytes(), 16320);
 
-        // 3) Challenger submits disprove witness before final settlement.
-        assert!(verify_babe_disprove_witness(
-            &bundle.disprove_witness,
-            bundle.assert_commit_root,
-            bundle.assert_inputs.session_id,
-        ));
-        assert_eq!(
-            bundle.phase_trace[2],
-            BabePhaseState {
-                session_id: bundle.assert_inputs.session_id,
-                assert_commit_root: bundle.assert_commit_root,
-                phase: BabePhase::DisproveChallenged,
-                step: 2
-            }
-        );
-        assert_eq!(
-            bundle.phase_trace[3],
-            BabePhaseState {
-                session_id: bundle.assert_inputs.session_id,
-                assert_commit_root: bundle.assert_commit_root,
-                phase: BabePhase::Settled,
-                step: 3
-            }
-        );
-        assert!(verify_babe_protocol_bundle(&bundle));
+        let wc_w = TxWronglyChallengedWitness { sig_p: dummy_sig.clone(), msg: [0u8; 32] };
+        assert_eq!(wc_w.size_bytes(), 64);
 
-        // no-cat script artifacts derived from this timeline.
-        let setup_leaves = build_babe_setup_leaves(&bundle.setup);
-        let hmsg_leaf = setup_leaves[3].clone();
-        let sibling0 = btc_hash_leaf(&setup_leaves[2]);
-        let parent01 = btc_hash_node(btc_hash_leaf(&setup_leaves[0]), btc_hash_leaf(&setup_leaves[1]));
-        let art = build_babe_scripts_nocat(
-            bundle.assert_commit_root,
-            bundle.assert_inputs.session_id,
-            bundle.policy_commit,
-            bundle.assert_inputs.root_babe_setup,
-            bundle.assert_inputs.root_babe_instance,
-            bundle.assert_inputs.babe_hashlock,
-            bundle.disprove_witness.reveal_commit,
-            derive_hashlock(&bundle.disprove_witness.reveal.revealed_secret),
-            &hmsg_leaf,
-            sibling0,
-            parent01,
-        );
-        assert!(!art.assert_script_pseudo.is_empty());
-        assert!(!art.disprove_script_pseudo.is_empty());
+        let nw_w = TxNoWithdrawWitness {
+            input0_sig_p: dummy_sig.clone(),
+            input0_sig_v: dummy_sig.clone(),
+            input1_sig_v: dummy_sig.clone(),
+        };
+        assert_eq!(nw_w.size_bytes(), 96);
+
+        let wd_w = TxWithdrawWitness {
+            input0_sig_p: dummy_sig.clone(),
+            input0_sig_v: dummy_sig.clone(),
+            input1_sig_p: dummy_sig.clone(),
+            input1_sig_v: dummy_sig,
+        };
+        assert_eq!(wd_w.size_bytes(), 128);
     }
 
     #[test]
-    fn evaluator_rejects_malicious_ct_setup_package() {
-        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(7);
-        let a = ark_bn254::Fr::from(5u64);
-        let b = ark_bn254::Fr::from(13u64);
-        let c = a * b;
-        let circuit = DummyMulCircuit::<ark_bn254::Fr> { a: Some(a), b: Some(b) };
-        let (pk, vk) = ark_groth16::Groth16::<ark_bn254::Bn254>::setup(circuit, &mut rng).expect("setup");
-        let proof = ark_groth16::Groth16::<ark_bn254::Bn254>::prove(
-            &pk,
-            DummyMulCircuit::<ark_bn254::Fr> { a: Some(a), b: Some(b) },
+    fn we_encsetup_dec_roundtrip() {
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);
+        let a = Fr::from(3u64);
+        let b = Fr::from(7u64);
+        let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
-        )
-        .expect("prove");
-        let public_inputs = vec![c];
-        let binding = bind_groth16_relation(&vk, &proof, &public_inputs);
-        let statement_hash = binding.statement_hash;
-        let secret = b"paper-only-test-secret".to_vec();
-        let hmsg = derive_hashlock(&secret);
+        ).unwrap();
+        let proof = ark_groth16::Groth16::<Bn254>::prove(
+            &pk,
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        ).unwrap();
+        let public_inputs = vec![a * b];
+        let secret = b"test-secret-32by";
+        let r_bytes = h(b"r-test");
 
-        let base_pkg = prover_build_ct_setup(
-            statement_hash,
-            hmsg,
-            &vk,
-            &public_inputs,
-            proof.a.into_group(),
-            proof.b.into_group(),
-            proof.c.into_group(),
-            h(b"test:r-we"),
-            &secret,
-            h(b"test:ek"),
-        )
-        .expect("prover build");
-        assert!(evaluator_verify_ct_setup(&base_pkg, statement_hash, hmsg).is_ok());
-
-        let mut bad1 = base_pkg.clone();
-        bad1.paper_we_commit[0] ^= 1;
-        assert_eq!(
-            evaluator_verify_ct_setup(&bad1, statement_hash, hmsg),
-            Err(BabeSetupVerifyError::PaperWeCommitMismatch)
-        );
-
-        let mut bad2 = base_pkg.clone();
-        bad2.pi2[0] ^= 1;
-        assert_eq!(
-            evaluator_verify_ct_setup(&bad2, statement_hash, hmsg),
-            Err(BabeSetupVerifyError::PaperWeDecryptFailed)
-        );
-
-        let mut bad3 = base_pkg.clone();
-        bad3.setup_gc_binding_commit[0] ^= 1;
-        assert_eq!(
-            evaluator_verify_ct_setup(&bad3, statement_hash, hmsg),
-            Err(BabeSetupVerifyError::SetupGcBindingInvalid)
-        );
-    }
-
-    #[test]
-    fn deposit_commit_binds_known_pi1_we_params() {
-        let run = run_babe_e2e();
-        // In run_babe_e2e we bind paper WE commit directly into policy.we_params_hash.
-        assert!(verify_babe_protocol_bundle(&run.protocol_bundle));
-        assert_eq!(
-            run.protocol_bundle.policy.we_params_hash,
-            commit_we_known_pi1_ciphertexts(&run.ct_setup, &run.ctprove)
-        );
+        let ct_setup = we_known_pi1_encsetup(&vk, &public_inputs, secret, r_bytes).unwrap();
+        let ctprove = we_known_pi1_encprove(proof.a.into_group(), r_bytes);
+        let decrypted = we_known_pi1_dec(&ct_setup, &ctprove, proof.b.into_group(), proof.c.into_group()).unwrap();
+        assert_eq!(decrypted, secret);
     }
 }

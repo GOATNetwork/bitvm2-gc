@@ -116,12 +116,32 @@ impl Circuit {
         for wirex in self.0.iter() {
             wirex.borrow_mut().label = None;
         }
+        // compute the size of circuit, because this resetted circuit will be reused for multiple proofs
+        let size = self.size_in_bytes();
+        println!("Reset circuit, size: {} MB", size as f64 / 1_048_576.0);
     }
 
     pub fn is_fresh(&self) -> bool {
         let fresh_val = self.0.iter().skip(2).all(|wirex| wirex.borrow().value.is_none());
         let fresh_label = self.0.iter().all(|wirex| wirex.borrow().label.is_none());
         fresh_val && fresh_label
+    }
+
+    pub fn size_in_bytes(&self) -> usize {
+        // Wires: each Wirex is Rc<RefCell<Wire>>, Wire lives on heap
+        let wire_data_size = self.0.len() * (
+            std::mem::size_of::<Wire>()   // actual Wire struct
+                + std::mem::size_of::<usize>() * 2  // Rc strong + weak count
+        );
+        // Gates: Vec<Gate> is contiguous, but each gate holds 3 Rc pointers
+        // Gate itself is stack-allocated in the Vec
+        let gate_data_size = self.1.len() * std::mem::size_of::<Gate>();
+
+        // Vec metadata (ptr + len + capacity) for both Wires and Gates
+        let vec_overhead = std::mem::size_of::<Vec<Wirex>>()
+            + std::mem::size_of::<Vec<Gate>>();
+
+        wire_data_size + gate_data_size + vec_overhead
     }
 }
 

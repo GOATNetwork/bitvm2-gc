@@ -17,7 +17,7 @@ pub struct BABEVerifier {
     pub garbled_circuit: Circuit,
     pub gc_output_indices: Vec<usize>,
     pub ct_setup: WeKnownPi1SetupCt,
-    encoding_keys: Vec<S>,
+    pub(crate) encoding_keys: Vec<S>,
     pub constant_0labels: [S; 2],
     pub adaptor_table: AdaptorTable,
     pub ciphertexts: Vec<Option<S>>,
@@ -39,6 +39,7 @@ impl BABEVerifier {
 
         // Encoding keys: random 0-labels for each of the 2*N input wires (x bits then y bits).
         // Only the 0-labels need to be stored here.
+        // This is the ek
         let encoding_keys = (0..2 * crate::dre::N).map(|_| S::random()).collect();
         let zero_label = S::random();
         let one_label = S::random();
