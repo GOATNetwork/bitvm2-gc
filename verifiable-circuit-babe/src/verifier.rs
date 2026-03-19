@@ -8,8 +8,7 @@ use garbled_snark_verifier::bag::{Circuit, S};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use rand::RngCore;
 use crate::babe::WeKnownPi1SetupCt;
-use crate::dre::DRE;
-use crate::gc::AdaptorTable;
+use crate::gc::SparseAdaptorTable;
 
 pub struct BABEVerifier {
     pub(crate) msg: [u8; 32],
@@ -19,7 +18,7 @@ pub struct BABEVerifier {
     pub ct_setup: WeKnownPi1SetupCt,
     pub(crate) encoding_keys: Vec<S>,
     pub constant_0labels: [S; 2],
-    pub adaptor_table: AdaptorTable,
+    pub adaptor_table: SparseAdaptorTable,
     pub ciphertexts: Vec<Option<S>>,
 }
 
@@ -52,7 +51,7 @@ impl BABEVerifier {
             ct_setup: WeKnownPi1SetupCt { ct2_r_delta_g2: vec![], ct3_masked_msg: vec![] },
             encoding_keys,
             constant_0labels: [zero_label, one_label],
-            adaptor_table: AdaptorTable { entries: vec![] },
+            adaptor_table: SparseAdaptorTable { entries: vec![] },
             ciphertexts: vec![],
         }
     }
@@ -132,7 +131,7 @@ impl BABEVerifier {
             .collect();
 
         // Step 4: Build and store the adaptor table.
-        self.adaptor_table = AdaptorTable::build_from_r_and_labels(self.r, &labels);
+        self.adaptor_table = SparseAdaptorTable::build_from_r_and_labels(self.r, &labels);
     }
 
     pub fn compute_pi1_labels(

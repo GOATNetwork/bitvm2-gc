@@ -1,6 +1,66 @@
+use std::sync::LazyLock;
 use ark_bn254::{Fq, G1Affine};
 use ark_ff::{BigInteger, One, PrimeField, Zero};
 use crate::dre::{L, N};
+
+/// Structural nonzero block flags per row (columns 0..=5 of C).
+const NONZERO_BLOCKS: [[bool; 6]; 3] = [
+    [true, true,  true,  true,  false, false], // Row 0: 1+3N = 763
+    [true, false, true,  true,  true,  true ], // Row 1: 1+4N = 1017
+    [true, true,  false, false, false, false], // Row 2: 1+N  = 255
+];
+
+/// Fixed nonzero column indices per row — initialized once, never reallocated.
+static NONZERO_COL_INDICES: LazyLock<[Vec<usize>; 3]> = LazyLock::new(|| {
+    std::array::from_fn(|row| {
+        let mut cols = vec![0usize]; // col 0 always included
+        for i in 1..=5usize {
+            if NONZERO_BLOCKS[row][i] {
+                let col_start = (i - 1) * N + 1;
+                cols.extend(col_start..col_start + N);
+            }
+        }
+        cols
+    })
+});
+
+/// Returns a reference to the shared nonzero column indices — same for all δ and φ.
+pub fn nonzero_col_indices() -> &'static [Vec<usize>; 3] {
+    &NONZERO_COL_INDICES
+}
+
+/// Nonzero values of D per row, aligned to nonzero_col_indices()[row].
+pub type SparseD = [Vec<Fq>; 3];
+
+/// Build sparse D(δ, φ): values only at NONZERO_BLOCKS positions.
+pub fn build_d_sparse(delta: Fq, phi: &G1Affine) -> SparseD {
+    let c = build_c(delta, phi);
+    let two = Fq::from(2u64);
+    std::array::from_fn(|row| {
+        let mut vals = vec![c[row][0]]; // col 0
+        for i in 1..=5usize {
+            if !NONZERO_BLOCKS[row][i] { continue; }
+            let mut power = Fq::one();
+            for _ in 0..N {
+                vals.push(c[row][i] * power);
+                power *= two;
+            }
+        }
+        vals
+    })
+}
+
+/// D_i = diag(λ², λ³, λ) × D_sparse(r_i, ρ_i)
+pub fn build_d_i_sparse(lambda: Fq, r_i: Fq, rho_i: &G1Affine) -> SparseD {
+    let mut d = build_d_sparse(r_i, rho_i);
+    let scales = [lambda * lambda, lambda * lambda * lambda, lambda];
+    for j in 0..3 {
+        for val in &mut d[j] {
+            *val *= scales[j];
+        }
+    }
+    d
+}
 
 /// Build the 3×6 matrix C(δ, φ) over F_p.
 ///
@@ -43,31 +103,6 @@ fn build_c(delta: Fq, phi: &G1Affine) -> [[Fq; 6]; 3] {
     ]
 }
 
-/// Compute D = C(δ, φ) × G, returning a 3×L matrix as a flat row-major Vec.
-/// Todo: opt D by remove zeroes.
-pub fn build_d(delta: Fq, phi: &G1Affine) -> Vec<Fq> {
-    let c = build_c(delta, phi);
-    let mut d = vec![Fq::zero(); 3 * L];
-    let two = Fq::from(2u64);
-
-    for row in 0..3 {
-        // Column 0
-        d[row * L] = c[row][0];
-
-        // For i=1..=5: G[i][(i-1)*N+1 .. i*N] = (2^0, 2^1, ..., 2^{N-1})
-        for i in 1..=5usize {
-            let col_start = (i - 1) * N + 1;
-            let mut power = Fq::from(1u64);
-            for k in 0..N {
-                d[row * L + col_start + k] = c[row][i] * power;
-                power *= two;
-            }
-        }
-    }
-
-    d
-}
-
 /// Lemma5: Build diag(λ) = diag(λ², λ³, λ) for λ in base field F_p.
 pub fn build_diag(lambda: Fq) -> [[Fq; 3]; 3] {
     [
@@ -75,22 +110,6 @@ pub fn build_diag(lambda: Fq) -> [[Fq; 3]; 3] {
         [Fq::zero(),      lambda * lambda * lambda,      Fq::zero()],
         [Fq::zero(),      Fq::zero(),                    lambda    ],
     ]
-}
-
-/// D_i = diag(λ_i², λ_i³, λ_i) × D(r_i, ρ_i) ∈ F_p^{3×L}
-pub fn build_d_i(lambda: Fq, r_i: Fq, rho_i: &G1Affine) -> Vec<Fq> {
-    let d = build_d(r_i, rho_i);
-    let lambda2 = lambda * lambda;
-    let lambda3 = lambda2 * lambda;
-    let scales = [lambda2, lambda3, lambda];
-
-    let mut d_i = d.clone();
-    for row in 0..3 {
-        for col in 0..L {
-            d_i[row * L + col] *= scales[row];
-        }
-    }
-    d_i
 }
 
 /// u(π) = (1, x, y, x², y², xy)
@@ -138,14 +157,16 @@ mod tests {
         out
     }
 
-    fn mul_d_ubar(d: &[Fq], u_bar: &[Fq]) -> [Fq; 3] {
-        let mut out = [Fq::zero(); 3];
-        for row in 0..3 {
-            for j in 0..L {
-                out[row] += d[row * L + j] * u_bar[j];
-            }
-        }
-        out
+    /// Sparse inner product: ∑_{k∈nz} D[row][k] · ū[k] for each row.
+    fn mul_d_sparse_ubar(d: &SparseD, u_bar: &[Fq]) -> [Fq; 3] {
+        let col_indices = nonzero_col_indices();
+        std::array::from_fn(|row| {
+            col_indices[row]
+                .iter()
+                .zip(d[row].iter())
+                .map(|(&k, &d_val)| d_val * u_bar[k])
+                .sum()
+        })
     }
 
 
@@ -235,23 +256,23 @@ mod tests {
         check_jacobian(xyz, &expected);
     }
 
-    //--- D(δ,φ) × ū^T(π) = Jacobian coords of (φ + δπ) ---
+    //--- D_sparse(δ,φ) × ū^T(π) = Jacobian coords of (φ + δπ) ---
 
     #[test]
-    fn test_d_delta_0() {
+    fn test_d_sparse_delta_0() {
         let (phi, pi) = random_pair();
         let u_bar = u_bar_vec(&pi);
-        assert_eq!(u_bar.len(), L);
-        let xyz = mul_d_ubar(&build_d(Fq::zero(), &phi), &u_bar);
+        let xyz = mul_d_sparse_ubar(&build_d_sparse(Fq::zero(), &phi), &u_bar);
+        // φ + 0·π = φ
         check_jacobian(xyz, &phi);
     }
 
     #[test]
-    fn test_d_delta_1() {
+    fn test_d_sparse_delta_1() {
         let (phi, pi) = random_pair();
         let expected = (G1Projective::from(phi) + G1Projective::from(pi)).into_affine();
         let u_bar = u_bar_vec(&pi);
-        let xyz = mul_d_ubar(&build_d(Fq::one(), &phi), &u_bar);
+        let xyz = mul_d_sparse_ubar(&build_d_sparse(Fq::one(), &phi), &u_bar);
         check_jacobian(xyz, &expected);
     }
 }

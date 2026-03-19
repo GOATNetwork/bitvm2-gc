@@ -6,10 +6,8 @@ use ark_serialize::CanonicalSerialize;
 use garbled_snark_verifier::bag::{Circuit, S};
 use garbled_snark_verifier::dv_bn254::fq::Fq;
 use crate::babe::WeKnownPi1ProveCt;
-use crate::dre::DRE;
-use crate::dre::affine_dre::AffineDRE;
 use crate::dre::matrices::u_bar_vec;
-use crate::gc::AdaptorTable;
+use crate::gc::SparseAdaptorTable;
 
 pub struct BABEProver {
     groth16_proof: Groth16Proof<ark_bn254::Bn254>,
@@ -38,7 +36,7 @@ impl BABEProver {
         gc_output_indices: &[usize],
         input_labels: &Vec<S>,
         ciphertext: &[Option<S>],
-        adaptor_table: &AdaptorTable,
+        adaptor_table: &SparseAdaptorTable,
     ) {
         let pi1 = self.groth16_proof.a;
         for (i, &lbl) in input_labels.iter().enumerate() {
@@ -70,11 +68,10 @@ impl BABEProver {
         let u_bar = u_bar_vec(&pi1);
         let decrypted_encodings = adaptor_table.eval(&output_labels, &u_bar);
 
-        // Step 8: Decode each AffineDREEncoding and compute ∑ 2^i · f_i = r·π₁.
+        // Step 8: Compute ∑ 2^i · f_i = r·π₁ (eval returns AffineDREDecoding directly).
         let mut sum = G1Projective::zero();
         let mut weight = ark_bn254::Fr::one();
-        for encoding in decrypted_encodings {
-            let decoding = AffineDRE::dec(encoding);
+        for decoding in decrypted_encodings {
             let (x, y, z) = decoding.f_i;
             let f_i = G1Projective::new(x, y, z);
             sum += f_i * weight;
@@ -152,10 +149,10 @@ mod tests {
         // // 3. Verifier: build adaptor table binding r to the garbled circuit output labels.
         verifier.build_adaptor_table_and_ciphertexts();
         {
-            let n = verifier.adaptor_table.entries.len();
-            let l = verifier.adaptor_table.entries[0].x.len();
-            let adaptor_bytes = n * 3 * l * 2 * 32; // N entries * (x,y,z) * L cols * 2 cts * 32 bytes/ct
-            println!("AdaptorTable size: {} bytes ({:.2} MB)", adaptor_bytes, adaptor_bytes as f64 / 1_048_576.0);
+            let entry = &verifier.adaptor_table.entries[0];
+            let cts_per_entry = entry.x.cts.len() + entry.y.cts.len() + entry.z.cts.len();
+            let adaptor_bytes = verifier.adaptor_table.entries.len() * cts_per_entry * 2 * 32;
+            println!("SparseAdaptorTable size: {} bytes ({:.2} MB)", adaptor_bytes, adaptor_bytes as f64 / 1_048_576.0);
         }
 
         println!("step 3 done: Adaptor table and boolean circuit ciphertexts");

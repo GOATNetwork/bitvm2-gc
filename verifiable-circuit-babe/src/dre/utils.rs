@@ -29,15 +29,14 @@ pub fn sample_rhos<R: Rng>(rng: &mut R) -> Vec<G1Affine> {
     G1Projective::normalize_batch(&rho)
 }
 
-/// Sample L base field elements s_0, ..., s_{L-1} ∈ F_p satisfying:
-///   ∑_{i=0}^{L-1} s_i = 0  in F_p
-pub fn sample_s<R: Rng>(rng: &mut R) -> Vec<Fq> {
-    let s_tail: Vec<Fq> = (1..L).map(|_| Fq::rand(rng)).collect();
-    let s_0 = -s_tail.iter().copied().sum::<Fq>();
-
-    let mut s = Vec::with_capacity(L);
-    s.push(s_0);
-    s.extend(s_tail);
+/// Sample `n` field elements satisfying ∑ s_k = 0, over nonzero-D positions only.
+pub fn sample_s_sparse<R: Rng>(rng: &mut R, n: usize) -> Vec<Fq> {
+    if n == 0 { return vec![]; }
+    if n == 1 { return vec![Fq::zero()]; }
+    let tail: Vec<Fq> = (1..n).map(|_| Fq::rand(rng)).collect();
+    let head = -tail.iter().copied().sum::<Fq>();
+    let mut s = vec![head];
+    s.extend(tail);
     s
 }
 
@@ -55,18 +54,24 @@ mod tests {
     use ark_bn254::{Fq, Fr, G1Projective};
     use ark_ff::Zero;
     use rand::thread_rng;
-    use crate::dre::{L, N};
-    use crate::dre::utils::{sample_rhos, sample_s};
+    use crate::dre::N;
+    use crate::dre::matrices::nonzero_col_indices;
+    use crate::dre::utils::{sample_rhos, sample_s_sparse};
 
     #[test]
-    fn test_sample_s() {
+    fn test_sample_s_sparse() {
         let mut rng = rand::thread_rng();
-        let s = sample_s(&mut rng);
+        let col_indices = nonzero_col_indices();
 
-        assert_eq!(s.len(), L);
+        for j in 0..3 {
+            let n = col_indices[j].len();
+            let s = sample_s_sparse(&mut rng, n);
 
-        let sum: Fq = s.iter().copied().sum();
-        assert!(sum.is_zero(), "constraint ∑ s_i = 0 not satisfied");
+            assert_eq!(s.len(), n);
+
+            let sum: Fq = s.iter().copied().sum();
+            assert!(sum.is_zero(), "constraint ∑ s_k = 0 not satisfied for row {j}");
+        }
     }
 
     #[test]

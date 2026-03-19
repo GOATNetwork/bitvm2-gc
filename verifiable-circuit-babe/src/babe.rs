@@ -302,7 +302,7 @@ pub struct VerifierSetupPackage {
     pub gc_ciphertexts: Vec<Option<garbled_snark_verifier::bag::S>>,
     /// DRE adaptor table — maps GC output labels to r-encoded field elements.
     #[cfg(feature = "garbled")]
-    pub adaptor_table: crate::gc::AdaptorTable,
+    pub adaptor_table: crate::gc::SparseAdaptorTable,
     /// lpk_V in the paper: blake3 hashes of input labels.
     pub epk: EncodingKeyPublic,
     /// blake3(flatten(epk)) — embedded in tx_Assert output 1 script.
@@ -548,8 +548,6 @@ pub fn babe_prover_wrongly_challenged(
     use ark_ff::{One, Zero};
     use garbled_snark_verifier::bag::S;
     use crate::dre::matrices::u_bar_vec;
-    use crate::dre::DRE;
-    use crate::dre::affine_dre::AffineDRE;
     use ark_bn254::G1Projective;
 
     let pi1 = proof.a;
@@ -591,8 +589,7 @@ pub fn babe_prover_wrongly_challenged(
     // 8. Decode DRE: weighted sum ∑ 2^i · f_i = r·π₁.
     let mut sum = G1Projective::zero();
     let mut weight = ark_bn254::Fr::one();
-    for encoding in decrypted_encodings {
-        let decoding = AffineDRE::dec(encoding);
+    for decoding in decrypted_encodings {
         let (x, y, z) = decoding.f_i;
         sum += G1Projective::new(x, y, z) * weight;
         weight += weight;
@@ -817,9 +814,11 @@ pub fn run_babe_e2e() -> BabeE2ERun {
         let gc_ct_bytes = verifier_pkg.gc_ciphertexts.iter()
             .filter(|c| c.is_some()).count() * 16;
 
-        // Each AdaptorEntry: 3 coords × L columns × 2 ciphertexts × 32 bytes/ct
-        let adaptor_bytes = verifier_pkg.adaptor_table.entries.len()
-            * 3 * crate::dre::L * 2 * 32;
+        // Each SparseAdaptorEntry: (x.len + y.len + z.len) nonzero cols × 2 cts × 32 bytes/ct
+        let adaptor_bytes = if let Some(entry) = verifier_pkg.adaptor_table.entries.first() {
+            let cts_per_entry = entry.x.cts.len() + entry.y.cts.len() + entry.z.cts.len();
+            verifier_pkg.adaptor_table.entries.len() * cts_per_entry * 2 * 32
+        } else { 0 };
 
         let epk_bytes = verifier_pkg.epk.0.len() * 2 * 32;
 

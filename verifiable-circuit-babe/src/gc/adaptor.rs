@@ -1,125 +1,81 @@
-use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use ark_bn254::{Fq, Fr, G1Affine, G1Projective};
-use ark_ff::{One, PrimeField, UniformRand, Zero};
-use garbled_snark_verifier::core::s::S;
-use crate::dre::affine_dre::{AffineDRE, AffineDREEncoding, AffineDREInput};
-use crate::dre::{DRE, L, N};
-use crate::dre::utils::{sample_rhos, sample_s};
+use ark_ff::{UniformRand, Zero};
+use crate::dre::affine_dre::AffineDREDecoding;
+use crate::dre::{L, N};
+use crate::dre::matrices::{build_d_i_sparse, nonzero_col_indices};
+use crate::dre::utils::{sample_rhos, sample_s_sparse};
 use crate::gc::utils::{aes_dec, aes_enc};
 
 /// Ciphertext of one Fq element (32 bytes = 2 AES-128 blocks)
 pub type Ct = [u8; 32];
 
-/// All encrypted entries for index i, with key u_bar = 0 or 1.
-/// Each has size L, j = 0,1,2 for x,y,z coordinates.
-pub struct AdaptorEntry {
-    pub x: Vec<[Ct; 2]>,
-    pub y: Vec<[Ct; 2]>,
-    pub z: Vec<[Ct; 2]>,
+/// Ciphertext pairs for one D row, only at nonzero_col_indices() positions.
+pub struct SparseAdaptorRow {
+    /// [ct_for_ubar=0, ct_for_ubar=1] per nonzero column, same order as nonzero_col_indices()
+    pub cts: Vec<[Ct; 2]>,
 }
 
-/// Adaptor table: encrypts g_{i,j,k} under both labels so
-/// the evaluator can decrypt with their held label.
-pub struct AdaptorTable {
-    /// entries[i] covers all (j, k) pairs.
-    pub entries: Vec<AdaptorEntry>,
+pub struct SparseAdaptorEntry {
+    pub x: SparseAdaptorRow,
+    pub y: SparseAdaptorRow,
+    pub z: SparseAdaptorRow,
 }
 
-impl AdaptorTable {
-    /// Build the adaptor table from the DRE encodings and labels.
-    /// Require: dre_g has 2*N entries, where each pair of contiguous
-    /// entries corresponds to u_bar = 0 and 1 for the same i.
-    pub fn build(dre_g: &[AffineDREEncoding], labels: &[[u8; 16]]) -> Self {
-        assert_eq!(dre_g.len(), 2 * N);
+/// Adaptor table storing ciphertexts only for structurally nonzero D entries.
+/// Reduces size by ~1.87× vs the dense table.
+pub struct SparseAdaptorTable {
+    pub entries: Vec<SparseAdaptorEntry>,
+}
+
+impl SparseAdaptorTable {
+    pub fn build_from_r_and_labels(r: Fr, labels: &[[u8; 16]]) -> Self {
         assert_eq!(labels.len(), 2 * L);
-
-        let entries = (0..N)
-            .map(|i| {
-                let enc_0 = &dre_g[2 * i];     // ū_k = 0
-                let enc_1 = &dre_g[2 * i + 1]; // ū_k = 1
-
-                // check the size of the encodings match expected dimensions
-                assert_eq!(enc_0.dre_g_i.len(), 3);
-                for j in 0..3 {
-                    assert_eq!(enc_0.dre_g_i[j].len(), L);
-                    assert_eq!(enc_1.dre_g_i[j].len(), L);
-                }
-                // todo: we can avoid using labels again as key for security
-                let enc_row = |row_0: &[Fq], row_1: &[Fq]| -> Vec<[Ct; 2]> {
-                    row_0
-                        .iter()
-                        .zip(row_1.iter())
-                        .enumerate()
-                        .map(|(k, (g0, g1))| {
-                            [aes_enc(g0, &labels[2 * k]), aes_enc(g1, &labels[2 * k + 1])]
-                        })
-                        .collect()
-                };
-
-                AdaptorEntry {
-                    x: enc_row(&enc_0.dre_g_i[0], &enc_1.dre_g_i[0]),
-                    y: enc_row(&enc_0.dre_g_i[1], &enc_1.dre_g_i[1]),
-                    z: enc_row(&enc_0.dre_g_i[2], &enc_1.dre_g_i[2]),
-                }
-            })
-            .collect();
-
-        AdaptorTable { entries }
-    }
-    
-    pub fn build_from_r_and_labels(
-        r: Fr,
-        labels: &[[u8; 16]],
-    ) -> Self {
         let mut rng = rand::thread_rng();
-        // Generate DRE encodings for u_bar_k = 0 and u_bar_k = 1 for each i in 0..N.
         let r_bits = garbled_snark_verifier::dv_bn254::fr::Fr::to_bits(r);
         let rhos = sample_rhos(&mut rng);
         let deltas: Vec<Fq> = (0..N)
             .map(|_| loop {
                 let l = Fq::rand(&mut rng);
-                if !l.is_zero() {
-                    break l;
+                if !l.is_zero() { break l; }
+            })
+            .collect();
+
+        let col_indices = nonzero_col_indices();
+
+        let entries = (0..N)
+            .map(|i| {
+                let r_i = Fq::from(r_bits[i] as u8);
+                let d = build_d_i_sparse(deltas[i], r_i, &rhos[i]);
+
+                let mut build_row = |j: usize| -> SparseAdaptorRow {
+                    let s = sample_s_sparse(&mut rng, col_indices[j].len());
+                    let cts = col_indices[j]
+                        .iter()
+                        .zip(d[j].iter())
+                        .zip(s.iter())
+                        .map(|((&k, &d_val), &s_val)| {
+                            // g0 = D_k*0 + s_k = s_k
+                            // g1 = D_k*1 + s_k = D_k + s_k
+                            [
+                                aes_enc(&s_val, &labels[2 * k]),
+                                aes_enc(&(d_val + s_val), &labels[2 * k + 1]),
+                            ]
+                        })
+                        .collect();
+                    SparseAdaptorRow { cts }
+                };
+
+                SparseAdaptorEntry {
+                    x: build_row(0),
+                    y: build_row(1),
+                    z: build_row(2),
                 }
             })
             .collect();
 
-        let u_bar_zeros: Vec<Fq> = vec![Fq::zero(); L];
-        let u_bar_ones: Vec<Fq> = vec![Fq::one(); L];
-
-        let mut all_encodings: Vec<AffineDREEncoding> = Vec::with_capacity(2 * N);
-        for i in 0..N {
-            let s_i: Vec<Vec<Fq>> = (0..3).map(|_| sample_s(&mut rng)).collect();
-            let enc_0 = AffineDRE::enc(AffineDREInput {
-                r_i: Fr::from(r_bits[i] as u8),
-                bar_u: u_bar_zeros.clone(),
-                rho_i: rhos[i],
-                delta_i: deltas[i],
-                s_i: s_i.clone(),
-            });
-            let enc_1 = AffineDRE::enc(AffineDREInput {
-                r_i: Fr::from(r_bits[i] as u8),
-                bar_u: u_bar_ones.clone(),
-                rho_i: rhos[i],
-                delta_i: deltas[i],
-                s_i,
-            });
-            all_encodings.push(enc_0);
-            all_encodings.push(enc_1);
-        }
-        Self::build(&all_encodings, labels)
+        SparseAdaptorTable { entries }
     }
 
-    /// Build the adaptor table inside a zkVM execution.
-    ///
-    /// Takes all randomness as explicit inputs (no internal RNG) and verifies
-    /// the algebraic constraints required for DRE correctness before building:
-    ///   - ∑ 2^i · ρ_i = O  (identity point)
-    ///   - ∑_k s_all[i][j][k] = 0  for every (i, j)
-    ///   - delta_i ≠ 0  for every i
-    ///
-    /// The zkVM proof over this function attests that the published table was
-    /// built from valid randomness and the claimed (r, labels).
     pub fn build_in_zkvm(
         labels: &[[u8; 16]],
         r_bits: &[u8],
@@ -131,9 +87,11 @@ impl AdaptorTable {
         assert_eq!(s_all.len(), N);
         assert_eq!(deltas.len(), N);
         assert_eq!(labels.len(), 2 * L);
-        assert_eq!(r_bits.len(), N, "r_bits must have exactly N bits");
+        assert_eq!(r_bits.len(), N);
 
-        // 1. Verify ∑ 2^i · ρ_i = O
+        let col_indices = nonzero_col_indices();
+
+        // Verify ∑ 2^i · ρ_i = O
         let mut weighted_sum = G1Projective::zero();
         let mut power = Fr::from(1u64);
         for rho_i in rhos {
@@ -142,73 +100,76 @@ impl AdaptorTable {
         }
         assert!(weighted_sum.is_zero(), "constraint ∑ 2^i·ρ_i = O not satisfied");
 
-        // 2. Verify s and delta constraints per row
+        // Verify s and delta constraints (s now over nonzero positions only)
         for i in 0..N {
             assert!(!deltas[i].is_zero(), "delta[{i}] must be non-zero");
             assert_eq!(s_all[i].len(), 3);
             for j in 0..3 {
-                assert_eq!(s_all[i][j].len(), L);
+                assert_eq!(s_all[i][j].len(), col_indices[j].len(),
+                    "s_all[{i}][{j}] must have {} entries", col_indices[j].len());
                 let sum: Fq = s_all[i][j].iter().copied().sum();
-                assert!(sum.is_zero(), "constraint ∑_k s_all[{i}][{j}][k] = 0 not satisfied");
+                assert!(sum.is_zero(), "∑_k s_all[{i}][{j}][k] = 0 not satisfied");
             }
         }
 
-        // 3. Build encodings for u_bar = 0 and u_bar = 1 for each bit of r
-        // r_bits are passed directly — no Fr reconstruction or to_bits() call needed.
-        let u_bar_zeros: Vec<Fq> = vec![Fq::zero(); L];
-        let u_bar_ones: Vec<Fq> = vec![Fq::one(); L];
+        let entries = (0..N)
+            .map(|i| {
+                let r_i = Fq::from(r_bits[i] as u8);
+                let d = build_d_i_sparse(deltas[i], r_i, &rhos[i]);
 
-        let mut all_encodings: Vec<AffineDREEncoding> = Vec::with_capacity(2 * N);
-        for i in 0..N {
-            let enc_0 = AffineDRE::enc(AffineDREInput {
-                r_i: Fr::from(r_bits[i] as u8),
-                bar_u: u_bar_zeros.clone(),
-                rho_i: rhos[i],
-                delta_i: deltas[i],
-                s_i: s_all[i].clone(),
-            });
-            let enc_1 = AffineDRE::enc(AffineDREInput {
-                r_i: Fr::from(r_bits[i] as u8),
-                bar_u: u_bar_ones.clone(),
-                rho_i: rhos[i],
-                delta_i: deltas[i],
-                s_i: s_all[i].clone(),
-            });
-            all_encodings.push(enc_0);
-            all_encodings.push(enc_1);
-        }
+                let build_row = |j: usize| -> SparseAdaptorRow {
+                    let cts = col_indices[j]
+                        .iter()
+                        .zip(d[j].iter())
+                        .zip(s_all[i][j].iter())
+                        .map(|((&k, &d_val), &s_val)| {
+                            [
+                                aes_enc(&s_val, &labels[2 * k]),
+                                aes_enc(&(d_val + s_val), &labels[2 * k + 1]),
+                            ]
+                        })
+                        .collect();
+                    SparseAdaptorRow { cts }
+                };
 
-        Self::build(&all_encodings, labels)
+                SparseAdaptorEntry {
+                    x: build_row(0),
+                    y: build_row(1),
+                    z: build_row(2),
+                }
+            })
+            .collect();
+
+        SparseAdaptorTable { entries }
     }
 
-    pub fn eval(&self, labels: &[[u8; 16]], u_bar: &[Fq]) -> Vec<AffineDREEncoding> {
+    /// Decrypt the adaptor table and sum each row to recover Jacobian coords of r_i·π + ρ_i.
+    pub fn eval(&self, labels: &[[u8; 16]], u_bar: &[Fq]) -> Vec<AffineDREDecoding> {
         assert_eq!(labels.len(), L);
         assert_eq!(u_bar.len(), L);
+
+        let col_indices = nonzero_col_indices();
 
         self.entries
             .iter()
             .map(|entry| {
-                // For each column k, decrypt using the label held for bit k
-                let dec_row = |row: &Vec<[Ct; 2]>| -> Vec<Fq> {
-                    row.iter()
-                        .enumerate()
-                        .map(|(k, ct_pair)| {
+                let dec_row = |row: &SparseAdaptorRow, j: usize| -> Fq {
+                    col_indices[j]
+                        .iter()
+                        .zip(row.cts.iter())
+                        .map(|(&k, ct_pair)| {
                             if u_bar[k].is_zero() {
                                 aes_dec(&ct_pair[0], &labels[k])
                             } else {
                                 aes_dec(&ct_pair[1], &labels[k])
                             }
                         })
-                        .collect()
+                        .sum()
                 };
 
-                let dre_g_i = vec![
-                    dec_row(&entry.x),
-                    dec_row(&entry.y),
-                    dec_row(&entry.z),
-                ];
-
-                AffineDREEncoding { dre_g_i }
+                AffineDREDecoding {
+                    f_i: (dec_row(&entry.x, 0), dec_row(&entry.y, 1), dec_row(&entry.z, 2)),
+                }
             })
             .collect()
     }
@@ -222,22 +183,17 @@ mod tests {
     use ark_ff::{UniformRand, Zero, One};
     use garbled_snark_verifier::core::s::S;
     use garbled_snark_verifier::core::utils::DELTA;
-    use crate::dre::{DRE, L, N};
-    use crate::dre::affine_dre::{AffineDRE, AffineDREInput};
+    use crate::dre::{L, N};
     use crate::dre::matrices::u_bar_vec;
-    use crate::dre::utils::{jacobian_to_affine, sample_rhos, sample_s};
 
     #[test]
-    fn test_adaptor_table() {
-        // create random r and \pi
+    fn test_sparse_adaptor_table() {
         let mut rng = rand::thread_rng();
         let pi = G1Projective::rand(&mut rng).into_affine();
         let r = Fr::rand(&mut rng);
 
-        // create u_bar_pi based on pi
         let u_bar_pi = u_bar_vec(&pi);
 
-        // create 2 * L random labels for L bits (2 labels per bit position)
         let labels: Vec<[u8; 16]> = (0..L)
             .flat_map(|_| {
                 let l0 = S::random();
@@ -245,32 +201,24 @@ mod tests {
                 [l0.0, l1.0]
             })
             .collect();
-        
-        // build the adaptor table 
-        let table = AdaptorTable::build_from_r_and_labels(r, &labels);
 
-        // evaluate the adaptor table with the held labels and bar_u
-        // For each bit position k, the evaluator holds labels[k][u_bar_pi[k]]
+        let table = SparseAdaptorTable::build_from_r_and_labels(r, &labels);
+
         let eval_labels: Vec<[u8; 16]> = (0..L)
             .map(|k| if u_bar_pi[k].is_zero() { labels[2 * k] } else { labels[2 * k + 1] })
             .collect();
 
-        let decrypted_encodings = table.eval(&eval_labels, &u_bar_pi);
+        let decodings = table.eval(&eval_labels, &u_bar_pi);
 
-        // compute the AffineDREDecoding from the decrypted encodings r_i·π + ρ_i
-        // weighted sum of them, and check if it equals to r·π
         let mut sum = G1Projective::zero();
-        let mut weight = Fr::one(); // 2^i
-
-        for encoding in decrypted_encodings {
-            let decoding = AffineDRE::dec(encoding);
+        let mut weight = Fr::one();
+        for decoding in decodings {
             let (x, y, z) = decoding.f_i;
-            let f_i = G1Projective::new(x, y, z);
-            sum += f_i * weight;
+            sum += G1Projective::new(x, y, z) * weight;
             weight += weight;
         }
 
         let expected = (G1Projective::from(pi) * r).into_affine();
-        assert_eq!(sum.into_affine(), expected, "Weighted sum ∑ 2^i·f_i should equal r·π");
+        assert_eq!(sum.into_affine(), expected, "Sparse: ∑ 2^i·f_i should equal r·π");
     }
 }
