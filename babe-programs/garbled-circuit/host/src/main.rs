@@ -119,17 +119,17 @@ fn main() {
     let elapsed = start.elapsed();
     info!(elapsed = ?elapsed, "executed program with {} cycles", report.total_instruction_count());
 
-    // let start = Instant::now();
-    // // Generate the proof for the given guest and input.
-    // let (pk, vk) = client.setup(ELF);
-    // let proof = client.prove(&pk, stdin).compressed().run().unwrap();
-    //
-    // let elapsed = start.elapsed();
-    // info!(step = "generated proof", elapsed =? elapsed, "finish proof generation");
-    //
-    // // Verify proof and public values
-    // client.verify(&proof, &vk).expect("verification failed");
-    //
+    let start = Instant::now();
+    // Generate the proof for the given guest and input.
+    let (pk, vk) = client.setup(ELF);
+    let proof = client.prove(&pk, stdin).compressed().run().unwrap();
+
+    let elapsed = start.elapsed();
+    info!(step = "generated proof", elapsed =? elapsed, "finish proof generation");
+
+    // Verify proof and public values
+    client.verify(&proof, &vk).expect("verification failed");
+
     // // Test a round trip of proof serialization and deserialization.
     // proof.save("proof-with-pis.bin").expect("saving proof failed");
     // let deserialized_proof =

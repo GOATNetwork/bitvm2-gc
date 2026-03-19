@@ -8,8 +8,9 @@ use sha2::{Digest, Sha256};
 use zkm_sdk::{include_elf, utils, ProverClient, ZKMStdin};
 
 use verifiable_circuit_babe::dre::{L, N};
-use verifiable_circuit_babe::dre::utils::{sample_rhos, sample_s};
-use verifiable_circuit_babe::gc::AdaptorTable;
+use verifiable_circuit_babe::dre::matrices::nonzero_col_indices;
+use verifiable_circuit_babe::dre::utils::{sample_rhos, sample_s_sparse};
+use verifiable_circuit_babe::gc::SparseAdaptorTable;
 
 const ELF: &[u8] = include_elf!("adaptor-guest");
 
@@ -47,19 +48,18 @@ fn main() {
     let deltas: Vec<Fq> = (0..N)
         .map(|_| loop {
             let d = Fq::rand(&mut rng);
-            if !d.is_zero() {
-                break d;
-            }
+            if !d.is_zero() { break d; }
         })
         .collect();
 
+    // s_all: N × 3 rows, each row has nonzero_count[j] entries summing to 0
+    let col_indices = nonzero_col_indices();
     let s_all: Vec<Vec<Vec<Fq>>> = (0..N)
-        .map(|_| (0..3).map(|_| sample_s(&mut rng)).collect())
+        .map(|_| (0..3).map(|j| sample_s_sparse(&mut rng, col_indices[j].len())).collect())
         .collect();
 
     // ── 2. Serialize inputs for ZKMStdin ─────────────────────────────────────
 
-    // r_bits: compute on the host (native speed), send N bytes (each 0 or 1)
     let r_bits: Vec<u8> = garbled_snark_verifier::dv_bn254::fr::Fr::to_bits(r)
         .iter()
         .map(|&b| b as u8)
@@ -67,9 +67,10 @@ fn main() {
 
     let rhos_flat: Vec<u8> = rhos.iter().flat_map(|p| g1affine_to_bytes(p)).collect();
 
-    let s_flat: Vec<[u8; 32]> = (0..N)
-        .flat_map(|i| (0..3).flat_map(move |j| (0..L).map(move |k| (i, j, k))))
-        .map(|(i, j, k)| fq_to_bytes(&s_all[i][j][k]))
+    // s_flat: for each i, for each j, the nonzero_count[j] values (variable per row)
+    let s_flat: Vec<[u8; 32]> = s_all
+        .iter()
+        .flat_map(|s_i| s_i.iter().flat_map(|s_ij| s_ij.iter().map(fq_to_bytes)))
         .collect();
 
     let deltas_raw: Vec<[u8; 32]> = deltas.iter().map(|d| fq_to_bytes(d)).collect();
@@ -86,17 +87,15 @@ fn main() {
     let expected_r_hash: [u8; 32] = Sha256::digest(&r_bits[..]).into();
 
     let mut lh = Sha256::new();
-    for b in &labels {
-        lh.update(b);
-    }
+    for b in &labels { lh.update(b); }
     let expected_labels_hash: [u8; 32] = lh.finalize().into();
 
-    let table = AdaptorTable::build_in_zkvm(&labels, &r_bits, &rhos, &s_all, &deltas);
+    let table = SparseAdaptorTable::build_in_zkvm(&labels, &r_bits, &rhos, &s_all, &deltas);
     let mut th = Sha256::new();
     for entry in &table.entries {
-        for ct_pair in &entry.x { th.update(ct_pair[0]); th.update(ct_pair[1]); }
-        for ct_pair in &entry.y { th.update(ct_pair[0]); th.update(ct_pair[1]); }
-        for ct_pair in &entry.z { th.update(ct_pair[0]); th.update(ct_pair[1]); }
+        for ct_pair in &entry.x.cts { th.update(ct_pair[0]); th.update(ct_pair[1]); }
+        for ct_pair in &entry.y.cts { th.update(ct_pair[0]); th.update(ct_pair[1]); }
+        for ct_pair in &entry.z.cts { th.update(ct_pair[0]); th.update(ct_pair[1]); }
     }
     let expected_table_hash: [u8; 32] = th.finalize().into();
 
@@ -114,7 +113,7 @@ fn main() {
     assert_eq!(labels_hash, expected_labels_hash,  "labels hash mismatch");
     assert_eq!(table_hash,  expected_table_hash,   "table hash mismatch");
 
-    println!("r SHA-256:     {}", hex::encode(r_commit));
+    println!("r SHA-256:      {}", hex::encode(r_commit));
     println!("labels SHA-256: {}", hex::encode(labels_hash));
     println!("table  SHA-256: {}", hex::encode(table_hash));
     println!("all commitments verified ✓");
