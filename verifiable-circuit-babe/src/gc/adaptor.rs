@@ -42,6 +42,8 @@ impl SparseAdaptorTable {
 
         let col_indices = nonzero_col_indices();
 
+        let prf_cache: Vec<Fq> = (0..L).map(|k| prf_fq(&labels[2 * k + 1])).collect();
+
         let entries = (0..N)
             .map(|i| {
                 let r_i = Fq::from(r_bits[i] as u8);
@@ -53,9 +55,7 @@ impl SparseAdaptorTable {
                         .iter()
                         .zip(d[j].iter())
                         .map(|(&k, &d_val)| {
-                            // s_k = PRF(label_1_k) - D_k
-                            let prf_val = prf_fq(&labels[2 * k + 1]);
-                            let s_k = prf_val - d_val;
+                            let s_k = prf_cache[k] - d_val;
                             offset += s_k;
                             aes_enc(&s_k, &labels[2 * k])
                         })
@@ -100,6 +100,10 @@ impl SparseAdaptorTable {
             assert!(!deltas[i].is_zero(), "delta[{i}] must be non-zero");
         }
 
+        // Precompute prf_fq for every wire once — the union of all col_indices covers 0..L,
+        // so this replaces N × 2035 ≈ 517K redundant calls with exactly L = 1271 calls.
+        let prf_cache: Vec<Fq> = (0..L).map(|k| prf_fq(&labels[2 * k + 1])).collect();
+
         let entries = (0..N)
             .map(|i| {
                 let r_i = Fq::from(r_bits[i]);
@@ -111,8 +115,7 @@ impl SparseAdaptorTable {
                         .iter()
                         .zip(d[j].iter())
                         .map(|(&k, &d_val)| {
-                            let prf_val = prf_fq(&labels[2 * k + 1]);
-                            let s_k = prf_val - d_val;
+                            let s_k = prf_cache[k] - d_val;
                             offset += s_k;
                             aes_enc(&s_k, &labels[2 * k])
                         })
