@@ -32,34 +32,43 @@ pub fn nonzero_col_indices() -> &'static [Vec<usize>; 3] {
 /// Nonzero values of D per row, aligned to nonzero_col_indices()[row].
 pub type SparseD = [Vec<Fq>; 3];
 
-/// Build sparse D(δ, φ): values only at NONZERO_BLOCKS positions.
-pub fn build_d_sparse(delta: Fq, phi: &G1Affine) -> SparseD {
-    let c = build_c(delta, phi);
+/// Powers of 2 in Fq: pow2[k] = 2^k mod p.
+static POW2: LazyLock<Vec<Fq>> = LazyLock::new(|| {
     let two = Fq::from(2u64);
+    let mut pows = Vec::with_capacity(N);
+    let mut p = Fq::one();
+    for _ in 0..N {
+        pows.push(p);
+        p *= two;
+    }
+    pows
+});
+
+/// D_i = diag(λ², λ³, λ) × D_sparse(r_i, ρ_i)
+/// r_i = 0 shortcut — when δ=0 all block entries are zero; skip the loop entirely.
+pub fn build_d_i_sparse(lambda: Fq, r_i: Fq, rho_i: &G1Affine) -> SparseD {
+    let c = build_c(r_i, rho_i);
+    let scales = [lambda * lambda, lambda * lambda * lambda, lambda];
+    let pow2 = &*POW2;
+    let r_is_zero = r_i.is_zero();
+    let col_indices = nonzero_col_indices();
+
     std::array::from_fn(|row| {
-        let mut vals = vec![c[row][0]]; // col 0
-        for i in 1..=5usize {
-            if !NONZERO_BLOCKS[row][i] { continue; }
-            let mut power = Fq::one();
-            for _ in 0..N {
-                vals.push(c[row][i] * power);
-                power *= two;
+        let scale = scales[row];
+        let mut vals = vec![c[row][0] * scale];
+        if r_is_zero {
+            vals.resize(col_indices[row].len(), Fq::zero());
+        } else {
+            for i in 1..=5usize {
+                if !NONZERO_BLOCKS[row][i] { continue; }
+                let coeff = c[row][i] * scale;
+                for k in 0..N {
+                    vals.push(coeff * pow2[k]);
+                }
             }
         }
         vals
     })
-}
-
-/// D_i = diag(λ², λ³, λ) × D_sparse(r_i, ρ_i)
-pub fn build_d_i_sparse(lambda: Fq, r_i: Fq, rho_i: &G1Affine) -> SparseD {
-    let mut d = build_d_sparse(r_i, rho_i);
-    let scales = [lambda * lambda, lambda * lambda * lambda, lambda];
-    for j in 0..3 {
-        for val in &mut d[j] {
-            *val *= scales[j];
-        }
-    }
-    d
 }
 
 /// Build the 3×6 matrix C(δ, φ) over F_p.
@@ -143,6 +152,21 @@ mod tests {
     fn check_jacobian(xyz: [Fq; 3], expected: &G1Affine) {
         let aff = G1Projective::new(xyz[0], xyz[1], xyz[2]).into_affine();
         assert_eq!(aff, *expected, "Jacobian coordinates do not match expected affine point");
+    }
+
+    pub fn build_d_sparse(delta: Fq, phi: &G1Affine) -> SparseD {
+        let c = build_c(delta, phi);
+        let pow2 = &*POW2;
+        std::array::from_fn(|row| {
+            let mut vals = vec![c[row][0]]; // col 0
+            for i in 1..=5usize {
+                if !NONZERO_BLOCKS[row][i] { continue; }
+                for k in 0..N {
+                    vals.push(c[row][i] * pow2[k]);
+                }
+            }
+            vals
+        })
     }
 
     fn mul_c_u(c: &[[Fq; 6]; 3], u: &[Fq; 6]) -> [Fq; 3] {
