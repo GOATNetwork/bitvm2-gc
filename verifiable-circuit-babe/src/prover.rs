@@ -1,7 +1,7 @@
 use ark_bn254::G1Projective;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{One, Zero};
-use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
+use ark_groth16::Proof as Groth16Proof;
 use ark_serialize::CanonicalSerialize;
 use garbled_snark_verifier::bag::{Circuit, S};
 use garbled_snark_verifier::dv_bn254::fq::Fq;
@@ -90,15 +90,13 @@ mod tests {
     use super::*;
     use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
-    use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+    use ark_ec::{pairing::Pairing, AffineRepr};
     use ark_ff::PrimeField;
     use ark_relations::lc;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use rand::SeedableRng;
     use crate::verifier::BABEVerifier;
-    use std::io::Read;
-    use std::ops::Mul;
 
     #[derive(Copy, Clone)]
     struct DummyMulCircuit<F: PrimeField> {
@@ -148,18 +146,11 @@ mod tests {
 
         // // 3. Verifier: build adaptor table binding r to the garbled circuit output labels.
         verifier.build_adaptor_table_and_ciphertexts();
-        {
-            let entry = &verifier.adaptor_table.entries[0];
-            let cts_per_entry = entry.x.cts.len() + entry.y.cts.len() + entry.z.cts.len();
-            let adaptor_bytes = verifier.adaptor_table.entries.len() * cts_per_entry * 2 * 32;
-            println!("SparseAdaptorTable size: {} bytes ({:.2} MB)", adaptor_bytes, adaptor_bytes as f64 / 1_048_576.0);
-        }
 
         println!("step 3 done: Adaptor table and boolean circuit ciphertexts");
 
         // 4. Verifier: compute the input labels for proof.a = π₁.
-        let constant_labels = verifier.constant_0labels;
-        let (input_labels) = verifier.compute_pi1_labels(proof.a);
+        let input_labels = verifier.compute_pi1_labels(proof.a);
 
         println!("step 4 done: Groth16 constant_labels");
 

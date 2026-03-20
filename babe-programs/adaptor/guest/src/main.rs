@@ -10,7 +10,6 @@ use ark_bn254::{Fq, G1Affine};
 use ark_ff::PrimeField;
 use sha2::{Digest, Sha256};
 use verifiable_circuit_babe::dre::{L, N};
-use verifiable_circuit_babe::dre::matrices::nonzero_col_indices;
 use verifiable_circuit_babe::gc::SparseAdaptorTable;
 
 fn reconstruct_fq(b: &[u8; 32]) -> Fq {
@@ -39,32 +38,13 @@ fn main() {
         .map(|c| bytes_to_g1affine(c.try_into().unwrap()))
         .collect();
 
-    // s_flat: N × 3 rows, each row j has nonzero_count[j] Fq values
-    let col_indices = nonzero_col_indices();
-    let total_s: usize = N * (col_indices[0].len() + col_indices[1].len() + col_indices[2].len());
-    let s_flat = zkm_zkvm::io::read::<Vec<[u8; 32]>>();
-    assert_eq!(s_flat.len(), total_s);
-
-    let mut idx = 0;
-    let s_all: Vec<Vec<Vec<Fq>>> = (0..N)
-        .map(|_| {
-            (0..3)
-                .map(|j| {
-                    let n = col_indices[j].len();
-                    let row = s_flat[idx..idx + n].iter().map(reconstruct_fq).collect();
-                    idx += n;
-                    row
-                })
-                .collect()
-        })
-        .collect();
-
     let deltas_raw = zkm_zkvm::io::read::<Vec<[u8; 32]>>();
     assert_eq!(deltas_raw.len(), N);
     let deltas: Vec<Fq> = deltas_raw.iter().map(reconstruct_fq).collect();
 
     // ── 2. Build and verify the sparse adaptor table inside zkVM ─────────────
-    let table = SparseAdaptorTable::build_in_zkvm(&labels, &r_bits, &rhos, &s_all, &deltas);
+    // s_k values are derived from PRF(label_1_k) — no s_all input needed.
+    let table = SparseAdaptorTable::build_in_zkvm(&labels, &r_bits, &rhos, &deltas);
 
     // ── 3. Commit public outputs ──────────────────────────────────────────────
 
@@ -81,9 +61,9 @@ fn main() {
     // (c) table — SHA-256 over all ciphertexts in deterministic order (i, {x,y,z}, k')
     let mut table_hasher = Sha256::new();
     for entry in &table.entries {
-        for ct_pair in &entry.x.cts { table_hasher.update(ct_pair[0]); table_hasher.update(ct_pair[1]); }
-        for ct_pair in &entry.y.cts { table_hasher.update(ct_pair[0]); table_hasher.update(ct_pair[1]); }
-        for ct_pair in &entry.z.cts { table_hasher.update(ct_pair[0]); table_hasher.update(ct_pair[1]); }
+        for ct in &entry.x.cts { table_hasher.update(ct); }
+        for ct in &entry.y.cts { table_hasher.update(ct); }
+        for ct in &entry.z.cts { table_hasher.update(ct); }
     }
     let table_hash: [u8; 32] = table_hasher.finalize().into();
     zkm_zkvm::io::commit::<[u8; 32]>(&table_hash);

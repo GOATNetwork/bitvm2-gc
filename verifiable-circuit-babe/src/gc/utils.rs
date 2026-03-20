@@ -3,11 +3,47 @@ use aes::cipher::generic_array::GenericArray;
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use ark_bn254::Fq;
 use ark_ff::PrimeField;
-use garbled_snark_verifier::bag::S;
 use crate::gc::adaptor::Ct;
 
 #[cfg(all(target_os = "zkvm"))]
 use zkm_zkvm::lib::aes128::aes128_encrypt;
+
+/// Two fixed public keys for the PRF (domain-separated).
+const PRF_KEY_0: [u8; 16] = [0xBA, 0xBE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+const PRF_KEY_1: [u8; 16] = [0xBA, 0xBE, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+/// This is the "random oracle on label", using AES
+#[inline(always)]
+pub fn prf_fq(label: &[u8; 16]) -> Fq {
+    #[cfg(all(target_os = "zkvm"))]
+    {
+        let mut b0 = *label;
+        aes128_encrypt(&mut b0, &PRF_KEY_0);
+        let mut b1 = *label;
+        aes128_encrypt(&mut b1, &PRF_KEY_1);
+        let mut out = [0u8; 32];
+        out[..16].copy_from_slice(&b0);
+        out[16..].copy_from_slice(&b1);
+        return Fq::from_le_bytes_mod_order(&out);
+    }
+    #[cfg(not(all(target_os = "zkvm")))]
+    {
+        let c0 = Aes128::new(GenericArray::from_slice(&PRF_KEY_0));
+        let mut b0 = *GenericArray::from_slice(label);
+        c0.encrypt_block(&mut b0);
+
+        let c1 = Aes128::new(GenericArray::from_slice(&PRF_KEY_1));
+        let mut b1 = *GenericArray::from_slice(label);
+        c1.encrypt_block(&mut b1);
+
+        let mut out = [0u8; 32];
+        out[..16].copy_from_slice(&b0);
+        out[16..].copy_from_slice(&b1);
+        Fq::from_le_bytes_mod_order(&out)
+    }
+}
 
 fn fq_to_bytes(fq: &Fq) -> [u8; 32] {
     // [u64; 4] and [u8; 32] are identical in memory on little-endian (RISC-V is LE)
@@ -24,7 +60,6 @@ fn bytes_to_fq(bytes: &[u8; 32]) -> Fq {
 // Block 0 uses the key directly.
 // Block 1 tweaks the key (XOR last byte with 0x01) to avoid encrypting
 // two plaintext blocks under the identical key (standard ECB weakness).
-// Todo: Use Ziren AES precompile
 #[inline(always)]
 pub fn aes_enc(fq: &Fq, key: &[u8; 16]) -> Ct {
     let plain = fq_to_bytes(fq);

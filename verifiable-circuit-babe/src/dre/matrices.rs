@@ -138,12 +138,10 @@ mod tests {
     use super::*;
     use ark_bn254::G1Projective;
     use ark_ec::CurveGroup;
-    use ark_ff::{Field, UniformRand};
-    use crate::dre::utils::jacobian_to_affine;
-
-    /// Verify Jacobian (X:Y:Z) → affine via (X/Z², Y/Z³) matches expected point.
+    use ark_ff::UniformRand;
+    /// Verify Jacobian (X:Y:Z) → affine matches expected point.
     fn check_jacobian(xyz: [Fq; 3], expected: &G1Affine) {
-        let aff = jacobian_to_affine((xyz[0], xyz[1], xyz[2]));
+        let aff = G1Projective::new(xyz[0], xyz[1], xyz[2]).into_affine();
         assert_eq!(aff, *expected, "Jacobian coordinates do not match expected affine point");
     }
 

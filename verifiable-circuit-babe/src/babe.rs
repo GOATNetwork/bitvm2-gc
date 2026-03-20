@@ -1,6 +1,6 @@
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::{BigInteger, PrimeField, UniformRand};
+use ark_ff::PrimeField;
 use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -814,10 +814,13 @@ pub fn run_babe_e2e() -> BabeE2ERun {
         let gc_ct_bytes = verifier_pkg.gc_ciphertexts.iter()
             .filter(|c| c.is_some()).count() * 16;
 
-        // Each SparseAdaptorEntry: (x.len + y.len + z.len) nonzero cols × 2 cts × 32 bytes/ct
+        // Each SparseAdaptorEntry: (x.len + y.len + z.len) nonzero cols × 1 ct × 32 bytes/ct
+        //                        + 3 rows × 1 offset (Fq = 32 bytes) per row
         let adaptor_bytes = if let Some(entry) = verifier_pkg.adaptor_table.entries.first() {
             let cts_per_entry = entry.x.cts.len() + entry.y.cts.len() + entry.z.cts.len();
-            verifier_pkg.adaptor_table.entries.len() * cts_per_entry * 2 * 32
+            let n_entries = verifier_pkg.adaptor_table.entries.len();
+            n_entries * cts_per_entry * 32   // ciphertexts: 1 × 32 bytes each
+            + n_entries * 3 * 32             // offsets: 3 Fq per entry, 32 bytes each
         } else { 0 };
 
         let epk_bytes = verifier_pkg.epk.0.len() * 2 * 32;
@@ -922,6 +925,7 @@ mod tests {
     use super::*;
     use ark_bn254::Bn254;
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
+    use ark_ff::UniformRand;
 
     #[test]
     fn hashlock_roundtrip() {

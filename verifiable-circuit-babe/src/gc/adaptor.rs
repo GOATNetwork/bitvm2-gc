@@ -1,18 +1,18 @@
 use ark_bn254::{Fq, Fr, G1Affine, G1Projective};
 use ark_ff::{UniformRand, Zero};
-use crate::dre::affine_dre::AffineDREDecoding;
-use crate::dre::{L, N};
+use crate::dre::{DREDecoding, L, N};
 use crate::dre::matrices::{build_d_i_sparse, nonzero_col_indices};
-use crate::dre::utils::{sample_rhos, sample_s_sparse};
-use crate::gc::utils::{aes_dec, aes_enc};
+use crate::dre::utils::sample_rhos;
+use crate::gc::utils::{aes_dec, aes_enc, prf_fq};
 
 /// Ciphertext of one Fq element (32 bytes = 2 AES-128 blocks)
 pub type Ct = [u8; 32];
 
-/// Ciphertext pairs for one D row, only at nonzero_col_indices() positions.
+/// Ciphertexts for ubar=0.
+/// `offset` = Σ_k s_k = Σ_k (prf_fq(label_1_k) - D_k).
 pub struct SparseAdaptorRow {
-    /// [ct_for_ubar=0, ct_for_ubar=1] per nonzero column, same order as nonzero_col_indices()
-    pub cts: Vec<[Ct; 2]>,
+    pub cts: Vec<Ct>,
+    pub offset: Fq,
 }
 
 pub struct SparseAdaptorEntry {
@@ -47,22 +47,20 @@ impl SparseAdaptorTable {
                 let r_i = Fq::from(r_bits[i] as u8);
                 let d = build_d_i_sparse(deltas[i], r_i, &rhos[i]);
 
-                let mut build_row = |j: usize| -> SparseAdaptorRow {
-                    let s = sample_s_sparse(&mut rng, col_indices[j].len());
+                let build_row = |j: usize| -> SparseAdaptorRow {
+                    let mut offset = Fq::zero();
                     let cts = col_indices[j]
                         .iter()
                         .zip(d[j].iter())
-                        .zip(s.iter())
-                        .map(|((&k, &d_val), &s_val)| {
-                            // g0 = D_k*0 + s_k = s_k
-                            // g1 = D_k*1 + s_k = D_k + s_k
-                            [
-                                aes_enc(&s_val, &labels[2 * k]),
-                                aes_enc(&(d_val + s_val), &labels[2 * k + 1]),
-                            ]
+                        .map(|(&k, &d_val)| {
+                            // s_k = PRF(label_1_k) - D_k
+                            let prf_val = prf_fq(&labels[2 * k + 1]);
+                            let s_k = prf_val - d_val;
+                            offset += s_k;
+                            aes_enc(&s_k, &labels[2 * k])
                         })
                         .collect();
-                    SparseAdaptorRow { cts }
+                    SparseAdaptorRow { cts, offset }
                 };
 
                 SparseAdaptorEntry {
@@ -80,11 +78,9 @@ impl SparseAdaptorTable {
         labels: &[[u8; 16]],
         r_bits: &[u8],
         rhos: &[G1Affine],
-        s_all: &[Vec<Vec<Fq>>],
         deltas: &[Fq],
     ) -> Self {
         assert_eq!(rhos.len(), N);
-        assert_eq!(s_all.len(), N);
         assert_eq!(deltas.len(), N);
         assert_eq!(labels.len(), 2 * L);
         assert_eq!(r_bits.len(), N);
@@ -100,36 +96,28 @@ impl SparseAdaptorTable {
         }
         assert!(weighted_sum.is_zero(), "constraint ∑ 2^i·ρ_i = O not satisfied");
 
-        // Verify s and delta constraints (s now over nonzero positions only)
         for i in 0..N {
             assert!(!deltas[i].is_zero(), "delta[{i}] must be non-zero");
-            assert_eq!(s_all[i].len(), 3);
-            for j in 0..3 {
-                assert_eq!(s_all[i][j].len(), col_indices[j].len(),
-                    "s_all[{i}][{j}] must have {} entries", col_indices[j].len());
-                let sum: Fq = s_all[i][j].iter().copied().sum();
-                assert!(sum.is_zero(), "∑_k s_all[{i}][{j}][k] = 0 not satisfied");
-            }
         }
 
         let entries = (0..N)
             .map(|i| {
-                let r_i = Fq::from(r_bits[i] as u8);
+                let r_i = Fq::from(r_bits[i]);
                 let d = build_d_i_sparse(deltas[i], r_i, &rhos[i]);
 
                 let build_row = |j: usize| -> SparseAdaptorRow {
+                    let mut offset = Fq::zero();
                     let cts = col_indices[j]
                         .iter()
                         .zip(d[j].iter())
-                        .zip(s_all[i][j].iter())
-                        .map(|((&k, &d_val), &s_val)| {
-                            [
-                                aes_enc(&s_val, &labels[2 * k]),
-                                aes_enc(&(d_val + s_val), &labels[2 * k + 1]),
-                            ]
+                        .map(|(&k, &d_val)| {
+                            let prf_val = prf_fq(&labels[2 * k + 1]);
+                            let s_k = prf_val - d_val;
+                            offset += s_k;
+                            aes_enc(&s_k, &labels[2 * k])
                         })
                         .collect();
-                    SparseAdaptorRow { cts }
+                    SparseAdaptorRow { cts, offset }
                 };
 
                 SparseAdaptorEntry {
@@ -144,7 +132,7 @@ impl SparseAdaptorTable {
     }
 
     /// Decrypt the adaptor table and sum each row to recover Jacobian coords of r_i·π + ρ_i.
-    pub fn eval(&self, labels: &[[u8; 16]], u_bar: &[Fq]) -> Vec<AffineDREDecoding> {
+    pub fn eval(&self, labels: &[[u8; 16]], u_bar: &[Fq]) -> Vec<DREDecoding> {
         assert_eq!(labels.len(), L);
         assert_eq!(u_bar.len(), L);
 
@@ -154,20 +142,21 @@ impl SparseAdaptorTable {
             .iter()
             .map(|entry| {
                 let dec_row = |row: &SparseAdaptorRow, j: usize| -> Fq {
-                    col_indices[j]
+                    let raw: Fq = col_indices[j]
                         .iter()
                         .zip(row.cts.iter())
-                        .map(|(&k, ct_pair)| {
+                        .map(|(&k, ct)| {
                             if u_bar[k].is_zero() {
-                                aes_dec(&ct_pair[0], &labels[k])
+                                aes_dec(ct, &labels[k])
                             } else {
-                                aes_dec(&ct_pair[1], &labels[k])
+                                prf_fq(&labels[k])
                             }
                         })
-                        .sum()
+                        .sum();
+                    raw - row.offset
                 };
 
-                AffineDREDecoding {
+                DREDecoding {
                     f_i: (dec_row(&entry.x, 0), dec_row(&entry.y, 1), dec_row(&entry.z, 2)),
                 }
             })
@@ -183,7 +172,7 @@ mod tests {
     use ark_ff::{UniformRand, Zero, One};
     use garbled_snark_verifier::core::s::S;
     use garbled_snark_verifier::core::utils::DELTA;
-    use crate::dre::{L, N};
+    use crate::dre::L;
     use crate::dre::matrices::u_bar_vec;
 
     #[test]

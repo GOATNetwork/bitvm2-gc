@@ -1,19 +1,11 @@
-use ark_bn254::{Fq, G1Affine};
+use ark_bn254::Fq;
 
 pub mod utils;
 pub mod matrices;
-pub mod weighted_dre;
-pub mod affine_dre;
-
 pub const N: usize = 254;
 pub const L: usize = 1 + 5 * N; // 1271
 
-pub trait DRE {
-    type Input;
-    type Encoding;
-    type Decoding;
-
-    fn enc(input: Self::Input) -> Self::Encoding;
-
-    fn dec(encoding: Self::Encoding) -> Self::Decoding;
+/// Decoding: f_i = r_i·π + ρ_i  (Jacobian coords)
+pub struct DREDecoding {
+    pub f_i: (Fq, Fq, Fq),
 }

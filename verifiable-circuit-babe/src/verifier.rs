@@ -1,6 +1,6 @@
 use ark_bn254::Fr;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
-use ark_ff::{PrimeField, UniformRand};
+use ark_ff::UniformRand;
 use garbled_snark_verifier::core::utils::DELTA;
 use garbled_snark_verifier::dv_bn254::fq::Fq;
 use ark_serialize::CanonicalSerialize;
@@ -88,7 +88,7 @@ impl BABEVerifier {
     #[cfg(feature = "garbled")]
     pub fn build_adaptor_table_and_ciphertexts(&mut self) {
         use ark_bn254::G1Projective;
-        use ark_ff::{Zero, One};
+        use ark_ff::Zero;
         use crate::dre::matrices::u_bar_vec;
 
         // Step 1: Fresh circuit and apply encoding-key 0-labels to input wires.

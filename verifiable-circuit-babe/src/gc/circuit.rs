@@ -1,5 +1,4 @@
 use ark_bn254::G1Affine;
-use garbled_snark_verifier::bag::{Circuit, Wires};
 use garbled_snark_verifier::circuits::sect233k1::builder::{CircuitAdapter, CircuitTrait};
 use garbled_snark_verifier::dv_bn254::basic::selector;
 use garbled_snark_verifier::dv_bn254::fp254impl::Fp254Impl;
@@ -100,7 +99,7 @@ mod tests {
     use super::*;
     use ark_ec::CurveGroup;
     use ark_ff::{UniformRand, Zero};
-    use garbled_snark_verifier::bag::S;
+    use garbled_snark_verifier::bag::{Circuit, S};
     use garbled_snark_verifier::core::utils::reset_gid;
     use crate::dre::matrices::u_bar_vec;
 

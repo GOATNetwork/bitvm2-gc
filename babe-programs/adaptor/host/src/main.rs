@@ -8,8 +8,7 @@ use sha2::{Digest, Sha256};
 use zkm_sdk::{include_elf, utils, ProverClient, ZKMStdin};
 
 use verifiable_circuit_babe::dre::{L, N};
-use verifiable_circuit_babe::dre::matrices::nonzero_col_indices;
-use verifiable_circuit_babe::dre::utils::{sample_rhos, sample_s_sparse};
+use verifiable_circuit_babe::dre::utils::sample_rhos;
 use verifiable_circuit_babe::gc::SparseAdaptorTable;
 
 const ELF: &[u8] = include_elf!("adaptor-guest");
@@ -52,12 +51,6 @@ fn main() {
         })
         .collect();
 
-    // s_all: N × 3 rows, each row has nonzero_count[j] entries summing to 0
-    let col_indices = nonzero_col_indices();
-    let s_all: Vec<Vec<Vec<Fq>>> = (0..N)
-        .map(|_| (0..3).map(|j| sample_s_sparse(&mut rng, col_indices[j].len())).collect())
-        .collect();
-
     // ── 2. Serialize inputs for ZKMStdin ─────────────────────────────────────
 
     let r_bits: Vec<u8> = garbled_snark_verifier::dv_bn254::fr::Fr::to_bits(r)
@@ -67,19 +60,12 @@ fn main() {
 
     let rhos_flat: Vec<u8> = rhos.iter().flat_map(|p| g1affine_to_bytes(p)).collect();
 
-    // s_flat: for each i, for each j, the nonzero_count[j] values (variable per row)
-    let s_flat: Vec<[u8; 32]> = s_all
-        .iter()
-        .flat_map(|s_i| s_i.iter().flat_map(|s_ij| s_ij.iter().map(fq_to_bytes)))
-        .collect();
-
     let deltas_raw: Vec<[u8; 32]> = deltas.iter().map(|d| fq_to_bytes(d)).collect();
 
     let mut stdin = ZKMStdin::new();
     stdin.write::<Vec<[u8; 16]>>(&labels);
     stdin.write::<Vec<u8>>(&r_bits);
     stdin.write::<Vec<u8>>(&rhos_flat);
-    stdin.write::<Vec<[u8; 32]>>(&s_flat);
     stdin.write::<Vec<[u8; 32]>>(&deltas_raw);
 
     // ── 3. Compute expected commitments on the host ───────────────────────────
@@ -90,12 +76,12 @@ fn main() {
     for b in &labels { lh.update(b); }
     let expected_labels_hash: [u8; 32] = lh.finalize().into();
 
-    let table = SparseAdaptorTable::build_in_zkvm(&labels, &r_bits, &rhos, &s_all, &deltas);
+    let table = SparseAdaptorTable::build_in_zkvm(&labels, &r_bits, &rhos, &deltas);
     let mut th = Sha256::new();
     for entry in &table.entries {
-        for ct_pair in &entry.x.cts { th.update(ct_pair[0]); th.update(ct_pair[1]); }
-        for ct_pair in &entry.y.cts { th.update(ct_pair[0]); th.update(ct_pair[1]); }
-        for ct_pair in &entry.z.cts { th.update(ct_pair[0]); th.update(ct_pair[1]); }
+        for ct in &entry.x.cts { th.update(ct); }
+        for ct in &entry.y.cts { th.update(ct); }
+        for ct in &entry.z.cts { th.update(ct); }
     }
     let expected_table_hash: [u8; 32] = th.finalize().into();
 
