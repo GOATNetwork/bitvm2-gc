@@ -1,8 +1,7 @@
 use ark_bn254::{Fq, Fr, G1Affine, G1Projective};
-use ark_ff::{UniformRand, Zero};
+use ark_ff::Zero;
 use crate::dre::{DREDecoding, L, N};
 use crate::dre::matrices::{build_d_i_sparse, nonzero_col_indices};
-use crate::dre::utils::sample_rhos;
 use crate::gc::utils::{aes_dec, aes_enc, prf_fq};
 
 /// Ciphertext of one Fq element (32 bytes = 2 AES-128 blocks)
@@ -28,26 +27,24 @@ pub struct SparseAdaptorTable {
 }
 
 impl SparseAdaptorTable {
-    pub fn build_from_r_and_labels(r: Fr, labels: &[[u8; 16]]) -> Self {
+    pub fn build_from_r_and_labels(
+        r: Fr,
+        labels: &[[u8; 16]],
+        rhos: &[G1Affine],
+        fq_deltas: &[Fq],
+    ) -> Self {
         assert_eq!(labels.len(), 2 * L);
-        let mut rng = rand::thread_rng();
+        assert_eq!(rhos.len(), N);
+        assert_eq!(fq_deltas.len(), N);
+
         let r_bits = garbled_snark_verifier::dv_bn254::fr::Fr::to_bits(r);
-        let rhos = sample_rhos(&mut rng);
-        let deltas: Vec<Fq> = (0..N)
-            .map(|_| loop {
-                let l = Fq::rand(&mut rng);
-                if !l.is_zero() { break l; }
-            })
-            .collect();
-
         let col_indices = nonzero_col_indices();
-
         let prf_cache: Vec<Fq> = (0..L).map(|k| prf_fq(&labels[2 * k + 1])).collect();
 
         let entries = (0..N)
             .map(|i| {
                 let r_i = Fq::from(r_bits[i] as u8);
-                let d = build_d_i_sparse(deltas[i], r_i, &rhos[i]);
+                let d = build_d_i_sparse(fq_deltas[i], r_i, &rhos[i]);
 
                 let build_row = |j: usize| -> SparseAdaptorRow {
                     let mut offset = Fq::zero();
@@ -195,7 +192,14 @@ mod tests {
             })
             .collect();
 
-        let table = SparseAdaptorTable::build_from_r_and_labels(r, &labels);
+        let rhos = crate::dre::utils::sample_rhos(&mut rng);
+        let fq_deltas: Vec<Fq> = (0..N)
+            .map(|_| loop {
+                let v = UniformRand::rand(&mut rng);
+                if !Zero::is_zero(&v) { break v; }
+            })
+            .collect();
+        let table = SparseAdaptorTable::build_from_r_and_labels(r, &labels, &rhos, &fq_deltas);
 
         let eval_labels: Vec<[u8; 16]> = (0..L)
             .map(|k| if u_bar_pi[k].is_zero() { labels[2 * k] } else { labels[2 * k + 1] })

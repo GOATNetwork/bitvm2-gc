@@ -336,6 +336,7 @@ pub struct ProverSetupPackage {
 }
 
 /// What the Verifier keeps private after setup.
+/// Todo: Will change to contains secret of each Instance later.
 pub struct BabeVerifierPrivate {
     /// The WE scalar r.
     pub r: Fr,
@@ -347,6 +348,8 @@ pub struct BabeVerifierPrivate {
     /// 0-labels for constant GC wires (index 0 = false wire, 1 = true wire).
     #[cfg(feature = "garbled")]
     pub constant_0labels: [garbled_snark_verifier::bag::S; 2],
+    #[cfg(feature = "garbled")]
+    pub delta: garbled_snark_verifier::bag::S,
 }
 
 // ─── WE ciphertext types ──────────────────────────────────────────────────────
@@ -398,29 +401,26 @@ pub fn babe_verifier_setup(
     vk: &Groth16VerifyingKey<Bn254>,
     public_inputs: &[Fr],
 ) -> (VerifierSetupPackage, BabeVerifierPrivate) {
-    use crate::verifier::BABEVerifier;
-    // Todo: change to use own delta instead of NON_CAC_DELTA
-    use garbled_snark_verifier::core::utils::{NON_CAC_DELTA, reset_gid};
+    use crate::verifier::BABEInstance;
+    use garbled_snark_verifier::core::utils::reset_gid;
 
     reset_gid();
     let start = std::time::Instant::now();
-    let mut verifier = BABEVerifier::new();
+    let mut verifier = BABEInstance::new_from_seed(rand::random());
     verifier.enc_setup(vk, public_inputs).expect("enc_setup failed");
-    verifier.build_adaptor_table_and_ciphertexts();
     let elapsed = start.elapsed();
     println!("Verifier setup (enc_setup + garble + adaptor table) completed in {:.2?}", elapsed);
 
-    // Garbled gates captured inside build_adaptor_table_and_ciphertexts.
     let gc_ciphertexts = std::mem::take(&mut verifier.ciphertexts);
 
     // Constant wire labels: wire 0 = false → 0-label; wire 1 = true → 1-label.
-    let const_label_0 = verifier.constant_0labels[0].0;
-    let const_label_1 = (verifier.constant_0labels[1] ^ NON_CAC_DELTA).0;
+    let const_label_0 = verifier.secrets.constant_0labels[0].0;
+    let const_label_1 = (verifier.secrets.constant_0labels[1] ^ verifier.secrets.delta).0;
 
     let start = std::time::Instant::now();
-    let epk = compute_epk(&verifier.encoding_keys);
+    let epk = compute_epk(&verifier.secrets.encoding_keys);
     let h_ek = epk.commit();
-    let h_msg = derive_hashlock(&verifier.msg);
+    let h_msg = derive_hashlock(&verifier.secrets.msg);
 
     let elapsed = start.elapsed();
     println!("Computed epk and h_ek in {:.2?}", elapsed);
@@ -442,10 +442,11 @@ pub fn babe_verifier_setup(
     };
 
     let private = BabeVerifierPrivate {
-        r: verifier.r,
-        msg: verifier.msg,
-        encoding_keys: verifier.encoding_keys,
-        constant_0labels: verifier.constant_0labels,
+        r: verifier.secrets.r,
+        msg: verifier.secrets.msg,
+        encoding_keys: verifier.secrets.encoding_keys,
+        constant_0labels: verifier.secrets.constant_0labels,
+        delta: verifier.secrets.delta,
     };
 
     (pkg, private)
@@ -514,9 +515,6 @@ pub fn babe_verifier_challenge_assert(
     verifier_private: &BabeVerifierPrivate,
     sig_p_presig: BabeBtcSig,
 ) -> Option<TxChallengeAssertWitness> {
-    // Todo: change to use own delta instead of non_cac_delta
-    use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
-
     let pi1 = G1Affine::deserialize_compressed(assert_witness.pi1.as_slice()).ok()?;
 
     // This verification happens locally. On-chain, the script Assert already checked this.
@@ -525,9 +523,10 @@ pub fn babe_verifier_challenge_assert(
     }
 
     let bits = pi1_to_bits(&pi1);
+    let delta = verifier_private.delta;
     let input_labels: Vec<[u8; 16]> = bits.iter().enumerate().map(|(i, &b)| {
         let key = verifier_private.encoding_keys[i];
-        if b { (key ^ NON_CAC_DELTA).0 } else { key.0 }
+        if b { (key ^ delta).0 } else { key.0 }
     }).collect();
 
     Some(TxChallengeAssertWitness {
@@ -559,6 +558,10 @@ pub fn babe_prover_wrongly_challenged(
 
     // 1. Use the pre-built circuit from verifier_pkg (already reset after verifier setup).
     let circuit = &mut verifier_pkg.circuit;
+    if !circuit.is_fresh() {
+        circuit.reset_circuit_except_constants();
+    }
+
     let gc_output_indices = &verifier_pkg.gc_output_indices;
 
     // 2. Set constant wire labels from verifier's setup package.
@@ -599,7 +602,7 @@ pub fn babe_prover_wrongly_challenged(
     }
 
     // 9. Decrypt: msg = ct3 ⊕ h(e(ct1, π₂) - e(π₃, ct2)).
-    //    BABEVerifier::enc_setup uses blake3(rY) as the mask (babe::h), so we must use
+    //    BABEInstance::enc_setup uses blake3(rY) as the mask (babe::h), so we must use
     //    the same function here rather than we_known_pi1_dec (which uses ro_from_pairing_bytes).
     use ark_serialize::CanonicalSerialize as _;
     let ct1_affine = sum.into_affine();
@@ -789,7 +792,7 @@ impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
 /// Run the full BABE e2e happy path:
 /// Setup → Deposit → Assert → ChallengeAssert → WronglyChallenged.
 #[cfg(feature = "garbled")]
-pub fn run_babe_e2e() -> BabeE2ERun {
+pub fn run_babe_e2e_with_one_instance() -> BabeE2ERun {
     let session_id = h(b"babe:e2e:session");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);
 
@@ -810,59 +813,59 @@ pub fn run_babe_e2e() -> BabeE2ERun {
         babe_verifier_setup(&vk, &public_inputs);
 
     // Verifier setup package sizes.
-    {
-        let ct_setup_bytes = verifier_pkg.ct_setup.ct2_r_delta_g2.len()
-            + verifier_pkg.ct_setup.ct3_masked_msg.len();
-
-        let gc_ct_bytes = verifier_pkg.gc_ciphertexts.iter()
-            .filter(|c| c.is_some()).count() * 16;
-
-        // Each SparseAdaptorEntry: (x.len + y.len + z.len) nonzero cols × 1 ct × 32 bytes/ct
-        //                        + 3 rows × 1 offset (Fq = 32 bytes) per row
-        let adaptor_bytes = if let Some(entry) = verifier_pkg.adaptor_table.entries.first() {
-            let cts_per_entry = entry.x.cts.len() + entry.y.cts.len() + entry.z.cts.len();
-            let n_entries = verifier_pkg.adaptor_table.entries.len();
-            n_entries * cts_per_entry * 32   // ciphertexts: 1 × 32 bytes each
-            + n_entries * 3 * 32             // offsets: 3 Fq per entry, 32 bytes each
-        } else { 0 };
-
-        let epk_bytes = verifier_pkg.epk.0.len() * 2 * 32;
-
-        // Circuit in-memory sizes (64-bit):
-        let circuit_bytes_after_reset = verifier_pkg.circuit.size_in_bytes();
-
-        println!("--- VerifierSetupPackage sizes ---");
-        println!("  ct_setup:        {:>10} bytes ({:.2} KB)", ct_setup_bytes, ct_setup_bytes as f64 / 1024.0);
-        println!("  gc_ciphertexts:  {:>10} bytes ({:.2} MB)", gc_ct_bytes, gc_ct_bytes as f64 / 1_048_576.0);
-        println!("  adaptor_table:   {:>10} bytes ({:.2} MB)", adaptor_bytes, adaptor_bytes as f64 / 1_048_576.0);
-        println!("  epk:             {:>10} bytes ({:.2} KB)", epk_bytes, epk_bytes as f64 / 1024.0);
-        println!("  h_ek + h_msg:    {:>10} bytes", 64);
-        println!("  constant_labels: {:>10} bytes", 32);
-        println!("  circuit struct:  {:>10} bytes ({:.2} MB)  after reset",
-            circuit_bytes_after_reset, circuit_bytes_after_reset as f64 / 1_048_576.0);
-        let total = ct_setup_bytes + gc_ct_bytes + adaptor_bytes + epk_bytes + 64 + 32 + circuit_bytes_after_reset;
-        println!("  TOTAL:           {:>10} bytes ({:.2} MB)", total, total as f64 / 1_048_576.0);
-    }
+    // {
+    //     let ct_setup_bytes = verifier_pkg.ct_setup.ct2_r_delta_g2.len()
+    //         + verifier_pkg.ct_setup.ct3_masked_msg.len();
+    //
+    //     let gc_ct_bytes = verifier_pkg.gc_ciphertexts.iter()
+    //         .filter(|c| c.is_some()).count() * 16;
+    //
+    //     // Each SparseAdaptorEntry: (x.len + y.len + z.len) nonzero cols × 1 ct × 32 bytes/ct
+    //     //                        + 3 rows × 1 offset (Fq = 32 bytes) per row
+    //     let adaptor_bytes = if let Some(entry) = verifier_pkg.adaptor_table.entries.first() {
+    //         let cts_per_entry = entry.x.cts.len() + entry.y.cts.len() + entry.z.cts.len();
+    //         let n_entries = verifier_pkg.adaptor_table.entries.len();
+    //         n_entries * cts_per_entry * 32   // ciphertexts: 1 × 32 bytes each
+    //         + n_entries * 3 * 32             // offsets: 3 Fq per entry, 32 bytes each
+    //     } else { 0 };
+    //
+    //     let epk_bytes = verifier_pkg.epk.0.len() * 2 * 32;
+    //
+    //     // Circuit in-memory sizes (64-bit):
+    //     let circuit_bytes_after_reset = verifier_pkg.circuit.size_in_bytes();
+    //
+    //     println!("--- VerifierSetupPackage sizes ---");
+    //     println!("  ct_setup:        {:>10} bytes ({:.2} KB)", ct_setup_bytes, ct_setup_bytes as f64 / 1024.0);
+    //     println!("  gc_ciphertexts:  {:>10} bytes ({:.2} MB)", gc_ct_bytes, gc_ct_bytes as f64 / 1_048_576.0);
+    //     println!("  adaptor_table:   {:>10} bytes ({:.2} MB)", adaptor_bytes, adaptor_bytes as f64 / 1_048_576.0);
+    //     println!("  epk:             {:>10} bytes ({:.2} KB)", epk_bytes, epk_bytes as f64 / 1024.0);
+    //     println!("  h_ek + h_msg:    {:>10} bytes", 64);
+    //     println!("  constant_labels: {:>10} bytes", 32);
+    //     println!("  circuit struct:  {:>10} bytes ({:.2} MB)  after reset",
+    //         circuit_bytes_after_reset, circuit_bytes_after_reset as f64 / 1_048_576.0);
+    //     let total = ct_setup_bytes + gc_ct_bytes + adaptor_bytes + epk_bytes + 64 + 32 + circuit_bytes_after_reset;
+    //     println!("  TOTAL:           {:>10} bytes ({:.2} MB)", total, total as f64 / 1_048_576.0);
+    // }
 
     // 3. Prover setup: generate Lamport keypair.
     let pk_p = BtcPk([0u8; 33]); // stub BTC pubkey
     let (lsk_p, prover_pkg) = babe_prover_keygen(&mut rng, pk_p.clone());
 
-    // Prover setup package sizes.
-    {
-        // lpk_p: LAMPORT_N entries, each [[u8;32];2] = 2×32 bytes.
-        let lpk_bytes = prover_pkg.lpk_p.0.len() * 2 * 32;
-        // lpk_p_commit: [u8;32]
-        let commit_bytes = 32;
-        // pk_p: BtcPk([u8;33])
-        let pk_p_bytes = 33;
-        let total = lpk_bytes + commit_bytes + pk_p_bytes;
-        println!("--- ProverSetupPackage sizes ---");
-        println!("  lpk_p:           {:>10} bytes ({:.2} KB)", lpk_bytes, lpk_bytes as f64 / 1024.0);
-        println!("  lpk_p_commit:    {:>10} bytes", commit_bytes);
-        println!("  pk_p:            {:>10} bytes", pk_p_bytes);
-        println!("  TOTAL:           {:>10} bytes ({:.2} KB)", total, total as f64 / 1024.0);
-    }
+    // // Prover setup package sizes.
+    // {
+    //     // lpk_p: LAMPORT_N entries, each [[u8;32];2] = 2×32 bytes.
+    //     let lpk_bytes = prover_pkg.lpk_p.0.len() * 2 * 32;
+    //     // lpk_p_commit: [u8;32]
+    //     let commit_bytes = 32;
+    //     // pk_p: BtcPk([u8;33])
+    //     let pk_p_bytes = 33;
+    //     let total = lpk_bytes + commit_bytes + pk_p_bytes;
+    //     println!("--- ProverSetupPackage sizes ---");
+    //     println!("  lpk_p:           {:>10} bytes ({:.2} KB)", lpk_bytes, lpk_bytes as f64 / 1024.0);
+    //     println!("  lpk_p_commit:    {:>10} bytes", commit_bytes);
+    //     println!("  pk_p:            {:>10} bytes", pk_p_bytes);
+    //     println!("  TOTAL:           {:>10} bytes ({:.2} KB)", total, total as f64 / 1024.0);
+    // }
 
     // 4. Presign exchange.
     let pk_v = BtcPk([1u8; 33]); // stub BTC pubkey

@@ -96,7 +96,7 @@ mod tests {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use rand::SeedableRng;
-    use crate::verifier::BABEVerifier;
+    use crate::verifier::BABEInstance;
 
     #[derive(Copy, Clone)]
     struct DummyMulCircuit<F: PrimeField> {
@@ -135,22 +135,16 @@ mod tests {
         println!("step 1 done: Groth16 proof generated");
 
         // 2. Verifier: enc_setup generates (ct2 = r·[delta]_2, ct3 = RO(rY) ⊕ msg).
-        let mut verifier = BABEVerifier::new();
+        let mut verifier = BABEInstance::new_from_seed(rand::random());
         verifier.enc_setup(&vk, &public_inputs).unwrap();
         println!("step 2 done: Verifier generated ct_setup");
 
         verifier.garbled_circuit.gate_counts().print();
 
-        // let rpi1 = proof.a.into_group() * verifier.r;
-        // println!("r pi1 :{:?}", rpi1.into_affine());
-
-        // // 3. Verifier: build adaptor table binding r to the garbled circuit output labels.
-        verifier.build_adaptor_table_and_ciphertexts();
-
         println!("step 3 done: Adaptor table and boolean circuit ciphertexts");
 
         // 4. Verifier: compute the input labels for proof.a = π₁.
-        let input_labels = verifier.compute_pi1_labels(proof.a);
+        let input_labels = verifier.compute_pi1_labels_based_on_value(proof.a);
 
         println!("step 4 done: Groth16 constant_labels");
 
@@ -194,6 +188,6 @@ mod tests {
         println!("step 6 done: Groth16 mask decrypted");
 
         // 7. The prover recovered the verifier's secret message.
-        assert_eq!(decrypted, verifier.msg);
+        assert_eq!(decrypted, verifier.secrets.msg);
     }
 }
