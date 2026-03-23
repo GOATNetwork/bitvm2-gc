@@ -1,7 +1,7 @@
 use ark_bn254::Fr;
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_ff::UniformRand;
-use garbled_snark_verifier::core::utils::DELTA;
+use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
 use garbled_snark_verifier::dv_bn254::fq::Fq;
 use ark_serialize::CanonicalSerialize;
 use garbled_snark_verifier::bag::{Circuit, S};
@@ -116,7 +116,7 @@ impl BABEVerifier {
         self.ciphertexts = ciphertexts;
 
         // Step 3: Recover the 0-label for each output wire (u_bar bit position).
-        // In Free-XOR: label_1 = label_0 XOR DELTA.
+        // In Free-XOR: label_1 = label_0 XOR NON_CAC_DELTA.
         let u_bar_pi1 = u_bar_vec(&pi1);
         let labels: Vec<[u8;16]> = self.gc_output_indices
             .iter()
@@ -125,8 +125,8 @@ impl BABEVerifier {
                 let current = self.garbled_circuit.0[*idx]
                     .borrow()
                     .select(self.garbled_circuit.0[*idx].borrow().get_value());
-                let label_0 = if u.is_zero() { current } else { current ^ DELTA };
-                [label_0.0, (label_0 ^ DELTA).0]
+                let label_0 = if u.is_zero() { current } else { current ^ NON_CAC_DELTA };
+                [label_0.0, (label_0 ^ NON_CAC_DELTA).0]
             })
             .collect();
 
@@ -144,10 +144,10 @@ impl BABEVerifier {
 
         let mut labels_wo_deltas: Vec<S> = Vec::new();
         labels_wo_deltas.push(self.constant_0labels[0]);
-        labels_wo_deltas.push(self.constant_0labels[1] ^ DELTA);
+        labels_wo_deltas.push(self.constant_0labels[1] ^ NON_CAC_DELTA);
         let tail: Vec<S> = witness.iter().enumerate().map(|(i, &b)| {
             let key = self.encoding_keys[i].clone();
-            if b { key ^ DELTA } else { key }
+            if b { key ^ NON_CAC_DELTA } else { key }
         }).collect();
         labels_wo_deltas.extend(tail);
         labels_wo_deltas

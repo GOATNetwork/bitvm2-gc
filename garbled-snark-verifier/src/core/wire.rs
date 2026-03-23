@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::core::{s::S, utils::DELTA};
+use crate::core::{s::S, utils::NON_CAC_DELTA};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct Wire {
@@ -32,7 +32,11 @@ impl Wire {
     }
 
     pub fn select(&self, selector: bool) -> S {
-        if !selector { self.label.unwrap() } else { self.label.unwrap() ^ DELTA }
+        self.select_with_delta(selector, NON_CAC_DELTA)
+    }
+
+    pub fn select_with_delta(&self, selector: bool, delta: S) -> S {
+        if !selector { self.label.unwrap() } else { self.label.unwrap() ^ delta }
     }
 
     pub fn get_value(&self) -> bool {

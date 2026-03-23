@@ -138,10 +138,11 @@ impl EncodingKeyPublic {
 /// Compute epk from the verifier's private 0-labels (encoding_keys).
 #[cfg(feature = "garbled")]
 pub fn compute_epk(encoding_keys: &[garbled_snark_verifier::bag::S]) -> EncodingKeyPublic {
-    use garbled_snark_verifier::core::utils::DELTA;
+    // Todo: change to use own delta instead of NON_CAC_DELTA
+    use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
     let pairs = encoding_keys.iter().map(|&key| {
         let label_0 = key.0;
-        let label_1 = (key ^ DELTA).0;
+        let label_1 = (key ^ NON_CAC_DELTA).0;
         [h(&label_0), h(&label_1)]
     }).collect();
     EncodingKeyPublic(pairs)
@@ -398,7 +399,8 @@ pub fn babe_verifier_setup(
     public_inputs: &[Fr],
 ) -> (VerifierSetupPackage, BabeVerifierPrivate) {
     use crate::verifier::BABEVerifier;
-    use garbled_snark_verifier::core::utils::{DELTA, reset_gid};
+    // Todo: change to use own delta instead of NON_CAC_DELTA
+    use garbled_snark_verifier::core::utils::{NON_CAC_DELTA, reset_gid};
 
     reset_gid();
     let start = std::time::Instant::now();
@@ -413,7 +415,7 @@ pub fn babe_verifier_setup(
 
     // Constant wire labels: wire 0 = false → 0-label; wire 1 = true → 1-label.
     let const_label_0 = verifier.constant_0labels[0].0;
-    let const_label_1 = (verifier.constant_0labels[1] ^ DELTA).0;
+    let const_label_1 = (verifier.constant_0labels[1] ^ NON_CAC_DELTA).0;
 
     let start = std::time::Instant::now();
     let epk = compute_epk(&verifier.encoding_keys);
@@ -512,7 +514,8 @@ pub fn babe_verifier_challenge_assert(
     verifier_private: &BabeVerifierPrivate,
     sig_p_presig: BabeBtcSig,
 ) -> Option<TxChallengeAssertWitness> {
-    use garbled_snark_verifier::core::utils::DELTA;
+    // Todo: change to use own delta instead of non_cac_delta
+    use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
 
     let pi1 = G1Affine::deserialize_compressed(assert_witness.pi1.as_slice()).ok()?;
 
@@ -524,7 +527,7 @@ pub fn babe_verifier_challenge_assert(
     let bits = pi1_to_bits(&pi1);
     let input_labels: Vec<[u8; 16]> = bits.iter().enumerate().map(|(i, &b)| {
         let key = verifier_private.encoding_keys[i];
-        if b { (key ^ DELTA).0 } else { key.0 }
+        if b { (key ^ NON_CAC_DELTA).0 } else { key.0 }
     }).collect();
 
     Some(TxChallengeAssertWitness {

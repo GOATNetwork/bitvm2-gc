@@ -13,8 +13,8 @@ pub const SUB_CIRCUIT_MAX_GATES: usize = 2_000_000;
 pub const SUB_INPUT_GATES_PART_SIZE: usize = 200_000;
 pub const SUB_INPUT_GATES_PARTS: usize = 10;
 pub const LABEL_SIZE: usize = 16;
-// FIXME: set up a private global difference
-pub static DELTA: S = S::one();
+/// Default global DELTA for non-C&C garbling. C&C uses per-instance delta passed explicitly.
+pub static NON_CAC_DELTA: S = S::one();
 
 // u32 is not enough for current gates scale.
 pub static GID: AtomicU32 = AtomicU32::new(0);
@@ -148,6 +148,15 @@ pub fn check_guest(
     sub_wires: &[u8],
     sub_ciphertexts: &[u8],
 ) -> Vec<u8>  {
+    check_guest_with_delta(sub_gates_parts, sub_wires, sub_ciphertexts, NON_CAC_DELTA)
+}
+
+pub fn check_guest_with_delta(
+    sub_gates_parts: &[Vec<u8>; SUB_INPUT_GATES_PARTS],
+    sub_wires: &[u8],
+    sub_ciphertexts: &[u8],
+    delta: S,
+) -> Vec<u8>  {
     // read sub_ciphertexts:
     let mut c_start = 0;
     let num_ciphertexts = u64::from_le_bytes(sub_ciphertexts[c_start..c_start + 8].try_into().unwrap());
@@ -158,7 +167,7 @@ pub fn check_guest(
     let mut input = vec![0u8; input_size as usize];
     let mut offset = 0;
     let mut index = 0;
-    input[offset..offset + LABEL_SIZE].copy_from_slice(&DELTA.0);
+    input[offset..offset + LABEL_SIZE].copy_from_slice(&delta.0);
     offset += LABEL_SIZE;
     for part in 0..SUB_INPUT_GATES_PARTS {
         let sub_gates: SerializableSubCircuitGates<SUB_INPUT_GATES_PART_SIZE> = deserialize_from_bytes(&sub_gates_parts[part]);
@@ -170,7 +179,7 @@ pub fn check_guest(
                 let start_b0 = base + (gate.wire_b_id as usize) * LABEL_SIZE;
 
                 let a0 = S::from_slice(&sub_wires[start_a0..start_a0 + LABEL_SIZE]);
-                let a1 = a0 ^ DELTA;
+                let a1 = a0 ^ delta;
 
                 let h0 = a0.hash_ext(gate.gid);
                 let h1 = a1.hash_ext(gate.gid);

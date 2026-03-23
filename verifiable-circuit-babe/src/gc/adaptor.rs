@@ -174,7 +174,8 @@ mod tests {
     use ark_ec::CurveGroup;
     use ark_ff::{UniformRand, Zero, One};
     use garbled_snark_verifier::core::s::S;
-    use garbled_snark_verifier::core::utils::DELTA;
+    // Todo: change to use own delta, instead of NON_CAC_DELTA
+    use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
     use crate::dre::L;
     use crate::dre::matrices::u_bar_vec;
 
@@ -189,7 +190,7 @@ mod tests {
         let labels: Vec<[u8; 16]> = (0..L)
             .flat_map(|_| {
                 let l0 = S::random();
-                let l1 = l0 ^ DELTA;
+                let l1 = l0 ^ NON_CAC_DELTA;
                 [l0.0, l1.0]
             })
             .collect();

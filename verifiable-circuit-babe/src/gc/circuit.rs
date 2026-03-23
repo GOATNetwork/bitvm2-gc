@@ -259,7 +259,8 @@ mod tests {
     #[cfg(feature = "garbled")]
     #[test]
     fn test_output_labels() {
-        use garbled_snark_verifier::core::utils::DELTA;
+        // Todo: change to use own Delta instead of NON_CAC_DELTA
+        use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
 
         let g = random_g1_affine();
 
@@ -328,7 +329,7 @@ mod tests {
             } else {
                 assert_eq!(
                     labels_a[k] ^ labels_b[k],
-                    DELTA,
+                    NON_CAC_DELTA,
                     "k={k}: different u_bar bits → labels must differ by DELTA"
                 );
             }
