@@ -27,13 +27,12 @@ fn emit_babe_gc(
     pi_y: &[usize],
     g: G1Affine,
 ) -> Vec<usize> {
-    // R² mod p
+    // R² mod p — multiply by this constant to convert to Montgomery form
     let r_sq = Fq::as_montgomery(Fq::as_montgomery(ark_bn254::Fq::from(1u64)));
-    let r_sq_w = Fq::wires_set(bld, r_sq);
 
-    // Convert x, y to Montgomery form
-    let x_m = Fq::mul_montgomery(bld, pi_x, &r_sq_w.0);
-    let y_m = Fq::mul_montgomery(bld, pi_y, &r_sq_w.0);
+    // Convert x, y to Montgomery form using constant-multiplication (avoids Karatsuba)
+    let x_m = Fq::mul_by_constant_montgomery(bld, pi_x, r_sq);
+    let y_m = Fq::mul_by_constant_montgomery(bld, pi_y, r_sq);
 
     // Compute x², y², xy, x³ — all in Montgomery form
     let x_sq_m = Fq::square_montgomery(bld, &x_m);
@@ -47,11 +46,11 @@ fn emit_babe_gc(
     let on_curve = Fq::equal(bld, &y_sq_m, &rhs_m);
 
     // Convert x², y², xy from Montgomery back to standard form.
-    // mul_montgomery(A·R, 1) = A·R · 1 · R⁻¹ = A
-    let one_w = Fq::wires_set(bld, ark_bn254::Fq::from(1u64));
-    let x_sq = Fq::mul_montgomery(bld, &x_sq_m, &one_w.0);
-    let y_sq = Fq::mul_montgomery(bld, &y_sq_m, &one_w.0);
-    let xy = Fq::mul_montgomery(bld, &xy_m, &one_w.0);
+    // mul_by_constant_montgomery(A·R, 1) = montgomery_reduce(A·R ‖ 0) = A·R·R⁻¹ = A
+    // This skips Karatsuba entirely — saves 3 full multiplications.
+    let x_sq = Fq::mul_by_constant_montgomery(bld, &x_sq_m, ark_bn254::Fq::from(1u64));
+    let y_sq = Fq::mul_by_constant_montgomery(bld, &y_sq_m, ark_bn254::Fq::from(1u64));
+    let xy = Fq::mul_by_constant_montgomery(bld, &xy_m, ark_bn254::Fq::from(1u64));
 
     // Build ū(π)
     let mut pi_u_bar: Vec<usize> = Vec::with_capacity(L);
