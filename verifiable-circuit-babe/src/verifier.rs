@@ -19,11 +19,8 @@ impl BABEVerifier {
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
         public_inputs: &[Fr],
     ) -> Result<Self, String> {
-        use garbled_snark_verifier::core::utils::reset_gid;
-
         let mut instances = Vec::with_capacity(n_cc);
         for _ in 0..n_cc {
-            reset_gid();
             let mut inst = BABEInstance::new_from_seed(rand::random());
             inst.enc_setup(vk, public_inputs)?;
             instances.push(inst);

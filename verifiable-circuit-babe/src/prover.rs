@@ -96,6 +96,7 @@ mod tests {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use rand::SeedableRng;
+    use garbled_snark_verifier::core::utils::reset_gid;
     use crate::instance::BABEInstance;
 
     #[derive(Copy, Clone)]
@@ -117,6 +118,7 @@ mod tests {
     #[cfg(feature = "garbled")]
     #[test]
     fn test_prover_ct_prove_decrypts_message() {
+        reset_gid();
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);
 
         // 1. Groth16 setup and prove: a * b = c.
@@ -139,8 +141,6 @@ mod tests {
         verifier.enc_setup(&vk, &public_inputs).unwrap();
         println!("step 2 done: Verifier generated ct_setup");
 
-        verifier.garbled_circuit.gate_counts().print();
-
         println!("step 3 done: Adaptor table and boolean circuit ciphertexts");
 
         // 4. Verifier: compute the input labels for proof.a = π₁.
@@ -148,17 +148,19 @@ mod tests {
 
         println!("step 4 done: Groth16 constant_labels");
 
-        // 5. Prover: compute ct_prove = r·π₁ via garbled circuit + adaptor table.
+        // 5. Prover: load a fresh circuit, set constant labels, evaluate, then drop.
         let mut prover = BABEProver::new(proof.clone());
-        // fresh the circuit
-        verifier.garbled_circuit.reset_circuit_except_constants();
+        let (mut circuit, gc_output_indices) = crate::gc::read_fresh_circuit();
+        circuit.0[0].borrow_mut().label = Some(verifier.secrets.constant_0labels[0]);
+        circuit.0[1].borrow_mut().label = Some(verifier.secrets.constant_0labels[1] ^ verifier.secrets.delta);
         prover.compute_ct_prove(
-            &mut verifier.garbled_circuit,
-            &verifier.gc_output_indices,
+            &mut circuit,
+            &gc_output_indices,
             &input_labels,
             &verifier.ciphertexts,
             &verifier.adaptor_table,
         );
+        drop(circuit);
         println!("step 5 done: Groth16 constant_labels");
 
         // 6. Decrypt: msg = ct3 ⊕ RO(e(ct1, π₂) − e(π₃, ct2))

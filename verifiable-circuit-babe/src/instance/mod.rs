@@ -2,7 +2,7 @@ use ark_bn254::Fr;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ec::pairing::Pairing;
 use ark_ff::UniformRand;
-use garbled_snark_verifier::bag::{Circuit, S};
+use garbled_snark_verifier::bag::S;
 use garbled_snark_verifier::circuits::bn254::fq::Fq;
 use crate::babe::WeKnownPi1SetupCt;
 use crate::gc::SparseAdaptorTable;
@@ -18,8 +18,6 @@ pub mod commit;
 pub struct BABEInstance {
     pub seed: u64,
     pub secrets: InstanceSecrets,
-    pub garbled_circuit: Circuit,
-    pub gc_output_indices: Vec<usize>,
     pub ct_setup: WeKnownPi1SetupCt,
     pub adaptor_table: SparseAdaptorTable,
     pub ciphertexts: Vec<Option<S>>,
@@ -36,15 +34,14 @@ impl BABEInstance {
 
         let secrets = InstanceSecrets::new_from_seed(seed);
 
-        let g = ark_bn254::G1Affine::generator();
-        let (bld, gc_output_indices) = crate::gc::compile_babe_gc(g);
-        let mut garbled_circuit = bld.build(&[]);
+        // Load fresh circuit structure from pre-serialized files; drop after use.
+        let (mut circuit, gc_output_indices) = crate::gc::read_fresh_circuit();
 
         // Apply encoding keys and constant 0-labels to input wires.
-        garbled_circuit.0[0].borrow_mut().label = Some(secrets.constant_0labels[0]);
-        garbled_circuit.0[1].borrow_mut().label = Some(secrets.constant_0labels[1]);
+        circuit.0[0].borrow_mut().label = Some(secrets.constant_0labels[0]);
+        circuit.0[1].borrow_mut().label = Some(secrets.constant_0labels[1]);
         for (i, &key) in secrets.encoding_keys.iter().enumerate() {
-            garbled_circuit.0[2 + i].borrow_mut().label = Some(key);
+            circuit.0[2 + i].borrow_mut().label = Some(key);
         }
 
         // Evaluate circuit at a random pi1 to obtain output labels.
@@ -53,11 +50,11 @@ impl BABEInstance {
             .into_iter()
             .chain(Fq::to_bits(pi1.y).into_iter())
             .collect();
-        garbled_circuit.set_witness_value(&witness);
-        for gate in &mut garbled_circuit.1 {
+        circuit.set_witness_value(&witness);
+        for gate in &mut circuit.1 {
             gate.evaluate();
         }
-        let ciphertexts = garbled_circuit.garbled_gates_with_delta(secrets.delta);
+        let ciphertexts = circuit.garbled_gates_with_delta(secrets.delta);
 
         // Recover label0 for each output wire.
         let delta = secrets.delta;
@@ -66,9 +63,9 @@ impl BABEInstance {
             .iter()
             .zip(u_bar_pi1.iter())
             .flat_map(|(idx, u)| {
-                let current = garbled_circuit.0[*idx]
+                let current = circuit.0[*idx]
                     .borrow()
-                    .select_with_delta(garbled_circuit.0[*idx].borrow().get_value(), delta);
+                    .select_with_delta(circuit.0[*idx].borrow().get_value(), delta);
                 let label_0 = if u.is_zero() { current } else { current ^ delta };
                 [label_0.0, (label_0 ^ delta).0]
             })
@@ -81,16 +78,11 @@ impl BABEInstance {
             &secrets.fq_deltas,
         );
 
-        // fresh the garbled circuit
-        if !garbled_circuit.is_fresh() {
-            garbled_circuit.reset_circuit_except_constants();
-        }
+        // circuit is dropped here — not stored in the instance.
 
         Self {
             seed,
             secrets,
-            garbled_circuit,
-            gc_output_indices,
             ct_setup: WeKnownPi1SetupCt { ct2_r_delta_g2: vec![], ct3_masked_msg: vec![] },
             adaptor_table,
             ciphertexts,

@@ -35,11 +35,9 @@ pub fn verify_opened_instances(
     vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
     public_inputs: &[Fr],
 ) -> Result<(), String> {
-    use garbled_snark_verifier::core::utils::reset_gid;
     use crate::instance::BABEInstance;
 
     for &(idx, seed) in opened {
-        reset_gid();
         let mut inst = BABEInstance::new_from_seed(seed);
         inst.enc_setup(vk, public_inputs)
             .map_err(|e| format!("instance {idx}: enc_setup failed: {e}"))?;
@@ -147,12 +145,12 @@ mod tests {
         let elapsed = now.elapsed();
         println!("Verifier open for {TEST_N_CC} instances (finalizing {TEST_M_CC}) took {elapsed:.2?}");
 
-        // // Prover verifies opened instances by re-deriving from seed.
-        // verify_opened_instances(&package, &opened, &vk, &public_inputs)
-        //     .expect("opened instance verification failed");
-        //
-        // // Prover verifies finalized instances via com_gc / com_adaptor.
-        // verify_finalized_instances(&package, &finalized)
-        //     .expect("finalized instance verification failed");
+        // Prover verifies opened instances by re-deriving from seed.
+        verify_opened_instances(&package, &opened, &vk, &public_inputs)
+            .expect("opened instance verification failed");
+
+        // Prover verifies finalized instances via com_gc / com_adaptor.
+        verify_finalized_instances(&package, &finalized)
+            .expect("finalized instance verification failed");
     }
 }

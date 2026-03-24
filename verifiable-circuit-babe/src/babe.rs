@@ -207,13 +207,6 @@ pub struct VerifierSetupPackage {
     /// constant_labels[1] = label for wire 1 (value=true)
     #[cfg(feature = "garbled")]
     pub constant_labels: [[u8; 16]; 2],
-    /// Garbled circuit structure (labels and values cleared after reset).
-    /// Stored here so the Prover does not need to recompute it.
-    #[cfg(feature = "garbled")]
-    pub circuit: garbled_snark_verifier::bag::Circuit,
-    /// Indices into `circuit.0` that correspond to the GC output wires.
-    #[cfg(feature = "garbled")]
-    pub gc_output_indices: Vec<usize>,
 }
 
 /// What the Prover sends to the Verifier during setup.
@@ -293,9 +286,6 @@ pub fn babe_verifier_setup(
     vk: &Groth16VerifyingKey<Bn254>,
     public_inputs: &[Fr],
 ) -> (VerifierSetupPackage, BabeVerifierPrivate) {
-    use garbled_snark_verifier::core::utils::reset_gid;
-
-    reset_gid();
     let start = std::time::Instant::now();
     let mut verifier = BABEInstance::new_from_seed(rand::random());
     verifier.enc_setup(vk, public_inputs).expect("enc_setup failed");
@@ -316,10 +306,6 @@ pub fn babe_verifier_setup(
     let elapsed = start.elapsed();
     println!("Computed epk and h_ek in {:.2?}", elapsed);
 
-    let mut circuit = verifier.garbled_circuit;
-    circuit.reset_circuit_except_constants();
-    let gc_output_indices = verifier.gc_output_indices;
-
     let pkg = VerifierSetupPackage {
         ct_setup: verifier.ct_setup.clone(),
         gc_ciphertexts,
@@ -328,8 +314,6 @@ pub fn babe_verifier_setup(
         h_ek,
         h_msg,
         constant_labels: [const_label_0, const_label_1],
-        circuit,
-        gc_output_indices,
     };
 
     let private = BabeVerifierPrivate {
@@ -447,37 +431,31 @@ pub fn babe_prover_wrongly_challenged(
     let pi2 = proof.b.into_group();
     let pi3 = proof.c.into_group();
 
-    // 1. Use the pre-built circuit from verifier_pkg (already reset after verifier setup).
-    let circuit = &mut verifier_pkg.circuit;
-    if !circuit.is_fresh() {
-        circuit.reset_circuit_except_constants();
-    }
-
-    let gc_output_indices = &verifier_pkg.gc_output_indices;
-
-    // 2. Set constant wire labels from verifier's setup package.
+    // 1. Load a fresh circuit from file; set constant labels; drop after use.
+    let (mut circuit, gc_output_indices) = crate::gc::read_fresh_circuit();
     circuit.0[0].borrow_mut().label = Some(S(verifier_pkg.constant_labels[0]));
     circuit.0[1].borrow_mut().label = Some(S(verifier_pkg.constant_labels[1]));
 
-    // 3. Set input wire labels from the challenge witness (L from verifier).
+    // 2. Set input wire labels from the challenge witness (L from verifier).
     for (i, &label) in challenge_witness.input_labels.iter().enumerate() {
         circuit.0[2 + i].borrow_mut().label = Some(S(label));
     }
 
-    // 4. Set witness values (π₁ bits) and evaluate all gates.
+    // 3. Set witness values (π₁ bits) and evaluate all gates.
     let bits = pi1_to_bits(&pi1);
     circuit.set_witness_value(&bits);
     for gate in &mut circuit.1 {
         gate.evaluate();
     }
 
-    // 5. Garbled evaluation: propagate labels through encrypted gate tables.
+    // 4. Garbled evaluation: propagate labels through encrypted gate tables.
     circuit.garbled_evaluate_without_delta(&verifier_pkg.gc_ciphertexts);
 
-    // 6. Collect output labels for all L output wires.
+    // 5. Collect output labels for all L output wires.
     let output_labels: Vec<[u8; 16]> = gc_output_indices.iter().map(|i| {
         circuit.0[*i].borrow().get_label().0
     }).collect();
+    // circuit dropped here.
 
     // 7. Compute ū(π₁) and decrypt adaptor table entries.
     let u_bar = u_bar_vec(&pi1);
