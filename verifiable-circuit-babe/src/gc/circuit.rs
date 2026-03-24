@@ -1,4 +1,5 @@
 use ark_bn254::G1Affine;
+use sha2::{Digest, Sha256};
 use garbled_snark_verifier::circuits::sect233k1::builder::{CircuitAdapter, CircuitTrait};
 use garbled_snark_verifier::dv_bn254::basic::selector;
 use garbled_snark_verifier::dv_bn254::fp254impl::Fp254Impl;
@@ -91,6 +92,20 @@ fn g_u_bar_indices(bld: &mut CircuitAdapter, g: G1Affine) -> Vec<usize> {
 
     assert_eq!(indices.len(), L);
     indices
+}
+
+/// SHA256 commitment to a `Vec<Option<S>>` GC ciphertext list.
+/// None entries contribute a 0x00 byte; Some(s) contributes 0x01 || s.0.
+#[cfg(feature = "garbled")]
+pub fn gc_ciphertexts_commit(ciphertexts: &[Option<garbled_snark_verifier::bag::S>]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    for ct in ciphertexts {
+        match ct {
+            None => hasher.update([0u8]),
+            Some(s) => { hasher.update([1u8]); hasher.update(s.0); }
+        }
+    }
+    hasher.finalize().into()
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 use ark_bn254::G1Projective;
-use ark_ec::{AffineRepr, CurveGroup};
+use ark_ec::CurveGroup;
 use ark_ff::{One, Zero};
 use ark_groth16::Proof as Groth16Proof;
 use ark_serialize::CanonicalSerialize;
@@ -96,7 +96,7 @@ mod tests {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use rand::SeedableRng;
-    use crate::verifier::BABEInstance;
+    use crate::instance::BABEInstance;
 
     #[derive(Copy, Clone)]
     struct DummyMulCircuit<F: PrimeField> {

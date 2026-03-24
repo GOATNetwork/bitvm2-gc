@@ -1,5 +1,7 @@
 use ark_bn254::{Fq, Fr, G1Affine, G1Projective};
 use ark_ff::Zero;
+use ark_serialize::CanonicalSerialize;
+use sha2::{Digest, Sha256};
 use crate::dre::{DREDecoding, L, N};
 use crate::dre::matrices::{build_d_i_sparse, nonzero_col_indices};
 use crate::gc::utils::{aes_dec, aes_enc, prf_fq};
@@ -69,6 +71,23 @@ impl SparseAdaptorTable {
             .collect();
 
         SparseAdaptorTable { entries }
+    }
+
+    /// SHA256 over all ciphertexts and Fq offsets in entry/row order.
+    /// Used by the Prover to verify an opened C&C instance's adaptor table.
+    pub fn commit(&self) -> [u8; 32] {
+        let mut hasher = Sha256::new();
+        for entry in &self.entries {
+            for row in [&entry.x, &entry.y, &entry.z] {
+                for ct in &row.cts {
+                    hasher.update(ct.as_slice());
+                }
+                let mut buf = Vec::new();
+                row.offset.serialize_compressed(&mut buf).expect("serialize Fq offset");
+                hasher.update(&buf);
+            }
+        }
+        hasher.finalize().into()
     }
 
     pub fn build_in_zkvm(
