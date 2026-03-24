@@ -20,6 +20,12 @@ use crate::utils::{g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_se
 /// Number of bits in π₁ (G1Affine): 254 bits for x + 254 bits for y.
 pub const LAMPORT_N: usize = 508;
 
+/// Total number of C&C instances the Verifier creates and commits to.
+pub const N_CC: usize = 181;
+
+/// Number of instances the Prover finalizes (keeps hidden); rest are opened.
+pub const M_CC: usize = 4;
+
 /// Byte size of a Lamport signature on-chain: LAMPORT_N revealed 16-byte secrets.
 pub const LAMPORT_SIG_BYTES: usize = LAMPORT_N * 16; // 8,128 bytes
 

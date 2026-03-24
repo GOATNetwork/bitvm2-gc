@@ -11,11 +11,13 @@ pub type Ct = [u8; 32];
 
 /// Ciphertexts for ubar=0.
 /// `offset` = Σ_k s_k = Σ_k (prf_fq(label_1_k) - D_k).
+#[derive(Clone)]
 pub struct SparseAdaptorRow {
     pub cts: Vec<Ct>,
     pub offset: Fq,
 }
 
+#[derive(Clone)]
 pub struct SparseAdaptorEntry {
     pub x: SparseAdaptorRow,
     pub y: SparseAdaptorRow,
@@ -24,6 +26,7 @@ pub struct SparseAdaptorEntry {
 
 /// Adaptor table storing ciphertexts only for structurally nonzero D entries.
 /// Reduces size by ~1.87× vs the dense table.
+#[derive(Clone)]
 pub struct SparseAdaptorTable {
     pub entries: Vec<SparseAdaptorEntry>,
 }
