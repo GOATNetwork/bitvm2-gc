@@ -143,6 +143,7 @@ impl BABEInstance {
         labels
     }
 
+    #[cfg(feature = "garbled")]
     pub fn commit(&self) -> CACInstanceCommit {
         CACInstanceCommit::from_instance(self)
     }

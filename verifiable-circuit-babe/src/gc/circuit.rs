@@ -96,7 +96,6 @@ fn g_u_bar_indices(bld: &mut CircuitAdapter, g: G1Affine) -> Vec<usize> {
 
 /// SHA256 commitment to a `Vec<Option<S>>` GC ciphertext list.
 /// None entries contribute a 0x00 byte; Some(s) contributes 0x01 || s.0.
-#[cfg(feature = "garbled")]
 pub fn gc_ciphertexts_commit(ciphertexts: &[Option<garbled_snark_verifier::bag::S>]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     for ct in ciphertexts {

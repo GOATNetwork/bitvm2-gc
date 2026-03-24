@@ -18,7 +18,6 @@ pub struct CACInstanceCommit {
 }
 
 impl CACInstanceCommit {
-    #[cfg(feature = "garbled")]
     pub fn from_instance(instance: &BABEInstance) -> Self {
         let delta = instance.secrets.delta;
 

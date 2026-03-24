@@ -147,7 +147,6 @@ impl EncodingKeyPublic {
 }
 
 /// Compute epk from the verifier's private 0-labels using an explicit delta.
-#[cfg(feature = "garbled")]
 pub fn compute_epk_with_delta(
     encoding_keys: &[garbled_snark_verifier::bag::S],
     delta: garbled_snark_verifier::bag::S,
@@ -159,7 +158,6 @@ pub fn compute_epk_with_delta(
 }
 
 /// Compute epk for the non-C&C path (uses NON_CAC_DELTA).
-#[cfg(feature = "garbled")]
 pub fn compute_epk(encoding_keys: &[garbled_snark_verifier::bag::S]) -> EncodingKeyPublic {
     use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
     compute_epk_with_delta(encoding_keys, NON_CAC_DELTA)
