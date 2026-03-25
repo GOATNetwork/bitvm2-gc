@@ -1,5 +1,5 @@
 use ark_bn254::G1Projective;
-use ark_ec::CurveGroup;
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{One, Zero};
 use ark_groth16::Proof as Groth16Proof;
 use ark_serialize::CanonicalSerialize;
@@ -28,13 +28,13 @@ impl BABEProver {
             ct_prove: WeKnownPi1ProveCt { ct1_r_pi1: vec![] },
         }
     }
-
+    
     #[cfg(feature = "garbled")]
     pub fn compute_ct_prove(
         &mut self,
         garbled_circuit: &mut Circuit,
         gc_output_indices: &[usize],
-        input_labels: &Vec<S>,
+        input_labels: &[S],
         ciphertext: &[Option<S>],
         adaptor_table: &SparseAdaptorTable,
     ) {

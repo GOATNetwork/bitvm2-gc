@@ -1,0 +1,19 @@
+[package]
+name = "soldering-host"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+zkm-sdk = { workspace = true }
+verifiable-circuit-babe = { workspace = true, features = ["garbled"] }
+garbled-snark-verifier = { workspace = true }
+ark-bn254 = { version = "0.5.0", features = ["curve", "scalar_field"], default-features = false }
+ark-groth16 = "0.5.0"
+ark-ff = "0.5.0"
+ark-relations = "0.5.0"
+ark-crypto-primitives = "0.5.0"
+rand = "0.8.5"
+tracing = "0.1"
+
+[build-dependencies]
+zkm-build = { workspace = true }

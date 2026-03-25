@@ -1,0 +1,8 @@
+[package]
+name = "soldering-guest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+zkm-zkvm = { workspace = true, features = ["embedded"] }
+verifiable-circuit-babe = { workspace = true }

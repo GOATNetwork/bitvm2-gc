@@ -5884,6 +5884,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "soldering-guest"
+version = "1.1.0"
+dependencies = [
+ "verifiable-circuit-babe",
+ "zkm-zkvm",
+]
+
+[[package]]
+name = "soldering-host"
+version = "1.1.0"
+dependencies = [
+ "ark-bn254",
+ "ark-crypto-primitives",
+ "ark-ff 0.5.0",
+ "ark-groth16",
+ "ark-relations",
+ "garbled-snark-verifier",
+ "rand 0.8.5",
+ "tracing",
+ "verifiable-circuit-babe",
+ "zkm-build",
+ "zkm-sdk",
+]
+
+[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

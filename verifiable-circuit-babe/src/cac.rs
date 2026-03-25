@@ -3,31 +3,58 @@ use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use crate::instance::commit::CACInstanceCommit;
 use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable};
 use garbled_snark_verifier::bag::S;
+use rand::Rng;
+use rand_chacha::ChaCha12Rng;
+use rand::SeedableRng;
+use sha2::{Digest, Sha256};
 
 /// What the Verifier sends to the Prover during the C&C commit phase.
 pub struct CACSetupPackage {
-    /// One commit per C&C instance, in instance order.
     pub commits: Vec<CACInstanceCommit>,
 }
 
+/// Derive the finalized instance indices deterministically from the committed values.
+pub fn cac_finalize_indices(package: &CACSetupPackage, m_cc: usize) -> Vec<usize> {
+    let n_cc = package.commits.len();
+    assert!(m_cc <= n_cc, "m_cc ({m_cc}) must be <= n_cc ({n_cc})");
+
+    let mut hasher = Sha256::new();
+    for commit in &package.commits {
+        for wire_pair in &commit.input_commits {
+            hasher.update(wire_pair[0]);
+            hasher.update(wire_pair[1]);
+        }
+        for wire_pair in &commit.constant_commits {
+            hasher.update(wire_pair[0]);
+            hasher.update(wire_pair[1]);
+        }
+        hasher.update(commit.h_msg);
+        hasher.update(&commit.ct_setup.ct2_r_delta_g2);
+        hasher.update(&commit.ct_setup.ct3_masked_msg);
+        hasher.update(commit.com_adaptor);
+        hasher.update(commit.com_gc);
+    }
+    let seed: [u8; 32] = hasher.finalize().into();
+    let mut rng = ChaCha12Rng::from_seed(seed);
+
+    let mut seen = std::collections::HashSet::new();
+    let mut indices = Vec::with_capacity(m_cc);
+    while indices.len() < m_cc {
+        let idx = rng.gen_range(0..n_cc);
+        if seen.insert(idx) {
+            indices.push(idx);
+        }
+    }
+    indices
+}
+
 /// GC data the Verifier reveals for each finalized (kept) instance.
-/// Sent together with the opened seeds in the C&C open round.
 pub struct FinalizedInstanceData {
-    /// Index into the original N_CC instance list.
     pub index: usize,
-    /// Gate ciphertexts — None for free (XOR/NOT) gates, Some(S) for others.
     pub gc_ciphertexts: Vec<Option<S>>,
-    /// DRE adaptor table mapping output labels to r-encoded field elements.
     pub adaptor_table: SparseAdaptorTable,
 }
 
-// ─── Step 3.1: Prover-side C&C verification ───────────────────────────────────
-
-/// Verify all opened instances by re-deriving each from its seed and comparing
-/// against the corresponding committed values.
-///
-/// The Prover calls this after receiving `opened` seeds from the Verifier.
-/// `vk` and `public_inputs` are public — the Prover knows them.
 #[cfg(feature = "garbled")]
 pub fn verify_opened_instances(
     package: &CACSetupPackage,
@@ -48,12 +75,24 @@ pub fn verify_opened_instances(
             let recomputed = inst.commit();
             let committed = &package.commits[idx];
 
-            if recomputed.input_commits    != committed.input_commits    { return Err(format!("instance {idx}: input_commits mismatch")); }
-            if recomputed.constant_commits != committed.constant_commits { return Err(format!("instance {idx}: constant_commits mismatch")); }
-            if recomputed.h_msg            != committed.h_msg            { return Err(format!("instance {idx}: h_msg mismatch")); }
-            if recomputed.ct_setup         != committed.ct_setup         { return Err(format!("instance {idx}: ct_setup mismatch")); }
-            if recomputed.com_adaptor      != committed.com_adaptor      { return Err(format!("instance {idx}: com_adaptor mismatch")); }
-            if recomputed.com_gc           != committed.com_gc           { return Err(format!("instance {idx}: com_gc mismatch")); }
+            if recomputed.input_commits != committed.input_commits {
+                return Err(format!("instance {idx}: input_commits mismatch"));
+            }
+            if recomputed.constant_commits != committed.constant_commits {
+                return Err(format!("instance {idx}: constant_commits mismatch"));
+            }
+            if recomputed.h_msg != committed.h_msg {
+                return Err(format!("instance {idx}: h_msg mismatch"));
+            }
+            if recomputed.ct_setup != committed.ct_setup {
+                return Err(format!("instance {idx}: ct_setup mismatch"));
+            }
+            if recomputed.com_adaptor != committed.com_adaptor {
+                return Err(format!("instance {idx}: com_adaptor mismatch"));
+            }
+            if recomputed.com_gc != committed.com_gc {
+                return Err(format!("instance {idx}: com_gc mismatch"));
+            }
             Ok(())
         })
         .collect::<Vec<_>>()
@@ -62,10 +101,6 @@ pub fn verify_opened_instances(
     Ok(())
 }
 
-/// Verify finalized instances by hashing the received GC data and comparing
-/// against the committed `com_gc` and `com_adaptor`.
-///
-/// The Prover calls this after receiving `finalized` GC data from the Verifier.
 #[cfg(feature = "garbled")]
 pub fn verify_finalized_instances(
     package: &CACSetupPackage,
@@ -96,7 +131,6 @@ mod tests {
     use rand::SeedableRng;
     use crate::verifier::BABEVerifier;
 
-    // Small values so the test completes in reasonable time.
     const TEST_N_CC: usize = 10;
     const TEST_M_CC: usize = 4;
 
@@ -119,7 +153,7 @@ mod tests {
     #[test]
     #[cfg(feature = "garbled")]
     fn test_cac_commit_open_verify() {
-        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);
+        let mut rng = ChaCha12Rng::seed_from_u64(42);
 
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
@@ -141,8 +175,7 @@ mod tests {
         let elapsed = now.elapsed();
         println!("Verifier commit for {TEST_N_CC} instances took {elapsed:.2?}");
 
-        // Prover picks the finalized set (in production: random challenge).
-        let finalized_indices: Vec<usize> = (0..TEST_M_CC).collect();
+        let finalized_indices = cac_finalize_indices(&package, TEST_M_CC);
 
         // Verifier opens: seeds for the rest, GC data for finalized.
         let now = std::time::Instant::now();
@@ -158,7 +191,6 @@ mod tests {
             .expect("opened instance verification failed");
         let elapsed = now.elapsed();
         println!("Prover verification of opened instances took {elapsed:.2?}");
-
 
         // Prover verifies finalized instances via com_gc / com_adaptor.
         let now = std::time::Instant::now();

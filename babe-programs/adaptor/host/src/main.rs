@@ -2,7 +2,7 @@ use ark_bn254::{Fq, Fr, G1Affine};
 use ark_ff::{UniformRand, Zero};
 use ark_serialize::CanonicalSerialize;
 use garbled_snark_verifier::core::s::S;
-use garbled_snark_verifier::core::utils::DELTA;
+use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
 use rand::thread_rng;
 use sha2::{Digest, Sha256};
 use zkm_sdk::{include_elf, utils, ProverClient, ZKMStdin};
@@ -37,7 +37,7 @@ fn main() {
     let labels: Vec<[u8; 16]> = (0..L)
         .flat_map(|_| {
             let l0 = S::random();
-            let l1 = l0 ^ DELTA;
+            let l1 = l0 ^ NON_CAC_DELTA;
             [l0.0, l1.0]
         })
         .collect();

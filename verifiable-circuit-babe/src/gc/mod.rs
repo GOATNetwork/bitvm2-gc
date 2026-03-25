@@ -13,18 +13,19 @@ use garbled_snark_verifier::core::gate::GateType;
 use garbled_snark_verifier::core::utils::SerializableGate;
 pub use utils::*;
 
-pub const GC_GATES_FILE: &str = "babe_gc_gates.bin";
-pub const GC_INDICES_FILE: &str = "babe_gc_indices.bin";
+/// Absolute path to the gates file
+const GC_GATES_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/", "babe_gc_gates.bin");
+const GC_INDICES_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/", "babe_gc_indices.bin");
 
 /// Raw circuit bytes cached on first read.
 static CIRCUIT_BYTES: OnceLock<(Vec<u8>, Vec<u8>)> = OnceLock::new();
 
 pub fn read_fresh_circuit() -> (Circuit, Vec<usize>) {
     let (gates_bytes, indices_bytes) = CIRCUIT_BYTES.get_or_init(|| {
-        let g = fs::read(GC_GATES_FILE)
-            .unwrap_or_else(|_| panic!("'{}' not found — run `cargo test test_babe_gc_serialize_roundtrip -- --ignored` to generate it.", GC_GATES_FILE));
-        let i = fs::read(GC_INDICES_FILE)
-            .unwrap_or_else(|_| panic!("'{}' not found — run `cargo test test_babe_gc_serialize_roundtrip -- --ignored` to generate it.", GC_INDICES_FILE));
+        let g = fs::read(GC_GATES_PATH)
+            .unwrap_or_else(|_| panic!("'{}' not found — run `cargo test test_babe_gc_serialize_roundtrip -- --ignored` to generate it.", GC_GATES_PATH));
+        let i = fs::read(GC_INDICES_PATH)
+            .unwrap_or_else(|_| panic!("'{}' not found — run `cargo test test_babe_gc_serialize_roundtrip -- --ignored` to generate it.", GC_INDICES_PATH));
         (g, i)
     });
 
@@ -58,7 +59,7 @@ mod tests {
     use ark_bn254::G1Affine;
     use ark_ec::AffineRepr;
     use garbled_snark_verifier::core::utils::{reset_gid, SerializableGate};
-    use super::{compile_babe_gc, GC_GATES_FILE, GC_INDICES_FILE};
+    use super::{compile_babe_gc, GC_GATES_PATH, GC_INDICES_PATH};
 
     #[test]
     #[ignore]
@@ -80,11 +81,11 @@ mod tests {
             gid: gate.gid,
         }).collect();
         let gates_bytes = bincode::serialize(&(num_wires, &gates)).expect("serialize gates");
-        fs::write(GC_GATES_FILE, &gates_bytes).expect("write gates");
+        fs::write(GC_GATES_PATH, &gates_bytes).expect("write gates");
 
         // File 2: Vec<usize> output indices
         let indices_bytes = bincode::serialize(&output_indices).expect("serialize indices");
-        fs::write(GC_INDICES_FILE, &indices_bytes).expect("write indices");
+        fs::write(GC_INDICES_PATH, &indices_bytes).expect("write indices");
 
 
         // --- Reconstruct Circuit ---

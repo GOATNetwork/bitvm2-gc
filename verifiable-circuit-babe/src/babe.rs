@@ -510,8 +510,11 @@ pub fn babe_prover_withdraw(sig_v_presig: BabeBtcSig) -> TxWithdrawWitness {
 
 // ─── Utility functions (WE primitives) ───────────────────────────────────────
 
+#[inline(always)]
 pub fn h(data: &[u8]) -> [u8; 32] {
-    *blake3::hash(data).as_bytes()
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher.finalize().into()
 }
 
 /// h_msg = SHA256(secret_msg) — the hashlock value.
