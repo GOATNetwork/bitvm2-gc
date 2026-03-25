@@ -37,21 +37,28 @@ pub fn verify_opened_instances(
 ) -> Result<(), String> {
     use crate::instance::BABEInstance;
 
-    for &(idx, seed) in opened {
-        let mut inst = BABEInstance::new_from_seed(seed);
-        inst.enc_setup(vk, public_inputs)
-            .map_err(|e| format!("instance {idx}: enc_setup failed: {e}"))?;
+    let results: Vec<Result<(), String>> = std::thread::scope(|s| {
+        let handles: Vec<_> = opened.iter().map(|&(idx, seed)| {
+            s.spawn(move || {
+                let mut inst = BABEInstance::new_from_seed(seed);
+                inst.enc_setup(vk, public_inputs)
+                    .map_err(|e| format!("instance {idx}: enc_setup failed: {e}"))?;
 
-        let recomputed = inst.commit();
-        let committed = &package.commits[idx];
+                let recomputed = inst.commit();
+                let committed = &package.commits[idx];
 
-        if recomputed.input_commits    != committed.input_commits    { return Err(format!("instance {idx}: input_commits mismatch")); }
-        if recomputed.constant_commits != committed.constant_commits { return Err(format!("instance {idx}: constant_commits mismatch")); }
-        if recomputed.h_msg            != committed.h_msg            { return Err(format!("instance {idx}: h_msg mismatch")); }
-        if recomputed.ct_setup         != committed.ct_setup         { return Err(format!("instance {idx}: ct_setup mismatch")); }
-        if recomputed.com_adaptor      != committed.com_adaptor      { return Err(format!("instance {idx}: com_adaptor mismatch")); }
-        if recomputed.com_gc           != committed.com_gc           { return Err(format!("instance {idx}: com_gc mismatch")); }
-    }
+                if recomputed.input_commits    != committed.input_commits    { return Err(format!("instance {idx}: input_commits mismatch")); }
+                if recomputed.constant_commits != committed.constant_commits { return Err(format!("instance {idx}: constant_commits mismatch")); }
+                if recomputed.h_msg            != committed.h_msg            { return Err(format!("instance {idx}: h_msg mismatch")); }
+                if recomputed.ct_setup         != committed.ct_setup         { return Err(format!("instance {idx}: ct_setup mismatch")); }
+                if recomputed.com_adaptor      != committed.com_adaptor      { return Err(format!("instance {idx}: com_adaptor mismatch")); }
+                if recomputed.com_gc           != committed.com_gc           { return Err(format!("instance {idx}: com_gc mismatch")); }
+                Ok(())
+            })
+        }).collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    results.into_iter().collect::<Result<Vec<_>, _>>()?;
     Ok(())
 }
 
@@ -145,12 +152,19 @@ mod tests {
         let elapsed = now.elapsed();
         println!("Verifier open for {TEST_N_CC} instances (finalizing {TEST_M_CC}) took {elapsed:.2?}");
 
+        let now = std::time::Instant::now();
         // Prover verifies opened instances by re-deriving from seed.
         verify_opened_instances(&package, &opened, &vk, &public_inputs)
             .expect("opened instance verification failed");
+        let elapsed = now.elapsed();
+        println!("Prover verification of opened instances took {elapsed:.2?}");
+
 
         // Prover verifies finalized instances via com_gc / com_adaptor.
+        let now = std::time::Instant::now();
         verify_finalized_instances(&package, &finalized)
             .expect("finalized instance verification failed");
+        let elapsed = now.elapsed();
+        println!("Prover verification of finalized instances took {elapsed:.2?}");
     }
 }

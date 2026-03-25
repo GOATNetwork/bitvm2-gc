@@ -48,7 +48,6 @@ fn emit_babe_gc(
 
     // Convert x², y², xy from Montgomery back to standard form.
     // mul_by_constant_montgomery(A·R, 1) = montgomery_reduce(A·R ‖ 0) = A·R·R⁻¹ = A
-    // This skips Karatsuba entirely — saves 3 full multiplications.
     let x_sq = Fq::mul_by_constant_montgomery(bld, &x_sq_m, ark_bn254::Fq::from(1u64));
     let y_sq = Fq::mul_by_constant_montgomery(bld, &y_sq_m, ark_bn254::Fq::from(1u64));
     let xy = Fq::mul_by_constant_montgomery(bld, &xy_m, ark_bn254::Fq::from(1u64));
