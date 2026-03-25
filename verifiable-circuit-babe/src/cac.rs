@@ -37,28 +37,28 @@ pub fn verify_opened_instances(
 ) -> Result<(), String> {
     use crate::instance::BABEInstance;
 
-    let results: Vec<Result<(), String>> = std::thread::scope(|s| {
-        let handles: Vec<_> = opened.iter().map(|&(idx, seed)| {
-            s.spawn(move || {
-                let mut inst = BABEInstance::new_from_seed(seed);
-                inst.enc_setup(vk, public_inputs)
-                    .map_err(|e| format!("instance {idx}: enc_setup failed: {e}"))?;
+    use p3_maybe_rayon::prelude::*;
+    opened
+        .par_iter()
+        .map(|&(idx, seed)| {
+            let mut inst = BABEInstance::new_from_seed(seed);
+            inst.enc_setup(vk, public_inputs)
+                .map_err(|e| format!("instance {idx}: enc_setup failed: {e}"))?;
 
-                let recomputed = inst.commit();
-                let committed = &package.commits[idx];
+            let recomputed = inst.commit();
+            let committed = &package.commits[idx];
 
-                if recomputed.input_commits    != committed.input_commits    { return Err(format!("instance {idx}: input_commits mismatch")); }
-                if recomputed.constant_commits != committed.constant_commits { return Err(format!("instance {idx}: constant_commits mismatch")); }
-                if recomputed.h_msg            != committed.h_msg            { return Err(format!("instance {idx}: h_msg mismatch")); }
-                if recomputed.ct_setup         != committed.ct_setup         { return Err(format!("instance {idx}: ct_setup mismatch")); }
-                if recomputed.com_adaptor      != committed.com_adaptor      { return Err(format!("instance {idx}: com_adaptor mismatch")); }
-                if recomputed.com_gc           != committed.com_gc           { return Err(format!("instance {idx}: com_gc mismatch")); }
-                Ok(())
-            })
-        }).collect();
-        handles.into_iter().map(|h| h.join().unwrap()).collect()
-    });
-    results.into_iter().collect::<Result<Vec<_>, _>>()?;
+            if recomputed.input_commits    != committed.input_commits    { return Err(format!("instance {idx}: input_commits mismatch")); }
+            if recomputed.constant_commits != committed.constant_commits { return Err(format!("instance {idx}: constant_commits mismatch")); }
+            if recomputed.h_msg            != committed.h_msg            { return Err(format!("instance {idx}: h_msg mismatch")); }
+            if recomputed.ct_setup         != committed.ct_setup         { return Err(format!("instance {idx}: ct_setup mismatch")); }
+            if recomputed.com_adaptor      != committed.com_adaptor      { return Err(format!("instance {idx}: com_adaptor mismatch")); }
+            if recomputed.com_gc           != committed.com_gc           { return Err(format!("instance {idx}: com_gc mismatch")); }
+            Ok(())
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(())
 }
 

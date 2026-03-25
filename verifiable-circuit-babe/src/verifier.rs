@@ -19,18 +19,18 @@ impl BABEVerifier {
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
         public_inputs: &[Fr],
     ) -> Result<Self, String> {
+        use p3_maybe_rayon::prelude::*;
         let seeds: Vec<u64> = (0..n_cc).map(|_| rand::random()).collect();
-        let instances: Vec<Result<BABEInstance, String>> = std::thread::scope(|s| {
-            let handles: Vec<_> = seeds.iter().map(|&seed| {
-                s.spawn(move || {
-                    let mut inst = BABEInstance::new_from_seed(seed);
-                    inst.enc_setup(vk, public_inputs)?;
-                    Ok::<BABEInstance, String>(inst)
-                })
-            }).collect();
-            handles.into_iter().map(|h| h.join().unwrap()).collect()
-        });
-        let instances = instances.into_iter().collect::<Result<Vec<_>, _>>()?;
+        let instances = seeds
+            .par_iter()
+            .map(|&seed| {
+                let mut inst = BABEInstance::new_from_seed(seed);
+                inst.enc_setup(vk, public_inputs)?;
+                Ok::<BABEInstance, String>(inst)
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Self { instances })
     }
 
