@@ -126,16 +126,10 @@ impl BABEProver {
             &base_full,
             h_msgs_onchain[0]
         );
-        if base_res.is_ok() {
-            if base_res.unwrap() {
-                return true;
-            } else {
-                // This should not happen since the base instance is finalized, but we can still try other instances.
-                println!("Warning: base instance did not yield valid msg, trying non-base instances...");
-            }
-        } else {
-            // Print errors for base instance
-            println!("Error evaluating base instance: {}", base_res.err().unwrap());
+        match base_res {
+            Ok(true) => return true,
+            Ok(false) => eprintln!("Warning: base instance did not yield valid msg"),
+            Err(e) => eprintln!("Error evaluating base instance: {e}"),
         }
 
         // If cant get valid msg from base instance, try non-base instances using per-wire deltas.
@@ -161,16 +155,10 @@ impl BABEProver {
                 &full,
                 h_msgs_onchain[i]
             );
-            if temp.is_ok() {
-                if temp.unwrap() {
-                    return true;
-                } else {
-                    // This should not happen since the instance is finalized, but we can still try other instances.
-                    println!("Warning: instance did not yield valid msg, trying another non-base instances...");
-                }
-            } else {
-                // Print errors for base instance
-                println!("Error evaluating non-base instance: {}", temp.err().unwrap());
+            match temp {
+                Ok(true) => return true,
+                Ok(false) => eprintln!("Warning: non-base instance: {i} did not yield valid msg"),
+                Err(e) => eprintln!("Error evaluating non-base instance: {e}"),
             }
         }
 
@@ -297,6 +285,7 @@ impl BABEProver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::marker::PhantomData;
     use ark_bn254::{Bn254, Fr};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ff::PrimeField;
@@ -304,15 +293,21 @@ mod tests {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use rand::SeedableRng;
     use garbled_snark_verifier::core::utils::reset_gid;
+    use crate::cac::{cac_finalize_indices, verify_finalized_instances};
     use crate::instance::BABEInstance;
+    use crate::soldering::{build_soldered_wires_input, soldering_guest_compute, SolderingProof};
+    use crate::verifier::BABEVerifier;
+
+    const TEST_N_CC: usize = 4;
+    const TEST_M_CC: usize = 2;
 
     #[derive(Copy, Clone)]
-    struct DummyMulCircuit<F: PrimeField> {
+    struct DummyCircuit<F: PrimeField> {
         a: Option<F>,
         b: Option<F>,
     }
 
-    impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
+    impl<F: PrimeField> ConstraintSynthesizer<F> for DummyCircuit<F> {
         fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
             let a = cs.new_witness_variable(|| self.a.ok_or(SynthesisError::AssignmentMissing))?;
             let b = cs.new_witness_variable(|| self.b.ok_or(SynthesisError::AssignmentMissing))?;
@@ -331,12 +326,12 @@ mod tests {
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
         let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
-            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            DummyCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
         ).unwrap();
         let proof = ark_groth16::Groth16::<Bn254>::prove(
             &pk,
-            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            DummyCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
         ).unwrap();
         let public_inputs = vec![a * b];
@@ -363,5 +358,127 @@ mod tests {
         // 5. Decrypt and verify.
         let msg = BABEProver::compute_msg(&proof, &ct_prove, &verifier.ct_setup).unwrap();
         assert_eq!(msg, verifier.secrets.msg);
+    }
+
+    /// Build the common C&C + soldering scaffolding used by both tests below.
+    /// Returns `(verifier, package, finalized_indices, finalized, soldering, h_msgs_onchain)`.
+    fn setup_cac_soldering() -> (
+        BABEVerifier,
+        CACSetupPackage,
+        Vec<usize>,
+        Vec<FinalizedInstanceData>,
+        SolderingData,
+        Vec<[u8; 32]>,
+    ) {
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(1);
+        let a = Fr::from(3u64);
+        let b = Fr::from(7u64);
+        let (_, vk) = ark_groth16::Groth16::<Bn254>::setup(
+            DummyCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
+        ).unwrap();
+        let public_inputs = vec![a * b];
+
+        let verifier = BABEVerifier::new(TEST_N_CC, &vk, &public_inputs).unwrap();
+        let package = verifier.commit();
+        let finalized_indices = cac_finalize_indices(&package, TEST_M_CC);
+        let (_, finalized) = verifier.open(&finalized_indices);
+
+        let soldered_input = build_soldered_wires_input(&verifier, &finalized_indices);
+        let soldered_output = soldering_guest_compute(&soldered_input);
+
+        let constant_labels: Vec<[S; 2]> = finalized_indices.iter().map(|&idx| {
+            let inst = &verifier.instances[idx];
+            [inst.secrets.constant_0labels[0], inst.secrets.constant_0labels[1] ^ inst.secrets.delta]
+        }).collect();
+
+        let soldering = SolderingData {
+            finalized_indices: finalized_indices.clone(),
+            soldering_proof: SolderingProof { soldered_output, _proof: PhantomData },
+            constant_labels,
+        };
+
+        let h_msgs_onchain: Vec<[u8; 32]> = finalized_indices.iter()
+            .map(|&idx| package.commits[idx].h_msg)
+            .collect();
+
+        (verifier, package, finalized_indices, finalized, soldering, h_msgs_onchain)
+    }
+
+    // ── verify_soldering_output ───────────────────────────────────────────────
+
+    #[test]
+    fn test_verify_soldering_output_ok() {
+        let (_, package, _, _, soldering, h_msgs_onchain) = setup_cac_soldering();
+        BABEProver::verify_soldering_output(&package, &soldering, &h_msgs_onchain)
+            .expect("verify_soldering_output should succeed");
+    }
+
+    #[test]
+    fn test_verify_soldering_output_bad_h_msg() {
+        let (_, package, _, _, soldering, mut h_msgs_onchain) = setup_cac_soldering();
+        h_msgs_onchain[0] = [0u8; 32];
+        assert!(
+            BABEProver::verify_soldering_output(&package, &soldering, &h_msgs_onchain).is_err(),
+            "tampered h_msg should fail"
+        );
+    }
+
+    #[test]
+    fn test_verify_soldering_output_bad_constant_label() {
+        let (_, package, _, _, mut soldering, h_msgs_onchain) = setup_cac_soldering();
+        // corrupt the wire-0 constant label of the first finalized instance
+        soldering.constant_labels[0][0] = S::random();
+        assert!(
+            BABEProver::verify_soldering_output(&package, &soldering, &h_msgs_onchain).is_err(),
+            "tampered constant label should fail"
+        );
+    }
+
+    // ── check_compute_msg ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_check_compute_msg_finds_valid_msg() {
+        let (verifier, package, finalized_indices, finalized, soldering, mut h_msgs_onchain) =
+            setup_cac_soldering();
+
+        // Prove with the same dummy circuit.
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(1);
+        let a = Fr::from(3u64);
+        let b = Fr::from(7u64);
+        let (pk, _) = ark_groth16::Groth16::<Bn254>::setup(
+            DummyCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
+        ).unwrap();
+        let proof = ark_groth16::Groth16::<Bn254>::prove(
+            &pk,
+            DummyCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        ).unwrap();
+
+        // base_input_labels: active labels for the 508 π₁ input wires of the base instance.
+        let base_idx = finalized_indices[0];
+        let all_labels = verifier.instances[base_idx].compute_pi1_labels_based_on_value(proof.a);
+        let base_input_labels = &all_labels[2..]; // strip constant-wire labels
+
+        let mut prover = BABEProver::new(proof.clone());
+        let found = prover.check_compute_msg(
+            &package, &finalized, base_input_labels, &soldering, &h_msgs_onchain,
+        );
+
+        assert!(found, "expected a valid msg to be found");
+        assert!(prover.valid_msg.is_some());
+        assert!(prover.valid_ct_prove.is_some());
+        assert!(prover.valid_finalized_id.is_some());
+
+        // change the base msg to access non-base instance
+        let mut prover = BABEProver::new(proof);
+        h_msgs_onchain[0] = [0u8; 32];
+        let found = prover.check_compute_msg(
+            &package, &finalized, base_input_labels, &soldering, &h_msgs_onchain,
+        );
+        assert!(found, "expected a valid msg to be found");
+        assert!(prover.valid_msg.is_some());
+        assert!(prover.valid_ct_prove.is_some());
+        assert!(prover.valid_finalized_id.is_some());
+        assert_ne!(prover.valid_finalized_id.unwrap(), finalized_indices[0]);
     }
 }
