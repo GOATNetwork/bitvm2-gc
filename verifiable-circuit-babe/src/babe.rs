@@ -10,11 +10,12 @@ use rand::{RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use crate::instance::BABEInstance;
+use crate::lamport::{lamport_keygen, lamport_sign, lamport_verify, LamportPk, LamportSk};
 use crate::transactions::{
     OnchainSize, TxAssertWitness, TxChallengeAssertWitness, TxDepositLock, TxNoWithdrawWitness, 
     TxWithdrawWitness, TxWronglyChallengedWitness
 };
-use crate::utils::{g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x};
+use crate::utils::{g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x, pi1_to_bits};
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /// Number of bits in π₁ (G1Affine): 254 bits for x + 254 bits for y.
@@ -61,90 +62,13 @@ pub enum BabeBtcSig {
     VerifierLiveSig,
 }
 
-// ─── Lamport Signature Scheme ─────────────────────────────────────────────────
-
-/// Lamport signing key: LAMPORT_N pairs of 16-byte secrets.
-/// Each secret has the same width as a GC input label.
-#[derive(Debug, Clone)]
-pub struct LamportSk(pub Vec<[[u8; 16]; 2]>);
-
-/// Lamport verification key: pk[i][b] = SHA256(sk[i][b]).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LamportPk(pub Vec<[[u8; 32]; 2]>);
-
-/// Lamport signature: sig[i] = sk[i][bit_i(π₁)], for i in 0..LAMPORT_N.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LamportSig(pub Vec<[u8; 16]>);
-
-pub fn lamport_keygen(rng: &mut impl RngCore) -> (LamportSk, LamportPk) {
-    let mut sk_entries = Vec::with_capacity(LAMPORT_N);
-    let mut pk_entries = Vec::with_capacity(LAMPORT_N);
-    for _ in 0..LAMPORT_N {
-        let mut s0 = [0u8; 16];
-        let mut s1 = [0u8; 16];
-        rng.fill_bytes(&mut s0);
-        rng.fill_bytes(&mut s1);
-        pk_entries.push([sha256_bytes(&s0), sha256_bytes(&s1)]);
-        sk_entries.push([s0, s1]);
-    }
-    (LamportSk(sk_entries), LamportPk(pk_entries))
-}
-
-/// Commitment to the full Lamport pk: blake3 of all entries.
-pub fn lamport_pk_commit(pk: &LamportPk) -> [u8; 32] {
-    let mut buf = b"babe:lamport-pk".to_vec();
-    for pair in &pk.0 {
-        buf.extend_from_slice(&pair[0]);
-        buf.extend_from_slice(&pair[1]);
-    }
-    h(&buf)
-}
-
-/// Sign π₁: reveal sk[i][bit_i(π₁)] for each bit.
-pub fn lamport_sign(sk: &LamportSk, pi1: &G1Affine) -> LamportSig {
-    let bits = pi1_to_bits(pi1);
-    LamportSig(bits.iter().enumerate().map(|(i, &b)| sk.0[i][b as usize]).collect())
-}
-
-/// Verify a Lamport signature against lpk_P and π₁.
-pub fn lamport_verify(pk: &LamportPk, pi1: &G1Affine, sig: &LamportSig) -> bool {
-    if sig.0.len() != LAMPORT_N {
-        return false;
-    }
-    let bits = pi1_to_bits(pi1);
-    bits.iter().enumerate().all(|(i, &b)| sha256_bytes(&sig.0[i]) == pk.0[i][b as usize])
-}
-
-fn pi1_to_bits(pi1: &G1Affine) -> Vec<bool> {
-    use garbled_snark_verifier::dv_bn254::fq::Fq as GcFq;
-    GcFq::to_bits(pi1.x).into_iter().chain(GcFq::to_bits(pi1.y)).collect()
-}
-
-fn sha256_bytes(data: &[u8]) -> [u8; 32] {
-    let mut h = Sha256::new();
-    h.update(data);
-    h.finalize().into()
-}
-
 // ─── Encoding Key Public (lpk_V in the paper) ────────────────────────────────
 
 /// Commitment to the verifier's GC encoding key labels.
-/// epk[i][b] = blake3(label_i_b), for i in 0..LAMPORT_N, b ∈ {0, 1}.
-/// Published as h_ek = blake3(flatten(epk)) in tx_Assert output 1 script.
+/// epk[i][b] = sha256(label_i_b), for i in 0..LAMPORT_N, b ∈ {0, 1}.
+/// Published as h_ek = sha256(flatten(epk)) in tx_Assert output 1 script.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncodingKeyPublic(pub Vec<[[u8; 32]; 2]>);
-
-impl EncodingKeyPublic {
-    /// h_ek: single commitment to all label hashes.
-    pub fn commit(&self) -> [u8; 32] {
-        let mut buf = b"babe:h-ek".to_vec();
-        for pair in &self.0 {
-            buf.extend_from_slice(&pair[0]);
-            buf.extend_from_slice(&pair[1]);
-        }
-        h(&buf)
-    }
-}
 
 /// Compute epk from the verifier's private 0-labels using an explicit delta.
 pub fn compute_epk_with_delta(
@@ -196,8 +120,6 @@ pub struct VerifierSetupPackage {
     pub adaptor_table: crate::gc::SparseAdaptorTable,
     /// lpk_V in the paper: blake3 hashes of input labels.
     pub epk: EncodingKeyPublic,
-    /// blake3(flatten(epk)) — embedded in tx_Assert output 1 script.
-    pub h_ek: [u8; 32],
     /// SHA256(secret_msg) — embedded in tx_ChallengeAssert output 0 script.
     pub h_msg: [u8; 32],
     /// Actual labels for constant wires 0 and 1.
@@ -211,8 +133,6 @@ pub struct VerifierSetupPackage {
 pub struct ProverSetupPackage {
     /// Lamport verification key — Verifier embeds lpk_P into transaction scripts.
     pub lpk_p: LamportPk,
-    /// blake3(flatten(lpk_p)) — used in scripts as a compact commitment.
-    pub lpk_p_commit: [u8; 32],
     /// Prover's Bitcoin pubkey.
     pub pk_p: BtcPk,
 }
@@ -250,7 +170,6 @@ pub struct BabeE2ERun {
     pub session_id: [u8; 32],
     pub deposit_lock: TxDepositLock,
     pub prover_setup_pkg: ProverSetupPackage,
-    pub h_ek: [u8; 32],
     pub h_msg: [u8; 32],
     pub prover_presigs: ProverPresigs,
     pub verifier_presigs: VerifierPresigs,
@@ -267,8 +186,7 @@ pub struct BabeE2ERun {
 /// Prover: generate Lamport keypair and build ProverSetupPackage.
 pub fn babe_prover_keygen(rng: &mut impl RngCore, pk_p: BtcPk) -> (LamportSk, ProverSetupPackage) {
     let (lsk_p, lpk_p) = lamport_keygen(rng);
-    let lpk_p_commit = lamport_pk_commit(&lpk_p);
-    let pkg = ProverSetupPackage { lpk_p, lpk_p_commit, pk_p };
+    let pkg = ProverSetupPackage { lpk_p, pk_p };
     (lsk_p, pkg)
 }
 
@@ -293,7 +211,6 @@ pub fn babe_verifier_setup(
 
     let start = std::time::Instant::now();
     let epk = compute_epk(&verifier.secrets.encoding_keys);
-    let h_ek = epk.commit();
     let h_msg = derive_hashlock(&verifier.secrets.msg);
 
     let elapsed = start.elapsed();
@@ -304,7 +221,6 @@ pub fn babe_verifier_setup(
         gc_ciphertexts,
         adaptor_table: verifier.adaptor_table,
         epk,
-        h_ek,
         h_msg,
         constant_labels: [const_label_0, const_label_1],
     };
@@ -731,7 +647,6 @@ pub fn run_babe_e2e_with_one_instance() -> BabeE2ERun {
         session_id,
         deposit_lock,
         prover_setup_pkg: prover_pkg,
-        h_ek: verifier_pkg.h_ek,
         h_msg: verifier_pkg.h_msg,
         prover_presigs,
         verifier_presigs,

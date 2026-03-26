@@ -1,16 +1,17 @@
-use crate::babe::{compute_epk_with_delta, derive_hashlock, h, WeKnownPi1SetupCt};
+use crate::babe::{compute_epk_with_delta, derive_hashlock, h};
 use crate::gc::gc_ciphertexts_commit;
 use crate::instance::BABEInstance;
 
 /// Per-instance commitment sent from Verifier to Prover during C&C commit phase.
 #[derive(Debug, Clone)]
 pub struct CACInstanceCommit {
-    /// SHA256 of label0 and label1 for each input wire
-    pub input_commits: Vec<[[u8; 32]; 2]>,
-    /// SHA256 of label0 and label1 for each of the 2 constant wires.
+    /// SHA256(label0) and SHA256(label1) for each input wire.
+    pub epk: Vec<[[u8; 32]; 2]>,
+    /// SHA256(label0) and SHA256(label1) for each of the 2 constant wires.
     pub constant_commits: [[[u8; 32]; 2]; 2],
     pub h_msg: [u8; 32],
-    pub ct_setup: WeKnownPi1SetupCt,
+    /// RO(ct_setup) = SHA256(ct2_r_delta_g2 || ct3_masked_msg).
+    pub h_ct_setup: [u8; 32],
     /// SHA256 commitment to the adaptor table.
     pub com_adaptor: [u8; 32],
     /// SHA256 commitment to the GC gate ciphertexts.
@@ -28,11 +29,15 @@ impl CACInstanceCommit {
             [h(&l0.0), h(&(l0 ^ delta).0)]
         });
 
+        let mut ct_setup_bytes = Vec::new();
+        ct_setup_bytes.extend_from_slice(&instance.ct_setup.ct2_r_delta_g2);
+        ct_setup_bytes.extend_from_slice(&instance.ct_setup.ct3_masked_msg);
+
         CACInstanceCommit {
-            input_commits,
+            epk: input_commits,
             constant_commits,
             h_msg: derive_hashlock(&instance.secrets.msg),
-            ct_setup: instance.ct_setup.clone(),
+            h_ct_setup: h(&ct_setup_bytes),
             com_adaptor: instance.adaptor_table.commit(),
             com_gc: gc_ciphertexts_commit(&instance.ciphertexts),
         }

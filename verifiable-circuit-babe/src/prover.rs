@@ -10,7 +10,6 @@ use crate::babe::{derive_hashlock, h, WeKnownPi1ProveCt, WeKnownPi1SetupCt};
 use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
 use crate::gc::SparseAdaptorTable;
-use crate::instance::commit::CACInstanceCommit;
 use crate::soldering::{SolderedLabelsData, SolderingData};
 
 pub struct BABEProver {
@@ -41,7 +40,7 @@ impl BABEProver {
     ) -> Result<(), String> {
         let base_idx = finalized_indices[0];
         for (j, (h0, h1)) in output.base_commitment.iter().enumerate() {
-            let committed = &package.commits[base_idx].input_commits[j];
+            let committed = &package.commits[base_idx].epk[j];
             if h0 != &committed[0] {
                 return Err(format!("base commitment mismatch at wire {j} label 0"));
             }
@@ -51,7 +50,7 @@ impl BABEProver {
         }
         for (i, &idx) in finalized_indices[1..].iter().enumerate() {
             for (j, (h0, h1)) in output.commitments[i].iter().enumerate() {
-                let committed = &package.commits[idx].input_commits[j];
+                let committed = &package.commits[idx].epk[j];
                 if h0 != &committed[0] {
                     return Err(format!("instance {idx} commitment mismatch at wire {j} label 0"));
                 }
@@ -110,7 +109,6 @@ impl BABEProver {
     /// This function checks if Prover can compute the valid msg for WronglyChallenged Txn.
     pub fn check_compute_msg(
         &mut self,
-        package: &CACSetupPackage,
         finalized: &[FinalizedInstanceData],
         base_input_labels: &[S],
         soldering: &SolderingData,
@@ -120,12 +118,7 @@ impl BABEProver {
 
         // Try base instance (finalized[0]).
         let base_full = Self::build_full_labels(&soldering.constant_labels[0], base_input_labels);
-        let base_res = self.try_evaluate_instance(
-            &finalized[0],
-            &package.commits[finalized[0].index],
-            &base_full,
-            h_msgs_onchain[0]
-        );
+        let base_res = self.try_evaluate_instance(&finalized[0], &base_full, h_msgs_onchain[0]);
         match base_res {
             Ok(true) => return true,
             Ok(false) => eprintln!("Warning: base instance did not yield valid msg"),
@@ -149,12 +142,7 @@ impl BABEProver {
                 .collect();
 
             let full = Self::build_full_labels(&soldering.constant_labels[i], &instance_labels);
-            let temp = self.try_evaluate_instance(
-                &finalized[i],
-                &package.commits[finalized[i].index],
-                &full,
-                h_msgs_onchain[i]
-            );
+            let temp = self.try_evaluate_instance(&finalized[i], &full, h_msgs_onchain[i]);
             match temp {
                 Ok(true) => return true,
                 Ok(false) => eprintln!("Warning: non-base instance: {i} did not yield valid msg"),
@@ -178,7 +166,6 @@ impl BABEProver {
     fn try_evaluate_instance(
         &mut self,
         data: &FinalizedInstanceData,
-        committed: &CACInstanceCommit,
         full_labels: &[S],
         h_msg_onchain: [u8; 32],
     ) -> Result<bool, String> {
@@ -192,7 +179,7 @@ impl BABEProver {
         );
         drop(circuit);
 
-        let msg = Self::compute_msg(&self.groth16_proof, &ct_prove, &committed.ct_setup)?;
+        let msg = Self::compute_msg(&self.groth16_proof, &ct_prove, &data.ct_setup)?;
         // found the valid one.
         if derive_hashlock(&msg) == h_msg_onchain {
             self.valid_msg = Some(msg);
@@ -293,7 +280,7 @@ mod tests {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use rand::SeedableRng;
     use garbled_snark_verifier::core::utils::reset_gid;
-    use crate::cac::{cac_finalize_indices, verify_finalized_instances};
+    use crate::cac::cac_finalize_indices;
     use crate::instance::BABEInstance;
     use crate::soldering::{build_soldered_wires_input, soldering_guest_compute, SolderingProof};
     use crate::verifier::BABEVerifier;
@@ -461,7 +448,7 @@ mod tests {
 
         let mut prover = BABEProver::new(proof.clone());
         let found = prover.check_compute_msg(
-            &package, &finalized, base_input_labels, &soldering, &h_msgs_onchain,
+            &finalized, base_input_labels, &soldering, &h_msgs_onchain,
         );
 
         assert!(found, "expected a valid msg to be found");
@@ -473,7 +460,7 @@ mod tests {
         let mut prover = BABEProver::new(proof);
         h_msgs_onchain[0] = [0u8; 32];
         let found = prover.check_compute_msg(
-            &package, &finalized, base_input_labels, &soldering, &h_msgs_onchain,
+            &finalized, base_input_labels, &soldering, &h_msgs_onchain,
         );
         assert!(found, "expected a valid msg to be found");
         assert!(prover.valid_msg.is_some());

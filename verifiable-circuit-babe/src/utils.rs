@@ -44,3 +44,8 @@ pub fn g2_from_ser_checked(v: &[u8]) -> Option<ark_bn254::G2Projective> {
     }
     Some(a.into_group())
 }
+
+pub fn pi1_to_bits(pi1: &G1Affine) -> Vec<bool> {
+    use garbled_snark_verifier::dv_bn254::fq::Fq as GcFq;
+    GcFq::to_bits(pi1.x).into_iter().chain(GcFq::to_bits(pi1.y)).collect()
+}

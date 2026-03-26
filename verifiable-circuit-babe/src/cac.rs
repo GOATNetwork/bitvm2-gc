@@ -1,5 +1,6 @@
 use ark_bn254::Fr;
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
+use crate::babe::{h, WeKnownPi1SetupCt};
 use crate::instance::commit::CACInstanceCommit;
 use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable};
 use garbled_snark_verifier::bag::S;
@@ -21,7 +22,7 @@ pub fn cac_finalize_indices(package: &CACSetupPackage, m_cc: usize) -> Vec<usize
 
     let mut hasher = Sha256::new();
     for commit in &package.commits {
-        for wire_pair in &commit.input_commits {
+        for wire_pair in &commit.epk {
             hasher.update(wire_pair[0]);
             hasher.update(wire_pair[1]);
         }
@@ -30,8 +31,7 @@ pub fn cac_finalize_indices(package: &CACSetupPackage, m_cc: usize) -> Vec<usize
             hasher.update(wire_pair[1]);
         }
         hasher.update(commit.h_msg);
-        hasher.update(&commit.ct_setup.ct2_r_delta_g2);
-        hasher.update(&commit.ct_setup.ct3_masked_msg);
+        hasher.update(commit.h_ct_setup);
         hasher.update(commit.com_adaptor);
         hasher.update(commit.com_gc);
     }
@@ -54,6 +54,7 @@ pub struct FinalizedInstanceData {
     pub index: usize,
     pub gc_ciphertexts: Vec<Option<S>>,
     pub adaptor_table: SparseAdaptorTable,
+    pub ct_setup: WeKnownPi1SetupCt,
 }
 
 pub fn verify_opened_instances(
@@ -73,7 +74,7 @@ pub fn verify_opened_instances(
             let recomputed = inst.commit();
             let committed = &package.commits[idx];
 
-            if recomputed.input_commits != committed.input_commits {
+            if recomputed.epk != committed.epk {
                 return Err(format!("instance {idx}: input_commits mismatch"));
             }
             if recomputed.constant_commits != committed.constant_commits {
@@ -82,7 +83,7 @@ pub fn verify_opened_instances(
             if recomputed.h_msg != committed.h_msg {
                 return Err(format!("instance {idx}: h_msg mismatch"));
             }
-            if recomputed.ct_setup != committed.ct_setup {
+            if recomputed.h_ct_setup != committed.h_ct_setup {
                 return Err(format!("instance {idx}: ct_setup mismatch"));
             }
             if recomputed.com_adaptor != committed.com_adaptor {
@@ -112,6 +113,12 @@ pub fn verify_finalized_instances(
         }
         if data.adaptor_table.commit() != committed.com_adaptor {
             return Err(format!("instance {idx}: adaptor_table does not match com_adaptor"));
+        }
+        let mut ct_bytes = Vec::new();
+        ct_bytes.extend_from_slice(&data.ct_setup.ct2_r_delta_g2);
+        ct_bytes.extend_from_slice(&data.ct_setup.ct3_masked_msg);
+        if h(&ct_bytes) != committed.h_ct_setup {
+            return Err(format!("instance {idx}: ct_setup does not match h_ct_setup"));
         }
     }
     Ok(())

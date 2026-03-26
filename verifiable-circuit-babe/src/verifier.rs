@@ -62,6 +62,7 @@ impl BABEVerifier {
                 index: i,
                 gc_ciphertexts: inst.ciphertexts.clone(),
                 adaptor_table: inst.adaptor_table.clone(),
+                ct_setup: inst.ct_setup.clone(),
             });
         }
 

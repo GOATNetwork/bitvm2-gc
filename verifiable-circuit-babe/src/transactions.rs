@@ -1,7 +1,8 @@
 // ─── Transaction locking script ───────────────────────────────────────────────
 
 use serde::{Deserialize, Serialize};
-use crate::babe::{BabeBtcSig, BtcPk, LamportSig, BTC_SIG_BYTES, LAMPORT_N, LAMPORT_SIG_BYTES, MSG_BYTES, PI1_BYTES};
+use crate::babe::{BabeBtcSig, BtcPk, BTC_SIG_BYTES, LAMPORT_N, LAMPORT_SIG_BYTES, MSG_BYTES, PI1_BYTES};
+use crate::lamport::LamportSig;
 
 /// Constants embedded in the locking script of tx_Deposit output 0.
 /// Script: CheckSig(pk_P) ∧ CheckSig(pk_V)
@@ -128,7 +129,7 @@ impl OnchainSize for TxWithdrawWitness {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::babe::{BabeBtcSig, LamportSig, LAMPORT_N, LAMPORT_SIG_BYTES, PI1_BYTES};
+    use crate::babe::{BabeBtcSig, LAMPORT_N, LAMPORT_SIG_BYTES, PI1_BYTES};
     use crate::transactions::{TxAssertWitness, TxChallengeAssertWitness, TxWronglyChallengedWitness};
 
     #[test]
