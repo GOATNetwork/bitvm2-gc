@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use serde::{Serialize, Deserialize};
 use garbled_snark_verifier::bag::S;
-use crate::babe::h;
+use crate::utils::h;
 
 pub type SolderedWire = ([u8; 16], [u8; 16]);
 pub type InstancesWires = Vec<SolderedWire>;

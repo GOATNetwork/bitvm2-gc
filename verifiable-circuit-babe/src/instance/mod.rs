@@ -10,7 +10,7 @@ use crate::instance::secret::InstanceSecrets;
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use ark_serialize::CanonicalSerialize;
 use crate::instance::commit::CACInstanceCommit;
-use crate::utils::{g2_to_ser, groth16_vk_x};
+use crate::utils::{g2_to_ser, groth16_vk_x, h};
 
 pub mod secret;
 pub mod commit;
@@ -106,7 +106,7 @@ impl BABEInstance {
 
         let mut ry_bytes = Vec::new();
         r_y.serialize_compressed(&mut ry_bytes).or(Err("Failed to serialize ry_bytes"))?;
-        let mask = crate::babe::h(&ry_bytes);
+        let mask = h(&ry_bytes);
         let ct3 = self.secrets.msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect::<Vec<_>>();
 
         self.ct_setup = WeKnownPi1SetupCt {
@@ -143,27 +143,9 @@ impl BABEInstance {
 mod tests {
     use super::*;
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
-    use ark_ff::PrimeField;
-    use ark_relations::lc;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_serialize::CanonicalDeserialize;
     use rand::SeedableRng;
-
-    #[derive(Copy, Clone)]
-    struct DummyMulCircuit<F: PrimeField> {
-        a: Option<F>,
-        b: Option<F>,
-    }
-
-    impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
-        fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-            let a = cs.new_witness_variable(|| self.a.ok_or(SynthesisError::AssignmentMissing))?;
-            let b = cs.new_witness_variable(|| self.b.ok_or(SynthesisError::AssignmentMissing))?;
-            let c = cs.new_input_variable(|| Ok(self.a.unwrap() * self.b.unwrap()))?;
-            cs.enforce_constraint(lc!() + a, lc!() + b, lc!() + c)?;
-            Ok(())
-        }
-    }
+    use crate::babe::DummyMulCircuit;
 
     #[test]
     fn enc_setup_prove_dec_roundtrip() {
@@ -198,7 +180,7 @@ mod tests {
 
         let mut ry_bytes = Vec::new();
         r_y.serialize_compressed(&mut ry_bytes).unwrap();
-        let mask = crate::babe::h(&ry_bytes);
+        let mask = h(&ry_bytes);
 
         let decrypted: [u8; 32] = instance.ct_setup.ct3_masked_msg.iter()
             .zip(mask.iter())

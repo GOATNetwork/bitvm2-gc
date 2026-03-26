@@ -13,6 +13,13 @@ pub struct TxDepositLock {
     pub amount: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct TxChallengeAssertOutputLock {
+    pub pk_p: BtcPk,
+    pub pk_v: BtcPk,
+    pub h_msgs: Vec<[u8; 32]>,
+}
+
 // ─── Transaction witnesses (on-chain data) ────────────────────────────────────
 
 /// tx_Assert — witness for input 0.

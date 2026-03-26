@@ -23,26 +23,9 @@ use rand::RngCore;
 use sha2::{Digest, Sha256};
 use tracing::info;
 use zkm_sdk::{include_elf, utils as sdk_utils, ProverClient, ZKMStdin};
+use verifiable_circuit_babe::babe::DummyMulCircuit;
 
 const ELF: &[u8] = include_elf!("enc-setup-guest");
-
-// ── Dummy circuit: a × b = c (public input = c) ──────────────────────────────
-
-#[derive(Copy, Clone)]
-struct DummyMulCircuit {
-    a: Option<Fr>,
-    b: Option<Fr>,
-}
-
-impl ConstraintSynthesizer<Fr> for DummyMulCircuit {
-    fn generate_constraints(self, cs: ConstraintSystemRef<Fr>) -> Result<(), SynthesisError> {
-        let a = cs.new_witness_variable(|| self.a.ok_or(SynthesisError::AssignmentMissing))?;
-        let b = cs.new_witness_variable(|| self.b.ok_or(SynthesisError::AssignmentMissing))?;
-        let c = cs.new_input_variable(|| Ok(self.a.unwrap() * self.b.unwrap()))?;
-        cs.enforce_constraint(lc!() + a, lc!() + b, lc!() + c)?;
-        Ok(())
-    }
-}
 
 // ── Serialization helpers (raw LE bytes, matching guest deserialization) ──────
 

@@ -2,6 +2,7 @@ use ark_bn254::{Fr, G1Affine, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
+use sha2::{Digest, Sha256};
 
 pub fn groth16_vk_x(
     vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
@@ -48,4 +49,41 @@ pub fn g2_from_ser_checked(v: &[u8]) -> Option<ark_bn254::G2Projective> {
 pub fn pi1_to_bits(pi1: &G1Affine) -> Vec<bool> {
     use garbled_snark_verifier::dv_bn254::fq::Fq as GcFq;
     GcFq::to_bits(pi1.x).into_iter().chain(GcFq::to_bits(pi1.y)).collect()
+}
+
+pub fn ro_from_pairing_bytes(seed: &[u8], msg_len: usize) -> Vec<u8> {
+    let key = h(seed);
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(&h(&[b"babe-we-known-pi1-ro-nonce".as_slice(), seed].concat())[..12]);
+    derive_stream_xor_keyed(key, nonce, msg_len)
+}
+
+fn derive_stream_xor_keyed(key: [u8; 32], nonce: [u8; 12], msg_len: usize) -> Vec<u8> {
+    let mut out = vec![0u8; msg_len];
+    let mut ctr: u32 = 0;
+    let mut off = 0usize;
+    while off < msg_len {
+        let mut blk = b"babe-we-stream".to_vec();
+        blk.extend_from_slice(&key);
+        blk.extend_from_slice(&nonce);
+        blk.extend_from_slice(&ctr.to_le_bytes());
+        let hblk = h(&blk);
+        let take = core::cmp::min(32, msg_len - off);
+        out[off..off + take].copy_from_slice(&hblk[..take]);
+        ctr += 1;
+        off += take;
+    }
+    out
+}
+
+#[inline(always)]
+pub fn h(data: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher.finalize().into()
+}
+
+/// h_msg = SHA256(secret_msg) — the hashlock value.
+pub fn derive_hashlock(secret: &[u8]) -> [u8; 32] {
+    h(secret)
 }

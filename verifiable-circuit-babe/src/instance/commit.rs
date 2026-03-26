@@ -1,6 +1,7 @@
-use crate::babe::{compute_epk_with_delta, derive_hashlock, h};
+use crate::babe::compute_epk_with_delta;
 use crate::gc::gc_ciphertexts_commit;
 use crate::instance::BABEInstance;
+use crate::utils::{derive_hashlock, h};
 
 /// Per-instance commitment sent from Verifier to Prover during C&C commit phase.
 #[derive(Debug, Clone)]

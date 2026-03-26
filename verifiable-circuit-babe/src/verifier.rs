@@ -41,7 +41,7 @@ impl BABEVerifier {
         }
     }
 
-    /// After receiving the Prover's challenge, reveal the open round:
+    /// After receiving the Prover's finalized indices, reveal the open round:
     /// - seeds for instance not in I
     /// - GC data for every instance in I
     pub fn open(

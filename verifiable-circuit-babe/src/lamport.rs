@@ -3,8 +3,8 @@
 use ark_bn254::G1Affine;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use crate::babe::{h, LAMPORT_N};
-use crate::utils::pi1_to_bits;
+use crate::babe::LAMPORT_N;
+use crate::utils::{h, pi1_to_bits};
 
 /// Lamport signing key: LAMPORT_N pairs of 16-byte secrets.
 /// Each secret has the same width as a GC input label.

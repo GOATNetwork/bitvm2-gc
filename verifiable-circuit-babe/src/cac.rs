@@ -1,6 +1,6 @@
 use ark_bn254::Fr;
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
-use crate::babe::{h, WeKnownPi1SetupCt};
+use crate::babe::WeKnownPi1SetupCt;
 use crate::instance::commit::CACInstanceCommit;
 use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable};
 use garbled_snark_verifier::bag::S;
@@ -9,6 +9,7 @@ use rand_chacha::ChaCha12Rng;
 use rand::SeedableRng;
 use sha2::{Digest, Sha256};
 use crate::instance::BABEInstance;
+use crate::utils::h;
 
 /// What the Verifier sends to the Prover during the C&C commit phase.
 pub struct CACSetupPackage {
@@ -129,30 +130,12 @@ mod tests {
     use super::*;
     use ark_bn254::Fr;
     use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
-    use ark_ff::PrimeField;
-    use ark_relations::lc;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use rand::SeedableRng;
+    use crate::babe::DummyMulCircuit;
     use crate::verifier::BABEVerifier;
 
     const TEST_N_CC: usize = 10;
     const TEST_M_CC: usize = 4;
-
-    #[derive(Copy, Clone)]
-    struct DummyMulCircuit<F: PrimeField> {
-        a: Option<F>,
-        b: Option<F>,
-    }
-
-    impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
-        fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-            let a = cs.new_witness_variable(|| self.a.ok_or(SynthesisError::AssignmentMissing))?;
-            let b = cs.new_witness_variable(|| self.b.ok_or(SynthesisError::AssignmentMissing))?;
-            let c = cs.new_input_variable(|| Ok(self.a.unwrap() * self.b.unwrap()))?;
-            cs.enforce_constraint(lc!() + a, lc!() + b, lc!() + c)?;
-            Ok(())
-        }
-    }
 
     #[test]
     fn test_cac_commit_open_verify() {

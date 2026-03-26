@@ -6,15 +6,15 @@ use ark_groth16::Proof as Groth16Proof;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use garbled_snark_verifier::bag::{Circuit, S};
 use garbled_snark_verifier::dv_bn254::fq::Fq;
-use crate::babe::{derive_hashlock, h, WeKnownPi1ProveCt, WeKnownPi1SetupCt};
+use crate::babe::{WeKnownPi1ProveCt, WeKnownPi1SetupCt};
 use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
 use crate::gc::SparseAdaptorTable;
 use crate::soldering::{SolderedLabelsData, SolderingData};
+use crate::utils::{derive_hashlock, h};
 
 pub struct BABEProver {
     groth16_proof: Groth16Proof<Bn254>,
-    encoding_keys: Vec<S>,
     pub valid_msg: Option<[u8; 32]>,
     pub valid_ct_prove: Option<WeKnownPi1ProveCt>,
     pub valid_finalized_id: Option<usize>,
@@ -22,10 +22,8 @@ pub struct BABEProver {
 
 impl BABEProver {
     pub fn new(groth16_proof: Groth16Proof<Bn254>) -> Self {
-        let encoding_keys = (0..2 * crate::dre::N).map(|_| S::random()).collect();
         Self {
             groth16_proof,
-            encoding_keys,
             valid_msg: None,
             valid_ct_prove: None,
             valid_finalized_id: None,
@@ -67,11 +65,9 @@ impl BABEProver {
     /// Verifies:
     /// 1. The ZK soldering proof output is consistent with the CAC commitments.
     /// 2. Constant labels match the per-instance `constant_commits`.
-    /// 3. The committed `h_msg` for every finalized instance equals `h_msg_onchain`.
     pub fn verify_soldering_output(
         package: &CACSetupPackage,
         soldering: &SolderingData,
-        h_msgs_onchain: &[[u8; 32]],
     ) -> Result<(), String> {
         let sld_output = &soldering.soldering_proof.soldered_output;
 
@@ -97,9 +93,6 @@ impl BABEProver {
             if h(&cl[1].0) != committed.constant_commits[1][1] {
                 return Err(format!("instance {inst_idx}: constant wire-1 label mismatch"));
             }
-            if committed.h_msg != h_msgs_onchain[i] {
-                return Err(format!("instance {inst_idx}: h_msg does not match on-chain commitment"));
-            }
         }
 
         Ok(())
@@ -116,7 +109,7 @@ impl BABEProver {
     ) -> bool {
         let sld = &soldering.soldering_proof.soldered_output;
 
-        // Try base instance (finalized[0]).
+        println!("Trying base instance...");
         let base_full = Self::build_full_labels(&soldering.constant_labels[0], base_input_labels);
         let base_res = self.try_evaluate_instance(&finalized[0], &base_full, h_msgs_onchain[0]);
         match base_res {
@@ -126,6 +119,7 @@ impl BABEProver {
         }
 
         // If cant get valid msg from base instance, try non-base instances using per-wire deltas.
+        println!("Trying non-base instance...");
         for i in 1..finalized.len() {
             let deltas_i = &sld.deltas[i - 1];
             let instance_labels: Vec<S> = base_input_labels
@@ -255,7 +249,7 @@ impl BABEProver {
 
         let mut ry_bytes = Vec::new();
         r_y.serialize_compressed(&mut ry_bytes).map_err(|e| format!("serialize r_y: {e}"))?;
-        let mask = crate::babe::h(&ry_bytes);
+        let mask = h(&ry_bytes);
 
         let ct3 = &ct_setup.ct3_masked_msg;
         if ct3.len() != 32 {
@@ -275,11 +269,9 @@ mod tests {
     use std::marker::PhantomData;
     use ark_bn254::{Bn254, Fr};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
-    use ark_ff::PrimeField;
-    use ark_relations::lc;
-    use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use rand::SeedableRng;
     use garbled_snark_verifier::core::utils::reset_gid;
+    use crate::babe::DummyMulCircuit;
     use crate::cac::cac_finalize_indices;
     use crate::instance::BABEInstance;
     use crate::soldering::{build_soldered_wires_input, soldering_guest_compute, SolderingProof};
@@ -287,22 +279,6 @@ mod tests {
 
     const TEST_N_CC: usize = 4;
     const TEST_M_CC: usize = 2;
-
-    #[derive(Copy, Clone)]
-    struct DummyCircuit<F: PrimeField> {
-        a: Option<F>,
-        b: Option<F>,
-    }
-
-    impl<F: PrimeField> ConstraintSynthesizer<F> for DummyCircuit<F> {
-        fn generate_constraints(self, cs: ConstraintSystemRef<F>) -> Result<(), SynthesisError> {
-            let a = cs.new_witness_variable(|| self.a.ok_or(SynthesisError::AssignmentMissing))?;
-            let b = cs.new_witness_variable(|| self.b.ok_or(SynthesisError::AssignmentMissing))?;
-            let c = cs.new_input_variable(|| Ok(self.a.unwrap() * self.b.unwrap()))?;
-            cs.enforce_constraint(lc!() + a, lc!() + b, lc!() + c)?;
-            Ok(())
-        }
-    }
 
     #[test]
     fn test_prover_ct_prove_decrypts_message() {
@@ -313,12 +289,12 @@ mod tests {
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
         let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
-            DummyCircuit::<Fr> { a: Some(a), b: Some(b) },
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
         ).unwrap();
         let proof = ark_groth16::Groth16::<Bn254>::prove(
             &pk,
-            DummyCircuit::<Fr> { a: Some(a), b: Some(b) },
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
         ).unwrap();
         let public_inputs = vec![a * b];
@@ -355,13 +331,12 @@ mod tests {
         Vec<usize>,
         Vec<FinalizedInstanceData>,
         SolderingData,
-        Vec<[u8; 32]>,
     ) {
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(1);
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
         let (_, vk) = ark_groth16::Groth16::<Bn254>::setup(
-            DummyCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
         ).unwrap();
         let public_inputs = vec![a * b];
 
@@ -384,39 +359,25 @@ mod tests {
             constant_labels,
         };
 
-        let h_msgs_onchain: Vec<[u8; 32]> = finalized_indices.iter()
-            .map(|&idx| package.commits[idx].h_msg)
-            .collect();
-
-        (verifier, package, finalized_indices, finalized, soldering, h_msgs_onchain)
+        (verifier, package, finalized_indices, finalized, soldering)
     }
 
     // ── verify_soldering_output ───────────────────────────────────────────────
 
     #[test]
     fn test_verify_soldering_output_ok() {
-        let (_, package, _, _, soldering, h_msgs_onchain) = setup_cac_soldering();
-        BABEProver::verify_soldering_output(&package, &soldering, &h_msgs_onchain)
+        let (_, package, _, _, soldering) = setup_cac_soldering();
+        BABEProver::verify_soldering_output(&package, &soldering)
             .expect("verify_soldering_output should succeed");
     }
 
     #[test]
-    fn test_verify_soldering_output_bad_h_msg() {
-        let (_, package, _, _, soldering, mut h_msgs_onchain) = setup_cac_soldering();
-        h_msgs_onchain[0] = [0u8; 32];
-        assert!(
-            BABEProver::verify_soldering_output(&package, &soldering, &h_msgs_onchain).is_err(),
-            "tampered h_msg should fail"
-        );
-    }
-
-    #[test]
     fn test_verify_soldering_output_bad_constant_label() {
-        let (_, package, _, _, mut soldering, h_msgs_onchain) = setup_cac_soldering();
+        let (_, package, _, _, mut soldering) = setup_cac_soldering();
         // corrupt the wire-0 constant label of the first finalized instance
         soldering.constant_labels[0][0] = S::random();
         assert!(
-            BABEProver::verify_soldering_output(&package, &soldering, &h_msgs_onchain).is_err(),
+            BABEProver::verify_soldering_output(&package, &soldering).is_err(),
             "tampered constant label should fail"
         );
     }
@@ -425,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_check_compute_msg_finds_valid_msg() {
-        let (verifier, package, finalized_indices, finalized, soldering, mut h_msgs_onchain) =
+        let (verifier, package, finalized_indices, finalized, soldering) =
             setup_cac_soldering();
 
         // Prove with the same dummy circuit.
@@ -433,11 +394,11 @@ mod tests {
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
         let (pk, _) = ark_groth16::Groth16::<Bn254>::setup(
-            DummyCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
         ).unwrap();
         let proof = ark_groth16::Groth16::<Bn254>::prove(
             &pk,
-            DummyCircuit::<Fr> { a: Some(a), b: Some(b) },
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
         ).unwrap();
 
@@ -447,6 +408,10 @@ mod tests {
         let base_input_labels = &all_labels[2..]; // strip constant-wire labels
 
         let mut prover = BABEProver::new(proof.clone());
+
+        // Extract h_msgs from bitcoin script of WronglyChallenged Txn
+        // But in this test, we just get from package
+        let mut h_msgs_onchain: Vec<[u8; 32]> = finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
         let found = prover.check_compute_msg(
             &finalized, base_input_labels, &soldering, &h_msgs_onchain,
         );
