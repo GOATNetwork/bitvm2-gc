@@ -7,6 +7,7 @@ use rand::Rng;
 use rand_chacha::ChaCha12Rng;
 use rand::SeedableRng;
 use sha2::{Digest, Sha256};
+use crate::instance::BABEInstance;
 
 /// What the Verifier sends to the Prover during the C&C commit phase.
 pub struct CACSetupPackage {
@@ -55,15 +56,12 @@ pub struct FinalizedInstanceData {
     pub adaptor_table: SparseAdaptorTable,
 }
 
-#[cfg(feature = "garbled")]
 pub fn verify_opened_instances(
     package: &CACSetupPackage,
     opened: &[(usize, u64)],
     vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
     public_inputs: &[Fr],
 ) -> Result<(), String> {
-    use crate::instance::BABEInstance;
-
     use p3_maybe_rayon::prelude::*;
     opened
         .par_iter()
@@ -101,7 +99,6 @@ pub fn verify_opened_instances(
     Ok(())
 }
 
-#[cfg(feature = "garbled")]
 pub fn verify_finalized_instances(
     package: &CACSetupPackage,
     finalized: &[FinalizedInstanceData],
@@ -151,7 +148,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "garbled")]
     fn test_cac_commit_open_verify() {
         let mut rng = ChaCha12Rng::seed_from_u64(42);
 

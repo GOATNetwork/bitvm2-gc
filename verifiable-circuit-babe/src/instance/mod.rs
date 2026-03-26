@@ -26,7 +26,6 @@ pub struct BABEInstance {
 impl BABEInstance {
     /// Construct a BABE instance fully determined by `seed`.
     /// W/O ct_setup.
-    #[cfg(feature = "garbled")]
     pub fn new_from_seed(seed: u64) -> Self {
         use ark_bn254::G1Projective;
         use ark_ff::Zero;
@@ -135,7 +134,6 @@ impl BABEInstance {
         labels
     }
 
-    #[cfg(feature = "garbled")]
     pub fn commit(&self) -> CACInstanceCommit {
         CACInstanceCommit::from_instance(self)
     }
@@ -168,7 +166,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "garbled")]
     fn enc_setup_prove_dec_roundtrip() {
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);
 

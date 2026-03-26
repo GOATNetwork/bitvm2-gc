@@ -6,9 +6,9 @@ use ark_groth16::Groth16;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use tracing::info;
 use zkm_sdk::{include_elf, utils as sdk_utils, ProverClient, ZKMStdin};
-
+use verifiable_circuit_babe::prover::BABEProver;
 use verifiable_circuit_babe::soldering::{
-    build_soldered_wires_input, verify_soldering_output, SolderedLabelsData, SolderedWiresInput,
+    build_soldered_wires_input, SolderedLabelsData, SolderedWiresInput,
 };
 use verifiable_circuit_babe::verifier::BABEVerifier;
 
@@ -71,7 +71,7 @@ fn main() {
     let output = pub_val.read::<SolderedLabelsData>();
 
     //  5. Verify output matches CACSetupPackage commitments
-    verify_soldering_output(&output, &package, &finalized_indices)
+    BABEProver::verify_soldering_output_match_commitment(&output, &package, &finalized_indices)
         .expect("soldering output verification failed");
     info!("commitment verification passed");
 

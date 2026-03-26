@@ -191,10 +191,8 @@ pub struct VerifierSetupPackage {
     /// (r·[delta]_2, RO(rY) ⊕ msg) — WE ciphertext setup component.
     pub ct_setup: WeKnownPi1SetupCt,
     /// Garbled gate ciphertexts — published once, used by Prover during WronglyChallenged.
-    #[cfg(feature = "garbled")]
     pub gc_ciphertexts: Vec<Option<garbled_snark_verifier::bag::S>>,
     /// DRE adaptor table — maps GC output labels to r-encoded field elements.
-    #[cfg(feature = "garbled")]
     pub adaptor_table: crate::gc::SparseAdaptorTable,
     /// lpk_V in the paper: blake3 hashes of input labels.
     pub epk: EncodingKeyPublic,
@@ -205,7 +203,6 @@ pub struct VerifierSetupPackage {
     /// Actual labels for constant wires 0 and 1.
     /// constant_labels[0] = label for wire 0 (value=false)
     /// constant_labels[1] = label for wire 1 (value=true)
-    #[cfg(feature = "garbled")]
     pub constant_labels: [[u8; 16]; 2],
 }
 
@@ -228,12 +225,9 @@ pub struct BabeVerifierPrivate {
     /// The 32-byte secret whose SHA256 is h_msg.
     pub msg: [u8; 32],
     /// 0-labels for GC input wires (size LAMPORT_N).
-    #[cfg(feature = "garbled")]
     pub encoding_keys: Vec<garbled_snark_verifier::bag::S>,
     /// 0-labels for constant GC wires (index 0 = false wire, 1 = true wire).
-    #[cfg(feature = "garbled")]
     pub constant_0labels: [garbled_snark_verifier::bag::S; 2],
-    #[cfg(feature = "garbled")]
     pub delta: garbled_snark_verifier::bag::S,
 }
 
@@ -281,7 +275,6 @@ pub fn babe_prover_keygen(rng: &mut impl RngCore, pk_p: BtcPk) -> (LamportSk, Pr
 // ─── Setup phase ─────────────────────────────────────────────────────────────
 
 /// Verifier: enc_setup + garble circuit + build adaptor table + compute epk.
-#[cfg(feature = "garbled")]
 pub fn babe_verifier_setup(
     vk: &Groth16VerifyingKey<Bn254>,
     public_inputs: &[Fr],
@@ -383,7 +376,6 @@ pub fn babe_prover_assert(proof: &Groth16Proof<Bn254>, lsk_p: &LamportSk) -> TxA
 
 /// Verifier: verify Lamport sig in assert_witness, compute input labels L for π₁.
 /// Returns None if the Lamport signature is invalid.
-#[cfg(feature = "garbled")]
 pub fn babe_verifier_challenge_assert(
     assert_witness: &TxAssertWitness,
     lpk_p: &LamportPk,
@@ -416,7 +408,6 @@ pub fn babe_verifier_challenge_assert(
 
 /// Prover: evaluate GC with labels L → adaptor table → r·π₁ → decrypt msg.
 /// Satisfies HashLock(h_msg) ∧ CheckSig(pk_P) on tx_ChallengeAssert output 0.
-#[cfg(feature = "garbled")]
 pub fn babe_prover_wrongly_challenged(
     challenge_witness: &TxChallengeAssertWitness,
     proof: &Groth16Proof<Bn254>,
@@ -618,7 +609,6 @@ impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
 
 /// Run the full BABE e2e happy path:
 /// Setup → Deposit → Assert → ChallengeAssert → WronglyChallenged.
-#[cfg(feature = "garbled")]
 pub fn run_babe_e2e_with_one_instance() -> BabeE2ERun {
     let session_id = h(b"babe:e2e:session");
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);

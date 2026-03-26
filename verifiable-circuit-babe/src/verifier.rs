@@ -13,7 +13,6 @@ impl BABEVerifier {
     ///
     /// Each instance gets a random seed. `enc_setup` binds each instance's
     /// secret message to the given Groth16 verifying key and public inputs.
-    #[cfg(feature = "garbled")]
     pub fn new(
         n_cc: usize,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
@@ -36,7 +35,6 @@ impl BABEVerifier {
 
     /// Build the C&C commit package: one `CACInstanceCommit` per instance.
     /// Sent to the Prover at the start of the C&C protocol.
-    #[cfg(feature = "garbled")]
     pub fn commit(&self) -> crate::cac::CACSetupPackage {
         crate::cac::CACSetupPackage {
             commits: self.instances.iter().map(|inst| inst.commit()).collect(),
@@ -46,7 +44,6 @@ impl BABEVerifier {
     /// After receiving the Prover's challenge, reveal the open round:
     /// - seeds for instance not in I
     /// - GC data for every instance in I
-    #[cfg(feature = "garbled")]
     pub fn open(
         &self,
         finalized_indices: &[usize],
