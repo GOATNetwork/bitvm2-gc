@@ -105,7 +105,7 @@ impl BABEProver {
         finalized: &[FinalizedInstanceData],
         base_input_labels: &[S],
         soldering: &SolderingData,
-        h_msgs_onchain: &[[u8; 32]],
+        h_msgs_onchain: &[[u8; 20]],
     ) -> bool {
         let sld = &soldering.soldering_proof.soldered_output;
 
@@ -161,7 +161,7 @@ impl BABEProver {
         &mut self,
         data: &FinalizedInstanceData,
         full_labels: &[S],
-        h_msg_onchain: [u8; 32],
+        h_msg_onchain: [u8; 20],
     ) -> Result<bool, String> {
         let (mut circuit, gc_output_indices) = crate::gc::read_fresh_circuit();
         let ct_prove = self.compute_ct_prove(
@@ -411,7 +411,7 @@ mod tests {
 
         // Extract h_msgs from bitcoin script of WronglyChallenged Txn
         // But in this test, we just get from package
-        let mut h_msgs_onchain: Vec<[u8; 32]> = finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
+        let mut h_msgs_onchain: Vec<[u8; 20]> = finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
         let found = prover.check_compute_msg(
             &finalized, base_input_labels, &soldering, &h_msgs_onchain,
         );
@@ -423,7 +423,7 @@ mod tests {
 
         // change the base msg to access non-base instance
         let mut prover = BABEProver::new(proof);
-        h_msgs_onchain[0] = [0u8; 32];
+        h_msgs_onchain[0] = [0u8; 20];
         let found = prover.check_compute_msg(
             &finalized, base_input_labels, &soldering, &h_msgs_onchain,
         );

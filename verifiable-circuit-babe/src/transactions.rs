@@ -17,7 +17,7 @@ pub struct TxDepositLock {
 pub struct TxChallengeAssertOutputLock {
     pub pk_p: BtcPk,
     pub pk_v: BtcPk,
-    pub h_msgs: Vec<[u8; 32]>,
+    pub h_msgs: Vec<[u8; 20]>,
 }
 
 // ─── Transaction witnesses (on-chain data) ────────────────────────────────────

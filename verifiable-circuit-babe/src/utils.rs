@@ -2,6 +2,7 @@ use ark_bn254::{Fr, G1Affine, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
+use bitcoin::hashes::{hash160, Hash};
 use sha2::{Digest, Sha256};
 
 pub fn groth16_vk_x(
@@ -83,7 +84,7 @@ pub fn h(data: &[u8]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
-/// h_msg = SHA256(secret_msg) — the hashlock value.
-pub fn derive_hashlock(secret: &[u8]) -> [u8; 32] {
-    h(secret)
+/// h_msg = RIPEMD160(SHA256(data)) — the hashlock value.
+pub fn derive_hashlock(secret: &[u8]) -> [u8; 20] {
+    hash160::Hash::hash(secret).to_byte_array()
 }

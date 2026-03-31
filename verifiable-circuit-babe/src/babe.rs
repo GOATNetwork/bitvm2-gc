@@ -113,7 +113,7 @@ pub struct ProverSetupState {
     pub finalized: Vec<FinalizedInstanceData>,
     pub soldering: SolderingData,
     /// h_msg per finalized instance, in finalized-index order.
-    pub h_msgs: Vec<[u8; 32]>,
+    pub h_msgs: Vec<[u8; 20]>,
     pub presigs_v: VerifierPresigs,
 }
 
@@ -255,7 +255,7 @@ pub fn babe_prover_assert(proof: &Groth16Proof<Bn254>, lsk_p: &LamportSk) -> TxA
 pub fn build_ca_outlock(
     pk_p: &BtcPk,
     pk_v: &BtcPk,
-    h_msgs: Vec<[u8; 32]>,
+    h_msgs: Vec<[u8; 20]>,
 ) -> TxChallengeAssertOutputLock {
     TxChallengeAssertOutputLock {
         pk_p: pk_p.clone(),
@@ -435,7 +435,7 @@ pub fn run_babe_e2e_cac() -> BabeCACE2ERun {
 
     // ── Create Txn Set and Presign ──────────────────────────────────────────────────
     println!("Prover: creating Tx Set and pre sign...");
-    let h_msgs_p: Vec<[u8; 32]> = finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
+    let h_msgs_p: Vec<[u8; 20]> = finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
     let tx_challenge_assert_outlock_p = build_ca_outlock(
         &pk_p,
         &pk_v,

@@ -10,7 +10,7 @@ pub struct CACInstanceCommit {
     pub epk: Vec<[[u8; 32]; 2]>,
     /// SHA256(label0) and SHA256(label1) for each of the 2 constant wires.
     pub constant_commits: [[[u8; 32]; 2]; 2],
-    pub h_msg: [u8; 32],
+    pub h_msg: [u8; 20],
     /// RO(ct_setup) = SHA256(ct2_r_delta_g2 || ct3_masked_msg).
     pub h_ct_setup: [u8; 32],
     /// SHA256 commitment to the adaptor table.
