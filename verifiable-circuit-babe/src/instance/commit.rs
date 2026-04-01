@@ -6,8 +6,9 @@ use crate::utils::{derive_hashlock, h_256};
 /// Per-instance commitment sent from Verifier to Prover during C&C commit phase.
 #[derive(Debug, Clone)]
 pub struct CACInstanceCommit {
-    /// SHA256(label0) and SHA256(label1) for each input wire.
-    pub epk: Vec<[[u8; 32]; 2]>,
+    /// RIPEMD(SHA256)(label0) and RIPEMD(SHA256)(label1) for each input wire.
+    /// We need to use RIPEMD(SHA256) to put this on skeleton Txn.
+    pub epk: Vec<[[u8; 20]; 2]>,
     /// SHA256(label0) and SHA256(label1) for each of the 2 constant wires.
     pub constant_commits: [[[u8; 32]; 2]; 2],
     pub h_msg: [u8; 20],

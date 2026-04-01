@@ -3,6 +3,7 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use bitcoin::hashes::{hash160, Hash};
+use ripemd::{Ripemd160, Digest as RipemdDigest};
 use sha2::{Digest, Sha256};
 
 pub fn groth16_vk_x(
@@ -78,8 +79,16 @@ fn derive_stream_xor_keyed(key: [u8; 32], nonce: [u8; 12], msg_len: usize) -> Ve
 }
 
 #[inline(always)]
+/// SHA256
 pub fn h_256(data: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
+    hasher.update(data);
+    hasher.finalize().into()
+}
+
+/// RIPEMD160
+pub fn h_160(data: &[u8]) -> [u8; 20] {
+    let mut hasher = Ripemd160::new();
     hasher.update(data);
     hasher.finalize().into()
 }

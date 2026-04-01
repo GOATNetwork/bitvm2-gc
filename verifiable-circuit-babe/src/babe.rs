@@ -66,10 +66,10 @@ pub enum BabeBtcSig {
 
 /// epk[i][b] = sha256(label_i_b), for i in 0..LAMPORT_N, b ∈ {0, 1}.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EncodingKeyPublic(pub Vec<[[u8; 32]; 2]>);
+pub struct EncodingKeyPublic(pub Vec<[[u8; 20]; 2]>);
 
 pub fn compute_epk_with_delta(encoding_keys: &[S], delta: S) -> EncodingKeyPublic {
-    let pairs = encoding_keys.iter().map(|&key| [h_256(&key.0), h_256(&(key ^ delta).0)]).collect();
+    let pairs = encoding_keys.iter().map(|&key| [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta).0)]).collect();
     EncodingKeyPublic(pairs)
 }
 

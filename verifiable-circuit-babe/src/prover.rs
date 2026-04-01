@@ -11,7 +11,7 @@ use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
 use crate::gc::SparseAdaptorTable;
 use crate::soldering::{SolderedLabelsData, SolderingData};
-use crate::utils::{derive_hashlock, h_256};
+use crate::utils::{derive_hashlock, h_160, h_256};
 
 pub struct BABEProver {
     groth16_proof: Groth16Proof<Bn254>,
@@ -39,20 +39,20 @@ impl BABEProver {
         let base_idx = finalized_indices[0];
         for (j, (h0, h1)) in output.base_commitment.iter().enumerate() {
             let committed = &package.commits[base_idx].epk[j];
-            if h0 != &committed[0] {
+            if &h_160(h0) != &committed[0] {
                 return Err(format!("base commitment mismatch at wire {j} label 0"));
             }
-            if h1 != &committed[1] {
+            if &h_160(h1) != &committed[1] {
                 return Err(format!("base commitment mismatch at wire {j} label 1"));
             }
         }
         for (i, &idx) in finalized_indices[1..].iter().enumerate() {
             for (j, (h0, h1)) in output.commitments[i].iter().enumerate() {
                 let committed = &package.commits[idx].epk[j];
-                if h0 != &committed[0] {
+                if &h_160(h0) != &committed[0] {
                     return Err(format!("instance {idx} commitment mismatch at wire {j} label 0"));
                 }
-                if h1 != &committed[1] {
+                if &h_160(h1) != &committed[1] {
                     return Err(format!("instance {idx} commitment mismatch at wire {j} label 1"));
                 }
             }
