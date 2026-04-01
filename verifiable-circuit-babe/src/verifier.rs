@@ -1,11 +1,14 @@
 use ark_bn254::Fr;
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
+use rand::Rng;
 use crate::instance::BABEInstance;
 
 /// The C&C Verifier: manages N_CC garbled-circuit instances for Cut-and-Choose.
 pub struct BABEVerifier {
     /// All N_CC instances, each fully derived from its own seed.
     pub instances: Vec<BABEInstance>,
+    /// value used for CA_2 Txn
+    pub temp_val: [u8; 32],
 }
 
 impl BABEVerifier {
@@ -30,7 +33,10 @@ impl BABEVerifier {
             .collect::<Vec<_>>()
             .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(Self { instances })
+        let rng = &mut rand::thread_rng();
+        let mut temp_val = [0u8; 32];
+        rng.fill(&mut temp_val);
+        Ok(Self { instances, temp_val })
     }
 
     /// Build the C&C commit package: one `CACInstanceCommit` per instance.

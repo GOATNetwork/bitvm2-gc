@@ -5,7 +5,7 @@ use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_relations::lc;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
@@ -153,7 +153,7 @@ pub fn babe_verifier_cac_setup(
 pub fn babe_verifier_open_and_solder(
     verifier: &BABEVerifier,
     finalized_indices: &[usize],
-) -> (Vec<(usize, u64)>, Vec<FinalizedInstanceData>, SolderingData) {
+) -> (Vec<(usize, u64)>, Vec<FinalizedInstanceData>, SolderingData, [u8; 20]) {
     let (opened, finalized) = verifier.open(finalized_indices);
 
     // Note that this part will be replaced by generating soldering proof in production.
@@ -170,8 +170,8 @@ pub fn babe_verifier_open_and_solder(
         soldering_proof: SolderingProof { soldered_output, _proof: PhantomData },
         constant_labels,
     };
-
-    (opened, finalized, soldering)
+    
+    (opened, finalized, soldering, derive_hashlock(&verifier.temp_val))
 }
 
 /// Prover: verify the opened instances, the finalized instances, and the soldering proof.
@@ -423,7 +423,7 @@ pub fn run_babe_e2e_cac() -> BabeCACE2ERun {
 
     // Verifier opens non-finalized instances and generates soldering proof.
     println!("Verifier: opening and soldering...");
-    let (opened, finalized, soldering) = babe_verifier_open_and_solder(&verifier, &finalized_indices);
+    let (opened, finalized, soldering, _hash_temp_val) = babe_verifier_open_and_solder(&verifier, &finalized_indices);
 
     println!("Prover: verifying opening and soldering proof...");
     // Prover verifies everything.
