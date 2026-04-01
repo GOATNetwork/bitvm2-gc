@@ -9,7 +9,7 @@ use rand_chacha::ChaCha12Rng;
 use rand::SeedableRng;
 use sha2::{Digest, Sha256};
 use crate::instance::BABEInstance;
-use crate::utils::h;
+use crate::utils::h_256;
 
 /// What the Verifier sends to the Prover during the C&C commit phase.
 pub struct CACSetupPackage {
@@ -118,7 +118,7 @@ pub fn verify_finalized_instances(
         let mut ct_bytes = Vec::new();
         ct_bytes.extend_from_slice(&data.ct_setup.ct2_r_delta_g2);
         ct_bytes.extend_from_slice(&data.ct_setup.ct3_masked_msg);
-        if h(&ct_bytes) != committed.h_ct_setup {
+        if h_256(&ct_bytes) != committed.h_ct_setup {
             return Err(format!("instance {idx}: ct_setup does not match h_ct_setup"));
         }
     }

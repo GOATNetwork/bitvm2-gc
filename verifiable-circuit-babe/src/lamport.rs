@@ -4,16 +4,16 @@ use ark_bn254::G1Affine;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use crate::babe::LAMPORT_N;
-use crate::utils::{h, pi1_to_bits};
+use crate::utils::{derive_hashlock, pi1_to_bits};
 
 /// Lamport signing key: LAMPORT_N pairs of 16-byte secrets.
 /// Each secret has the same width as a GC input label.
 #[derive(Debug, Clone)]
 pub struct LamportSk(pub Vec<[[u8; 16]; 2]>);
 
-/// Lamport verification key: pk[i][b] = SHA256(sk[i][b]).
+/// Lamport verification key: pk[i][b] = RIPEMD160(SHA256((sk[i][b])).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LamportPk(pub Vec<[[u8; 32]; 2]>);
+pub struct LamportPk(pub Vec<[[u8; 20]; 2]>);
 
 /// Lamport signature: sig[i] = sk[i][bit_i(π₁)], for i in 0..LAMPORT_N.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ pub fn lamport_keygen(rng: &mut impl RngCore) -> (LamportSk, LamportPk) {
         let mut s1 = [0u8; 16];
         rng.fill_bytes(&mut s0);
         rng.fill_bytes(&mut s1);
-        pk_entries.push([h(&s0), h(&s1)]);
+        pk_entries.push([derive_hashlock(&s0), derive_hashlock(&s1)]);
         sk_entries.push([s0, s1]);
     }
     (LamportSk(sk_entries), LamportPk(pk_entries))
@@ -45,5 +45,5 @@ pub fn lamport_verify(pk: &LamportPk, pi1: &G1Affine, sig: &LamportSig) -> bool 
         return false;
     }
     let bits = pi1_to_bits(pi1);
-    bits.iter().enumerate().all(|(i, &b)| h(&sig.0[i]) == pk.0[i][b as usize])
+    bits.iter().enumerate().all(|(i, &b)| derive_hashlock(&sig.0[i]) == pk.0[i][b as usize])
 }

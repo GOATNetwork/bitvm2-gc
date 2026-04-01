@@ -10,7 +10,7 @@ use crate::instance::secret::InstanceSecrets;
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use ark_serialize::CanonicalSerialize;
 use crate::instance::commit::CACInstanceCommit;
-use crate::utils::{g2_to_ser, groth16_vk_x, h};
+use crate::utils::{g2_to_ser, groth16_vk_x, h_256};
 
 pub mod secret;
 pub mod commit;
@@ -106,7 +106,7 @@ impl BABEInstance {
 
         let mut ry_bytes = Vec::new();
         r_y.serialize_compressed(&mut ry_bytes).or(Err("Failed to serialize ry_bytes"))?;
-        let mask = h(&ry_bytes);
+        let mask = h_256(&ry_bytes);
         let ct3 = self.secrets.msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect::<Vec<_>>();
 
         self.ct_setup = WeKnownPi1SetupCt {
@@ -180,7 +180,7 @@ mod tests {
 
         let mut ry_bytes = Vec::new();
         r_y.serialize_compressed(&mut ry_bytes).unwrap();
-        let mask = h(&ry_bytes);
+        let mask = h_256(&ry_bytes);
 
         let decrypted: [u8; 32] = instance.ct_setup.ct3_masked_msg.iter()
             .zip(mask.iter())

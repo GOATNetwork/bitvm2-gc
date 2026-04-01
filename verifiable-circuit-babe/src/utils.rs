@@ -53,9 +53,9 @@ pub fn pi1_to_bits(pi1: &G1Affine) -> Vec<bool> {
 }
 
 pub fn ro_from_pairing_bytes(seed: &[u8], msg_len: usize) -> Vec<u8> {
-    let key = h(seed);
+    let key = h_256(seed);
     let mut nonce = [0u8; 12];
-    nonce.copy_from_slice(&h(&[b"babe-we-known-pi1-ro-nonce".as_slice(), seed].concat())[..12]);
+    nonce.copy_from_slice(&h_256(&[b"babe-we-known-pi1-ro-nonce".as_slice(), seed].concat())[..12]);
     derive_stream_xor_keyed(key, nonce, msg_len)
 }
 
@@ -68,7 +68,7 @@ fn derive_stream_xor_keyed(key: [u8; 32], nonce: [u8; 12], msg_len: usize) -> Ve
         blk.extend_from_slice(&key);
         blk.extend_from_slice(&nonce);
         blk.extend_from_slice(&ctr.to_le_bytes());
-        let hblk = h(&blk);
+        let hblk = h_256(&blk);
         let take = core::cmp::min(32, msg_len - off);
         out[off..off + take].copy_from_slice(&hblk[..take]);
         ctr += 1;
@@ -78,7 +78,7 @@ fn derive_stream_xor_keyed(key: [u8; 32], nonce: [u8; 12], msg_len: usize) -> Ve
 }
 
 #[inline(always)]
-pub fn h(data: &[u8]) -> [u8; 32] {
+pub fn h_256(data: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hasher.finalize().into()

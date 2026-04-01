@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use serde::{Serialize, Deserialize};
 use garbled_snark_verifier::bag::S;
-use crate::utils::h;
+use crate::utils::h_256;
 
 pub type SolderedWire = ([u8; 16], [u8; 16]);
 pub type InstancesWires = Vec<SolderedWire>;
@@ -43,7 +43,7 @@ pub fn soldering_guest_compute(input: &SolderedWiresInput) -> SolderedLabelsData
 
     let base_commitment = base
         .iter()
-        .map(|(l0, l1)| (h(l0), h(l1)))
+        .map(|(l0, l1)| (h_256(l0), h_256(l1)))
         .collect();
 
     let mut deltas = Vec::with_capacity(instances.len() - 1);
@@ -68,7 +68,7 @@ pub fn soldering_guest_compute(input: &SolderedWiresInput) -> SolderedLabelsData
         );
         commitments.push(
             inst.iter()
-                .map(|(l0, l1)| (h(l0), h(l1)))
+                .map(|(l0, l1)| (h_256(l0), h_256(l1)))
                 .collect(),
         );
     }

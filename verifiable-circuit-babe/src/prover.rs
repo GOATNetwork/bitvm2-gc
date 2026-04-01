@@ -11,7 +11,7 @@ use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
 use crate::gc::SparseAdaptorTable;
 use crate::soldering::{SolderedLabelsData, SolderingData};
-use crate::utils::{derive_hashlock, h};
+use crate::utils::{derive_hashlock, h_256};
 
 pub struct BABEProver {
     groth16_proof: Groth16Proof<Bn254>,
@@ -87,10 +87,10 @@ impl BABEProver {
             let committed = &package.commits[inst_idx];
             let cl = &soldering.constant_labels[i];
 
-            if h(&cl[0].0) != committed.constant_commits[0][0] {
+            if h_256(&cl[0].0) != committed.constant_commits[0][0] {
                 return Err(format!("instance {inst_idx}: constant wire-0 label mismatch"));
             }
-            if h(&cl[1].0) != committed.constant_commits[1][1] {
+            if h_256(&cl[1].0) != committed.constant_commits[1][1] {
                 return Err(format!("instance {inst_idx}: constant wire-1 label mismatch"));
             }
         }
@@ -127,7 +127,7 @@ impl BABEProver {
                 .enumerate()
                 .map(|(j, &base_lbl)| {
                     let (d0, d1) = deltas_i[j];
-                    if h(&base_lbl.0) == sld.base_commitment[j].0 {
+                    if h_256(&base_lbl.0) == sld.base_commitment[j].0 {
                         base_lbl ^ S(d0)
                     } else {
                         base_lbl ^ S(d1)
@@ -249,7 +249,7 @@ impl BABEProver {
 
         let mut ry_bytes = Vec::new();
         r_y.serialize_compressed(&mut ry_bytes).map_err(|e| format!("serialize r_y: {e}"))?;
-        let mask = h(&ry_bytes);
+        let mask = h_256(&ry_bytes);
 
         let ct3 = &ct_setup.ct3_masked_msg;
         if ct3.len() != 32 {

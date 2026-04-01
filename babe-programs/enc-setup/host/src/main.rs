@@ -90,7 +90,7 @@ fn compute_enc_setup(
     // ct3 = blake3(rY) ⊕ msg
     let mut ry_bytes = Vec::new();
     r_y.serialize_compressed(&mut ry_bytes).unwrap();
-    let mask = verifiable_circuit_babe::babe::h(&ry_bytes);
+    let mask = verifiable_circuit_babe::babe::h_256(&ry_bytes);
     let ct3: [u8; 32] = core::array::from_fn(|i| msg[i] ^ mask[i]);
 
     (ct2_bytes, ct3)

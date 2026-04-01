@@ -19,7 +19,7 @@ use crate::lamport::{lamport_keygen, lamport_sign, lamport_verify, LamportPk, La
 use crate::prover::BABEProver;
 use crate::soldering::{build_soldered_wires_input, soldering_guest_compute, SolderingData, SolderingProof};
 use crate::transactions::{OnchainSize, TxAssertWitness, TxChallengeAssertOutputLock, TxChallengeAssertWitness, TxDepositLock, TxNoWithdrawWitness, TxWithdrawWitness, TxWronglyChallengedWitness};
-use crate::utils::{derive_hashlock, g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x, h, ro_from_pairing_bytes};
+use crate::utils::{derive_hashlock, g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x, h_256, ro_from_pairing_bytes};
 use crate::verifier::BABEVerifier;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ pub enum BabeBtcSig {
 pub struct EncodingKeyPublic(pub Vec<[[u8; 32]; 2]>);
 
 pub fn compute_epk_with_delta(encoding_keys: &[S], delta: S) -> EncodingKeyPublic {
-    let pairs = encoding_keys.iter().map(|&key| [h(&key.0), h(&(key ^ delta).0)]).collect();
+    let pairs = encoding_keys.iter().map(|&key| [h_256(&key.0), h_256(&(key ^ delta).0)]).collect();
     EncodingKeyPublic(pairs)
 }
 
@@ -582,7 +582,7 @@ mod tests {
         ).unwrap();
         let public_inputs = vec![a * b];
         let secret = b"test-secret-32by";
-        let r_bytes = h(b"r-test");
+        let r_bytes = h_256(b"r-test");
 
         let ct_setup = we_known_pi1_encsetup(&vk, &public_inputs, secret, r_bytes).unwrap();
         let ctprove = we_known_pi1_encprove(proof.a.into_group(), r_bytes);

@@ -1,7 +1,7 @@
 use crate::babe::compute_epk_with_delta;
 use crate::gc::gc_ciphertexts_commit;
 use crate::instance::BABEInstance;
-use crate::utils::{derive_hashlock, h};
+use crate::utils::{derive_hashlock, h_256};
 
 /// Per-instance commitment sent from Verifier to Prover during C&C commit phase.
 #[derive(Debug, Clone)]
@@ -27,7 +27,7 @@ impl CACInstanceCommit {
 
         let constant_commits = std::array::from_fn(|w| {
             let l0 = instance.secrets.constant_0labels[w];
-            [h(&l0.0), h(&(l0 ^ delta).0)]
+            [h_256(&l0.0), h_256(&(l0 ^ delta).0)]
         });
 
         let mut ct_setup_bytes = Vec::new();
@@ -38,7 +38,7 @@ impl CACInstanceCommit {
             epk: input_commits,
             constant_commits,
             h_msg: derive_hashlock(&instance.secrets.msg),
-            h_ct_setup: h(&ct_setup_bytes),
+            h_ct_setup: h_256(&ct_setup_bytes),
             com_adaptor: instance.adaptor_table.commit(),
             com_gc: gc_ciphertexts_commit(&instance.ciphertexts),
         }
