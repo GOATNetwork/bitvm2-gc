@@ -19,7 +19,7 @@ use crate::lamport::{lamport_keygen, lamport_sign, lamport_verify, LamportPk, La
 use crate::prover::BABEProver;
 use crate::soldering::{build_soldered_wires_input, soldering_guest_compute, SolderingData, SolderingProof};
 use crate::transactions::{OnchainSize, TxAssertWitness, TxChallengeAssertOutputLock, TxChallengeAssertWitness, TxDepositLock, TxNoWithdrawWitness, TxWithdrawWitness, TxWronglyChallengedWitness};
-use crate::utils::{derive_hashlock, g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x, h_256, ro_from_pairing_bytes};
+pub use crate::utils::{derive_hashlock, g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x, h_256, ro_from_pairing_bytes};
 use crate::verifier::BABEVerifier;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
