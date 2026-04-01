@@ -6,26 +6,34 @@ use std::cell::RefCell;
 use std::fs;
 use std::rc::Rc;
 use std::sync::OnceLock;
+use ark_bn254::G1Affine;
+use ark_ec::AffineRepr;
 pub use circuit::*;
 pub use adaptor::*;
 use garbled_snark_verifier::bag::{Circuit, Gate, Wire};
 use garbled_snark_verifier::core::gate::GateType;
-use garbled_snark_verifier::core::utils::SerializableGate;
+use garbled_snark_verifier::core::utils::{reset_gid, SerializableGate};
 pub use utils::*;
 
-/// Absolute path to the gates file
-const GC_GATES_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/", "babe_gc_gates.bin");
-const GC_INDICES_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/", "babe_gc_indices.bin");
+fn gc_gates_path() -> String {
+    std::env::var("GC_GATES_PATH").unwrap_or_else(|_| "./babe_gc_gates.bin".to_string())
+}
+
+fn gc_indices_path() -> String {
+    std::env::var("GC_INDICES_PATH").unwrap_or_else(|_| "./babe_gc_indices.bin".to_string())
+}
 
 /// Raw circuit bytes cached on first read.
 static CIRCUIT_BYTES: OnceLock<(Vec<u8>, Vec<u8>)> = OnceLock::new();
 
 pub fn read_fresh_circuit() -> (Circuit, Vec<usize>) {
     let (gates_bytes, indices_bytes) = CIRCUIT_BYTES.get_or_init(|| {
-        let g = fs::read(GC_GATES_PATH)
-            .unwrap_or_else(|_| panic!("'{}' not found — run `cargo test test_babe_gc_serialize_roundtrip -- --ignored` to generate it.", GC_GATES_PATH));
-        let i = fs::read(GC_INDICES_PATH)
-            .unwrap_or_else(|_| panic!("'{}' not found — run `cargo test test_babe_gc_serialize_roundtrip -- --ignored` to generate it.", GC_INDICES_PATH));
+        let gates_path = gc_gates_path();
+        let indices_path = gc_indices_path();
+        let g = fs::read(&gates_path)
+            .unwrap_or_else(|_| panic!("'{}' not found — run function generate_and_write_fresh_circuit() to generate it.", gates_path));
+        let i = fs::read(&indices_path)
+            .unwrap_or_else(|_| panic!("'{}' not found — run function generate_and_write_fresh_circuit() to generate it.", indices_path));
         (g, i)
     });
 
@@ -53,40 +61,49 @@ pub fn read_fresh_circuit() -> (Circuit, Vec<usize>) {
     (Circuit(wires, gates), output_indices)
 }
 
+pub fn generate_and_write_fresh_circuit() {
+    reset_gid();
+    let g = G1Affine::generator();
+    let (bld, output_indices) = compile_babe_gc(g);
+    let circuit = bld.build(&[]);
+
+    // --- Serialize ---
+
+    // File 1: (num_wires: u32, gates: Vec<SerializableGate>)
+    let num_wires = circuit.0.len() as u32;
+    let gates: Vec<SerializableGate> = circuit.1.iter().map(|gate| SerializableGate {
+        gate_type: gate.gate_type as u8,
+        wire_a_id: gate.wire_a.borrow().id.unwrap(),
+        wire_b_id: gate.wire_b.borrow().id.unwrap(),
+        wire_c_id: gate.wire_c.borrow().id.unwrap(),
+        gid: gate.gid,
+    }).collect();
+    let gates_bytes = bincode::serialize(&(num_wires, &gates)).expect("serialize gates");
+    fs::write(gc_gates_path(), &gates_bytes).expect("write gates");
+
+    // File 2: Vec<usize> output indices
+    let indices_bytes = bincode::serialize(&output_indices).expect("serialize indices");
+    fs::write(gc_indices_path(), &indices_bytes).expect("write indices");
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
     use ark_bn254::G1Affine;
     use ark_ec::AffineRepr;
     use garbled_snark_verifier::core::utils::{reset_gid, SerializableGate};
-    use super::{compile_babe_gc, GC_GATES_PATH, GC_INDICES_PATH};
+    use super::{compile_babe_gc, generate_and_write_fresh_circuit};
 
     #[test]
     #[ignore]
     fn test_babe_gc_serialize_roundtrip() {
+        generate_and_write_fresh_circuit();
+
         reset_gid();
         let g = G1Affine::generator();
         let (bld, output_indices) = compile_babe_gc(g);
         let circuit = bld.build(&[]);
-
-        // --- Serialize ---
-
-        // File 1: (num_wires: u32, gates: Vec<SerializableGate>)
         let num_wires = circuit.0.len() as u32;
-        let gates: Vec<SerializableGate> = circuit.1.iter().map(|gate| SerializableGate {
-            gate_type: gate.gate_type as u8,
-            wire_a_id: gate.wire_a.borrow().id.unwrap(),
-            wire_b_id: gate.wire_b.borrow().id.unwrap(),
-            wire_c_id: gate.wire_c.borrow().id.unwrap(),
-            gid: gate.gid,
-        }).collect();
-        let gates_bytes = bincode::serialize(&(num_wires, &gates)).expect("serialize gates");
-        fs::write(GC_GATES_PATH, &gates_bytes).expect("write gates");
-
-        // File 2: Vec<usize> output indices
-        let indices_bytes = bincode::serialize(&output_indices).expect("serialize indices");
-        fs::write(GC_INDICES_PATH, &indices_bytes).expect("write indices");
-
 
         // --- Reconstruct Circuit ---
 
@@ -104,11 +121,7 @@ mod tests {
             assert_eq!(orig.gid, rec.gid, "reconstructed gate[{i}] gid mismatch");
         }
 
-        println!("wires={num_wires}, gates={}, output_indices={}", gates.len(), output_indices.len());
+        println!("wires={num_wires}, gates={}, output_indices={}", circuit.1.len(), output_indices.len());
         println!("Circuit reconstructed successfully from serialized data.");
-
-        // Cleanup
-        // fs::remove_file("test_babe_gc_gates.bin").ok();
-        // fs::remove_file("test_babe_gc_indices.bin").ok();
     }
 }
