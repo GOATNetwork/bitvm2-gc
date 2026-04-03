@@ -63,38 +63,13 @@ impl BABEProver {
     /// Called when Prover receives `SolderingData` from Verifier (off-chain).
     ///
     /// Verifies:
-    /// 1. The ZK soldering proof output is consistent with the CAC commitments.
-    /// 2. Constant labels match the per-instance `constant_commits`.
+    /// The ZK soldering proof output is consistent with the CAC commitments.
     pub fn verify_soldering_output(
         package: &CACSetupPackage,
         soldering: &SolderingData,
     ) -> Result<(), String> {
         let sld_output = &soldering.soldering_proof.soldered_output;
-
-        // 1
         Self::verify_soldering_output_match_commitment(sld_output, package, &soldering.finalized_indices)?;
-
-        // 2
-        if soldering.constant_labels.len() != soldering.finalized_indices.len() {
-            return Err(format!(
-                "constant_labels len {} != finalized_indices len {}",
-                soldering.constant_labels.len(),
-                soldering.finalized_indices.len()
-            ));
-        }
-        // 3
-        for (i, &inst_idx) in soldering.finalized_indices.iter().enumerate() {
-            let committed = &package.commits[inst_idx];
-            let cl = &soldering.constant_labels[i];
-
-            if h_256(&cl[0].0) != committed.constant_commits[0][0] {
-                return Err(format!("instance {inst_idx}: constant wire-0 label mismatch"));
-            }
-            if h_256(&cl[1].0) != committed.constant_commits[1][1] {
-                return Err(format!("instance {inst_idx}: constant wire-1 label mismatch"));
-            }
-        }
-
         Ok(())
     }
 
@@ -110,7 +85,7 @@ impl BABEProver {
         let sld = &soldering.soldering_proof.soldered_output;
 
         println!("Trying base instance...");
-        let base_full = Self::build_full_labels(&soldering.constant_labels[0], base_input_labels);
+        let base_full = Self::build_full_labels(&finalized[0].constant_labels, base_input_labels);
         let base_res = self.try_evaluate_instance(&finalized[0], &base_full, h_msgs_onchain[0]);
         match base_res {
             Ok(true) => return true,
@@ -135,7 +110,7 @@ impl BABEProver {
                 })
                 .collect();
 
-            let full = Self::build_full_labels(&soldering.constant_labels[i], &instance_labels);
+            let full = Self::build_full_labels(&finalized[i].constant_labels, &instance_labels);
             let temp = self.try_evaluate_instance(&finalized[i], &full, h_msgs_onchain[i]);
             match temp {
                 Ok(true) => return true,
@@ -356,7 +331,6 @@ mod tests {
         let soldering = SolderingData {
             finalized_indices: finalized_indices.clone(),
             soldering_proof: SolderingProof { soldered_output, _proof: PhantomData },
-            constant_labels,
         };
 
         (verifier, package, finalized_indices, finalized, soldering)
@@ -369,17 +343,6 @@ mod tests {
         let (_, package, _, _, soldering) = setup_cac_soldering();
         BABEProver::verify_soldering_output(&package, &soldering)
             .expect("verify_soldering_output should succeed");
-    }
-
-    #[test]
-    fn test_verify_soldering_output_bad_constant_label() {
-        let (_, package, _, _, mut soldering) = setup_cac_soldering();
-        // corrupt the wire-0 constant label of the first finalized instance
-        soldering.constant_labels[0][0] = S::random();
-        assert!(
-            BABEProver::verify_soldering_output(&package, &soldering).is_err(),
-            "tampered constant label should fail"
-        );
     }
 
     // ── check_compute_msg ─────────────────────────────────────────────────────

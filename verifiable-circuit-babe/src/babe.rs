@@ -160,15 +160,9 @@ pub fn babe_verifier_open_and_solder(
     let soldered_input = build_soldered_wires_input(verifier, finalized_indices);
     let soldered_output = soldering_guest_compute(&soldered_input);
 
-    let constant_labels: Vec<[S; 2]> = finalized_indices.iter().map(|&idx| {
-        let inst = &verifier.instances[idx];
-        [inst.secrets.constant_0labels[0], inst.secrets.constant_0labels[1] ^ inst.secrets.delta]
-    }).collect();
-
     let soldering = SolderingData {
         finalized_indices: finalized_indices.to_vec(),
         soldering_proof: SolderingProof { soldered_output, _proof: PhantomData },
-        constant_labels,
     };
     
     (opened, finalized, soldering, derive_hashlock(&verifier.temp_val))

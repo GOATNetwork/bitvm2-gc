@@ -56,6 +56,8 @@ pub struct FinalizedInstanceData {
     pub gc_ciphertexts: Vec<Option<S>>,
     pub adaptor_table: SparseAdaptorTable,
     pub ct_setup: WeKnownPi1SetupCt,
+    /// [0-label of wire-0 (constant false), 1-label of wire-1 (constant true)].
+    pub constant_labels: [S; 2],
 }
 
 pub fn verify_opened_instances(
@@ -114,6 +116,10 @@ pub fn verify_finalized_instances(
         }
         if data.adaptor_table.commit() != committed.com_adaptor {
             return Err(format!("instance {idx}: adaptor_table does not match com_adaptor"));
+        }
+        if h_256(&data.constant_labels[0].0) != committed.constant_commits[0][0] || 
+            h_256(&data.constant_labels[1].0) != committed.constant_commits[1][1] {
+            return Err(format!("instance {idx}: constant_commits do not match"));
         }
         let mut ct_bytes = Vec::new();
         ct_bytes.extend_from_slice(&data.ct_setup.ct2_r_delta_g2);

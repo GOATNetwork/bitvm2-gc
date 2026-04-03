@@ -29,8 +29,6 @@ pub struct SolderingProof {
 pub struct SolderingData {
     pub finalized_indices: Vec<usize>,
     pub soldering_proof: SolderingProof,
-    /// [0-label of wire-0 (constant false), 1-label of wire-1 (constant true)].
-    pub constant_labels: Vec<[S; 2]>,
 }
 
 

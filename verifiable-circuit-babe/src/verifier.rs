@@ -64,11 +64,14 @@ impl BABEVerifier {
         let mut finalized = Vec::new();
         for &i in finalized_indices {
             let inst = &self.instances[i];
+            let constant_labels =
+            [inst.secrets.constant_0labels[0], inst.secrets.constant_0labels[1] ^ inst.secrets.delta];
             finalized.push(crate::cac::FinalizedInstanceData {
                 index: i,
                 gc_ciphertexts: inst.ciphertexts.clone(),
                 adaptor_table: inst.adaptor_table.clone(),
                 ct_setup: inst.ct_setup.clone(),
+                constant_labels
             });
         }
 
