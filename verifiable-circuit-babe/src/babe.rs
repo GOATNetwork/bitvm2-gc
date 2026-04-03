@@ -5,7 +5,7 @@ use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_relations::lc;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use rand::{Rng, RngCore, SeedableRng};
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};

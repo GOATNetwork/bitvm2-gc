@@ -1,6 +1,5 @@
 use std::marker::PhantomData;
 use serde::{Serialize, Deserialize};
-use garbled_snark_verifier::bag::S;
 use crate::utils::h_256;
 
 pub type SolderedWire = ([u8; 16], [u8; 16]);

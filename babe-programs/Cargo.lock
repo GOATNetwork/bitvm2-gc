@@ -13,36 +13,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "adaptor-guest"
-version = "1.1.0"
-dependencies = [
- "ark-bn254",
- "ark-ec",
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "garbled-snark-verifier",
- "sha2",
- "verifiable-circuit-babe",
- "zkm-zkvm",
-]
-
-[[package]]
-name = "adaptor-host"
-version = "1.1.0"
-dependencies = [
- "ark-bn254",
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "garbled-snark-verifier",
- "hex",
- "rand 0.8.5",
- "sha2",
- "verifiable-circuit-babe",
- "zkm-build",
- "zkm-sdk",
-]
-
-[[package]]
 name = "addchain"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1475,7 +1445,7 @@ dependencies = [
  "rustc_version 0.4.1",
  "subtle",
  "zeroize",
- "zkm-lib 1.2.4 (git+https://github.com/ProjectZKM/Ziren)",
+ "zkm-lib",
 ]
 
 [[package]]
@@ -3504,7 +3474,7 @@ dependencies = [
  "once_cell",
  "sha2",
  "signature",
- "zkm-lib 1.2.4 (git+https://github.com/ProjectZKM/Ziren)",
+ "zkm-lib",
 ]
 
 [[package]]
@@ -4084,7 +4054,7 @@ dependencies = [
  "hex",
  "primeorder",
  "sha2",
- "zkm-lib 1.2.4 (git+https://github.com/ProjectZKM/Ziren)",
+ "zkm-lib",
 ]
 
 [[package]]
@@ -4715,7 +4685,7 @@ dependencies = [
  "p3-field",
  "p3-koala-bear",
  "p3-symmetric",
- "zkm-primitives 1.2.4 (git+https://github.com/ProjectZKM/Ziren)",
+ "zkm-primitives",
 ]
 
 [[package]]
@@ -7768,7 +7738,7 @@ dependencies = [
 [[package]]
 name = "zkm-build"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -7779,9 +7749,8 @@ dependencies = [
 [[package]]
 name = "zkm-core-executor"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
- "aes",
  "anyhow",
  "bincode",
  "bytemuck",
@@ -7811,14 +7780,14 @@ dependencies = [
  "typenum",
  "vec_map",
  "zkm-curves",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-stark",
 ]
 
 [[package]]
 name = "zkm-core-machine"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -7863,14 +7832,14 @@ dependencies = [
  "zkm-core-executor",
  "zkm-curves",
  "zkm-derive",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-stark",
 ]
 
 [[package]]
 name = "zkm-cuda"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "bincode",
  "ctrlc",
@@ -7888,7 +7857,7 @@ dependencies = [
 [[package]]
 name = "zkm-curves"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "cfg-if",
  "curve25519-dalek",
@@ -7905,30 +7874,17 @@ dependencies = [
  "thiserror 1.0.69",
  "tracing",
  "typenum",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-stark",
 ]
 
 [[package]]
 name = "zkm-derive"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "zkm-lib"
-version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
-dependencies = [
- "bincode",
- "cfg-if",
- "elliptic-curve",
- "serde",
- "sha2",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
 ]
 
 [[package]]
@@ -7941,25 +7897,7 @@ dependencies = [
  "elliptic-curve",
  "serde",
  "sha2",
- "zkm-primitives 1.2.4 (git+https://github.com/ProjectZKM/Ziren)",
-]
-
-[[package]]
-name = "zkm-primitives"
-version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
-dependencies = [
- "bincode",
- "hex",
- "lazy_static",
- "num-bigint 0.4.6",
- "p3-field",
- "p3-koala-bear",
- "p3-monty-31",
- "p3-poseidon2",
- "p3-symmetric",
- "serde",
- "sha2",
+ "zkm-primitives",
 ]
 
 [[package]]
@@ -7983,7 +7921,7 @@ dependencies = [
 [[package]]
 name = "zkm-prover"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "anyhow",
  "bincode",
@@ -8009,7 +7947,7 @@ dependencies = [
  "tracing-subscriber 0.3.22",
  "zkm-core-executor",
  "zkm-core-machine",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-recursion-circuit",
  "zkm-recursion-compiler",
  "zkm-recursion-core",
@@ -8020,7 +7958,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-circuit"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "hashbrown 0.14.5",
  "itertools 0.13.0",
@@ -8043,7 +7981,7 @@ dependencies = [
  "zkm-core-executor",
  "zkm-core-machine",
  "zkm-derive",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-recursion-compiler",
  "zkm-recursion-core",
  "zkm-recursion-gnark-ffi",
@@ -8053,7 +7991,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-compiler"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "backtrace",
  "itertools 0.13.0",
@@ -8065,7 +8003,7 @@ dependencies = [
  "tracing",
  "vec_map",
  "zkm-core-machine",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-recursion-core",
  "zkm-recursion-derive",
  "zkm-stark",
@@ -8074,7 +8012,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-core"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "backtrace",
  "ff 0.13.1",
@@ -8104,14 +8042,14 @@ dependencies = [
  "zkhash",
  "zkm-core-machine",
  "zkm-derive",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-stark",
 ]
 
 [[package]]
 name = "zkm-recursion-derive"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "quote",
  "syn 1.0.109",
@@ -8120,7 +8058,7 @@ dependencies = [
 [[package]]
 name = "zkm-recursion-gnark-ffi"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "anyhow",
  "bincode",
@@ -8144,7 +8082,7 @@ dependencies = [
 [[package]]
 name = "zkm-sdk"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "alloy-primitives",
  "alloy-signer",
@@ -8183,7 +8121,7 @@ dependencies = [
  "zkm-core-executor",
  "zkm-core-machine",
  "zkm-cuda",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-prover",
  "zkm-stark",
 ]
@@ -8191,7 +8129,7 @@ dependencies = [
 [[package]]
 name = "zkm-stark"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "arrayref",
  "hashbrown 0.14.5",
@@ -8226,14 +8164,14 @@ dependencies = [
  "tracing-forest",
  "tracing-subscriber 0.3.22",
  "zkm-derive",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-primitives",
  "zkm-zkvm",
 ]
 
 [[package]]
 name = "zkm-zkvm"
 version = "1.2.4"
-source = "git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile#151f3e2685c038e0b0033bcbe82cfcdf037b89f7"
+source = "git+https://github.com/ProjectZKM/Ziren#d5b7577c683dfceeecb90325d3277d34dc52bf17"
 dependencies = [
  "bincode",
  "cfg-if",
@@ -8245,8 +8183,8 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "sha2",
- "zkm-lib 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
- "zkm-primitives 1.2.4 (git+https://github.com/VanhGer/Ziren.git?branch=feat%2Faes128-precompile)",
+ "zkm-lib",
+ "zkm-primitives",
 ]
 
 [[package]]

@@ -88,10 +88,9 @@ pub fn generate_and_write_fresh_circuit() {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use ark_bn254::G1Affine;
     use ark_ec::AffineRepr;
-    use garbled_snark_verifier::core::utils::{reset_gid, SerializableGate};
+    use garbled_snark_verifier::core::utils::reset_gid;
     use super::{compile_babe_gc, generate_and_write_fresh_circuit};
 
     #[test]

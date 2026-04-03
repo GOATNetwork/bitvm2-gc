@@ -5,9 +5,6 @@ use ark_bn254::Fq;
 use ark_ff::PrimeField;
 use crate::gc::adaptor::Ct;
 
-#[cfg(all(target_os = "zkvm"))]
-use zkm_zkvm::lib::aes128::aes128_encrypt;
-
 /// Two fixed public keys for the PRF (domain-separated).
 const PRF_KEY_0: [u8; 16] = [0xBA, 0xBE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
@@ -17,32 +14,18 @@ const PRF_KEY_1: [u8; 16] = [0xBA, 0xBE, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
 /// This is the "random oracle on label", using AES
 #[inline(always)]
 pub fn prf_fq(label: &[u8; 16]) -> Fq {
-    #[cfg(all(target_os = "zkvm"))]
-    {
-        let mut b0 = *label;
-        aes128_encrypt(&mut b0, &PRF_KEY_0);
-        let mut b1 = *label;
-        aes128_encrypt(&mut b1, &PRF_KEY_1);
-        let mut out = [0u8; 32];
-        out[..16].copy_from_slice(&b0);
-        out[16..].copy_from_slice(&b1);
-        return Fq::from_le_bytes_mod_order(&out);
-    }
-    #[cfg(not(all(target_os = "zkvm")))]
-    {
-        let c0 = Aes128::new(GenericArray::from_slice(&PRF_KEY_0));
-        let mut b0 = *GenericArray::from_slice(label);
-        c0.encrypt_block(&mut b0);
+    let c0 = Aes128::new(GenericArray::from_slice(&PRF_KEY_0));
+    let mut b0 = *GenericArray::from_slice(label);
+    c0.encrypt_block(&mut b0);
 
-        let c1 = Aes128::new(GenericArray::from_slice(&PRF_KEY_1));
-        let mut b1 = *GenericArray::from_slice(label);
-        c1.encrypt_block(&mut b1);
+    let c1 = Aes128::new(GenericArray::from_slice(&PRF_KEY_1));
+    let mut b1 = *GenericArray::from_slice(label);
+    c1.encrypt_block(&mut b1);
 
-        let mut out = [0u8; 32];
-        out[..16].copy_from_slice(&b0);
-        out[16..].copy_from_slice(&b1);
-        Fq::from_le_bytes_mod_order(&out)
-    }
+    let mut out = [0u8; 32];
+    out[..16].copy_from_slice(&b0);
+    out[16..].copy_from_slice(&b1);
+    Fq::from_le_bytes_mod_order(&out)
 }
 
 fn fq_to_bytes(fq: &Fq) -> [u8; 32] {
@@ -65,18 +48,6 @@ pub fn aes_enc(fq: &Fq, key: &[u8; 16]) -> Ct {
     let plain = fq_to_bytes(fq);
 
     let mut ct = [0u8; 32];
-    cfg_if::cfg_if! {
-        if #[cfg(all(target_os = "zkvm"))] {
-            // transmute is zero-cost: reinterprets [u8;32] as [[u8;16];2] with no copy or bounds check
-            let mut blocks: [[u8; 16]; 2] = unsafe { std::mem::transmute(plain) };
-            aes128_encrypt(&mut blocks[0], key);
-            let mut key1 = *key;
-            key1[15] ^= 0x01;
-            aes128_encrypt(&mut blocks[1], &key1);
-            return unsafe { std::mem::transmute(blocks) };
-        }
-    }
-
     let cipher0 = Aes128::new(GenericArray::from_slice(key));
     let mut block0 = *GenericArray::from_slice(&plain[..16]);
     cipher0.encrypt_block(&mut block0);

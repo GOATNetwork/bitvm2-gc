@@ -2,8 +2,6 @@
 members = [
     "aes-enc/guest",
     "aes-enc/host",
-    "adaptor/guest",
-    "adaptor/host",
     "garbled-circuit/guest",
     "garbled-circuit/host",
     "enc-setup/guest",
@@ -18,9 +16,9 @@ version = "1.1.0"
 edition = "2021"
 
 [workspace.dependencies]
-zkm-build = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
-zkm-sdk = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
-zkm-zkvm = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
+zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
+zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }
+zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren" }
 garbled-snark-verifier = { path = "../garbled-snark-verifier" }
 bristol = { path = "../bristol" }
 verifiable-circuit-babe = { path = "../verifiable-circuit-babe" }

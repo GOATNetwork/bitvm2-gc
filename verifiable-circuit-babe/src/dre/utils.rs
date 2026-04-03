@@ -1,7 +1,7 @@
 use std::ops::Mul;
 use ark_bn254::{Fr, G1Affine, G1Projective};
 use ark_ec::CurveGroup;
-use ark_ff::{PrimeField, UniformRand, Zero};
+use ark_ff::{UniformRand, Zero};
 use rand::Rng;
 use crate::dre::N;
 

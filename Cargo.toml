@@ -21,13 +21,13 @@ resolver = "2"
 [workspace.dependencies]
 garbled-snark-verifier = { path = "./garbled-snark-verifier" }
 bristol = { path = "./bristol" }
-#zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
-#zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }
-#zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren" }
+zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
+zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }
+zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren" }
 
-zkm-build = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
-zkm-sdk = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
-zkm-zkvm = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
+#zkm-build = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
+#zkm-sdk = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
+#zkm-zkvm = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
 
 poseidon2 = { git = "https://github.com/ProjectZKM/poseidon2" }
 p3-maybe-rayon = { git = "https://github.com/ProjectZKM/Plonky3" }

@@ -1,4 +1,4 @@
-use ark_bn254::{Fq, Fr, G1Affine, G1Projective};
+use ark_bn254::{Fq, Fr, G1Affine};
 use ark_ff::Zero;
 use ark_serialize::CanonicalSerialize;
 use sha2::{Digest, Sha256};
@@ -91,66 +91,6 @@ impl SparseAdaptorTable {
             }
         }
         hasher.finalize().into()
-    }
-
-    pub fn build_in_zkvm(
-        labels: &[[u8; 16]],
-        r_bits: &[u8],
-        rhos: &[G1Affine],
-        deltas: &[Fq],
-    ) -> Self {
-        assert_eq!(rhos.len(), N);
-        assert_eq!(deltas.len(), N);
-        assert_eq!(labels.len(), 2 * L);
-        assert_eq!(r_bits.len(), N);
-
-        let col_indices = nonzero_col_indices();
-
-        // Verify ∑ 2^i · ρ_i = O
-        let mut weighted_sum = G1Projective::zero();
-        let mut power = Fr::from(1u64);
-        for rho_i in rhos {
-            weighted_sum += *rho_i * power;
-            power *= Fr::from(2u64);
-        }
-        assert!(weighted_sum.is_zero(), "constraint ∑ 2^i·ρ_i = O not satisfied");
-
-        for i in 0..N {
-            assert!(!deltas[i].is_zero(), "delta[{i}] must be non-zero");
-        }
-
-        // Precompute prf_fq for every wire once — the union of all col_indices covers 0..L,
-        // so this replaces N × 2035 ≈ 517K redundant calls with exactly L = 1271 calls.
-        let prf_cache: Vec<Fq> = (0..L).map(|k| prf_fq(&labels[2 * k + 1])).collect();
-
-        let entries = (0..N)
-            .map(|i| {
-                let r_i = Fq::from(r_bits[i]);
-                let d = build_d_i_sparse(deltas[i], r_i, &rhos[i]);
-
-                let build_row = |j: usize| -> SparseAdaptorRow {
-                    let mut offset = Fq::zero();
-                    let cts = col_indices[j]
-                        .iter()
-                        .zip(d[j].iter())
-                        .map(|(&k, &d_val)| {
-                            let s_k = prf_cache[k] - d_val;
-                            offset += s_k;
-                            aes_enc(&s_k, &labels[2 * k])
-                        })
-                        .collect();
-                    SparseAdaptorRow { cts, offset }
-                };
-
-                SparseAdaptorEntry {
-                    x: build_row(0),
-                    y: build_row(1),
-                    z: build_row(2),
-                }
-            })
-            .collect();
-
-        SparseAdaptorTable { entries }
     }
 
     /// Decrypt the adaptor table and sum each row to recover Jacobian coords of r_i·π + ρ_i.
