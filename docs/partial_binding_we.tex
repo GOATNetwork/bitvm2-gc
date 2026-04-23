@@ -22,6 +22,7 @@
 \newcommand{\Gtwo}{\mathbb{G}_2}
 \newcommand{\Gt}{\mathbb{G}_T}
 \newcommand{\Fr}{\mathbb{F}_r}
+\newcommand{\deltatwo}{[\delta]_2}
 \newcommand{\msg}{\mathrm{msg}}
 \newcommand{\Enc}{\mathsf{Enc}}
 \newcommand{\Dec}{\mathsf{Dec}}
@@ -42,14 +43,16 @@ where some inputs are determined after encryption. We introduce
 \emph{partial-binding WE}, which binds only a designated static
 prefix $x_S$ and lets the remaining indices $x_D$ be committed at
 dispute time via a \emph{Dual-Scalar Garbled Circuit} (DSGC) that
-outputs both $r \cdot \pi_1$ and $r \cdot P_D = r \sum_{j \in D} x_j L_j$.
-The DSGC structure binds $x_D$ proactively to the specific proof
-used in decryption, closing a substitution attack that any
-non-binding construction admits. Overhead is $|D|$ additional
-fixed-base scalar multiplications inside the garbled circuit.
-Security reduces to basic BABE plus GC-security and Lamport
-one-wayness. The scheme retains BABE's property of requiring no
-on-chain Groth16 verifier.
+outputs both $r \cdot \pi_1$ and a blinded dynamic term
+$r \cdot P_D + r \cdot B$, where
+$P_D = \sum_{j \in D} x_j L_j$ and $B \in \Gone$ is a verifier-chosen
+blinding point. The DSGC structure binds $x_D$ proactively to the
+specific proof used in decryption while preventing low-dimensional
+leakage of $\{r \cdot L_j\}_{j \in D}$. Overhead is $|D|$
+additional fixed-base scalar multiplications inside the garbled
+circuit plus one blinded offset. Security reduces to basic BABE
+plus GC-security and Lamport one-wayness. The scheme retains
+BABE's property of requiring no on-chain Groth16 verifier.
 \end{abstract}
 
 % ============================================================
@@ -81,18 +84,21 @@ modification is:
 \begin{itemize}
   \item \textbf{Encryption:} replace $Y = e(\alpha, \beta) \cdot e(vk_x, \gamma)$ with
     $Y_S = e(\alpha, \beta) \cdot e(P_S, \gamma)$ where
-    $P_S = \sum_{j \in S} x_j L_j$; publish additional
-    $ct_D = \{r \cdot L_j\}_{j \in D} \in \Gone^{|D|}$.
-  \item \textbf{Decryption:} compute $r \cdot P_D$ from $x_D$ and
-    $ct_D$, strip the dynamic factor $e(P_D, \gamma)^r$ from
-    $r \cdot Y$ via bilinearity, unmask under $Y_S$.
+    $P_S = \sum_{j \in S} x_j L_j$; sample a blinding point
+    $B \in \Gone$ and fold $e(r \cdot B, \gamma)^{-1}$ into the
+    mask used for $ct_3$.
+  \item \textbf{Decryption:} use the DSGC to compute
+    $(r \cdot \pi_1,\, r \cdot P_D + r \cdot B)$ from
+    $(\pi_1, x_D)$, strip the dynamic factor and the blinding
+    factor from $r \cdot Y$ via bilinearity, then unmask under
+    the blinded $Y_S$ term.
 \end{itemize}
 
 Security reduces to BABE WE security plus DLog hardness in $\Gone$
-(Lemma~\ref{lem:pbwe}). On-chain cost is preserved: decryption runs
-off-chain in both schemes, and the only on-chain delta is $|D|$
-additional Lamport/Winternitz commitments to pin $x_D$ via Bitcoin
-script.
+(Lemma~\ref{lem:pbwe}). Decryption remains off-chain, no new
+Bitcoin-script primitive is introduced, and the on-chain delta is
+limited to additional Lamport commitments for $x_D$ plus the larger
+dispute-path GC witness induced by the DSGC.
 
 The construction exploits the linearity of Groth16's public-input
 aggregation $vk_x = \sum_j x_j \cdot L_j$. SNARKs with non-linear
@@ -112,14 +118,16 @@ public-input handling do not directly admit this technique.
 
 Let $e : \Gone \times \Gtwo \to \Gt$ denote a Type-III pairing on
 BN254. The Groth16 verifying key is
-$vk = (\alpha, \beta, \gamma, \delta, \{L_j\}_{j=0}^{n})$ where
-$\alpha, \delta \in \Gone$ and $\beta, \gamma \in \Gtwo$ (we abuse
-notation and treat $\delta$ as its $\Gtwo$ element throughout). A
+$vk = (\alpha, \beta, \gamma, \deltatwo, \{L_j\}_{j=0}^{n})$ where
+$\alpha, L_j \in \Gone$ and $\beta, \gamma, \deltatwo \in \Gtwo$.
+Equivalently, Groth16 setup samples a scalar
+$\delta \in \Fr$ and places its $\Gtwo$ encoding $\deltatwo$ in the
+verifying key. A
 proof is $\pi = (\pi_1, \pi_2, \pi_3) \in \Gone \times \Gtwo \times \Gone$.
 The public-input vector is $x = (x_0, x_1, \ldots, x_n) \in \Fr^{n+1}$
 with $x_0 = 1$. The verifier accepts iff
 \begin{equation}
-  e(\pi_1, \pi_2) \;=\; e(\alpha, \beta)\,\cdot\,e(vk_x, \gamma)\,\cdot\,e(\pi_3, \delta),
+  e(\pi_1, \pi_2) \;=\; e(\alpha, \beta)\,\cdot\,e(vk_x, \gamma)\,\cdot\,e(\pi_3, \deltatwo),
   \qquad vk_x \;:=\; \sum_{j=0}^{n} x_j \cdot L_j.
   \label{eq:g16}
 \end{equation}
@@ -154,7 +162,7 @@ construction; we recall it below.
 A BABE ciphertext per cut-and-choose instance is
 $ct = (gc\_ct, adaptor, ct_2, ct_3)$ where
 $gc\_ct$ is a garbled circuit computing $r \cdot \pi_1$, $adaptor$
-binds its output labels to Bitcoin pre-signatures, $ct_2 = r \cdot \delta$,
+binds its output labels to Bitcoin pre-signatures, $ct_2 = r \cdot \deltatwo$,
 and $ct_3 = \msg \oplus H(r \cdot Y)$ with
 $Y = e(\alpha, \beta) \cdot e(vk_x, \gamma)$. The per-instance scalar
 $r$ and mask $\msg$ are derived from a seed via a PRG. Cut-and-choose
@@ -168,7 +176,7 @@ probability exponential in the opened subset size.
 \Require $vk$; full public inputs $x = (x_0, \ldots, x_n)$;
   instance $I = (r, \msg, \Delta, gc\_ct, adaptor)$
 \Ensure $ct = (gc\_ct, adaptor, ct_2, ct_3)$
-\State $ct_2 \gets r \cdot \delta$
+\State $ct_2 \gets r \cdot \deltatwo$
 \State $vk_x \gets \sum_{j=0}^{n} x_j \cdot L_j$ \Comment{requires every $x_j$}
 \State $Y \gets e(\alpha, \beta) \cdot e(vk_x, \gamma)$
 \State $ct_3 \gets \msg \oplus H(r \cdot Y)$
@@ -235,14 +243,16 @@ in \S\ref{sec:security}.
 
 Basic BABE's garbled circuit computes a single scalar multiplication
 $r \cdot \pi_1$. We replace it with a \emph{Dual-Scalar Garbled Circuit}
-(DSGC) that computes two scalar-mul outputs:
+(DSGC) that computes two outputs:
 \[
-  \mathsf{DSGC}(\pi_1,\ x_D) \;\longrightarrow\; (r \cdot \pi_1,\ r \cdot P_D),
+  \mathsf{DSGC}(\pi_1,\ x_D) \;\longrightarrow\;
+  (r \cdot \pi_1,\ r \cdot P_D + r \cdot B),
 \]
 where $P_D = \sum_{j \in D} x_j \cdot L_j$ is the dynamic-prefix
-contribution and the scaled bases $\{r \cdot L_j\}_{j \in D}$ are
-baked into the circuit as garbling-time constants (the Verifier
-knows both $r$ and the CRS $\{L_j\}$ at $T_0$).
+contribution, $\{r \cdot L_j\}_{j \in D}$ are baked into the circuit
+as garbling-time constants, and $B \in \Gone$ is a verifier-chosen
+blinding point whose scaled image $r \cdot B$ is also baked into the
+circuit. The Verifier knows both $r$ and the CRS $\{L_j\}$ at $T_0$.
 
 The DSGC input-label layout reserves Lamport-committed wires for
 both $\pi_1$ (as in basic BABE) and $x_D$ (new). At dispute, the
@@ -251,12 +261,15 @@ reveals into the DSGC input wires, producing the two scalar-mul
 outputs via the standard GC-evaluation path.
 
 \paragraph{Why DSGC binds $x_D$ to the proof.}
-The $r \cdot P_D$ output is uniquely determined by the
+The dynamic DSGC output is uniquely determined by the
 Lamport-committed $x_D$: it is not the Prover's arbitrary off-chain
 choice. The bilinear cancellation in decryption
 (Algorithm~\ref{alg:pb-dec}, line 4) then fails whenever the proof's
 public input differs from the Lamport-committed $x_D$, because the
-two $e(P_D, \gamma)^r$ factors no longer match. We formalize this in
+two $e(P_D, \gamma)^r$ factors no longer match. The additive blinding
+term $r \cdot B$ prevents the evaluator from isolating
+low-dimensional basis elements such as $r \cdot L_j$ from the DSGC
+output. We formalize this in
 \S\ref{sec:security}.
 
 \paragraph{Lamport-$x_D$ soldering (required).}
@@ -264,9 +277,11 @@ The binding in Alg.~\ref{alg:dsgc} relies on two properties:
 \begin{enumerate}
   \item \emph{GC privacy} hides the scaled bases
     $\{r \cdot L_j\}_{j \in D}$ baked into the DSGC as garbling-time
-    constants. The evaluator learns neither individual constants nor
-    intermediate wire values; only the final outputs
-    $(r \cdot \pi_1, r \cdot P_D)$ for the specific inputs provided.
+    constants together with the blinded offset $r \cdot B$. The
+    evaluator learns neither individual constants nor intermediate
+    wire values; only the final outputs
+    $(r \cdot \pi_1, r \cdot P_D + r \cdot B)$ for the specific
+    inputs provided.
   \item \emph{Lamport-$x_D$ soldering} ties Lamport preimages of
     $x_D$ bits to the DSGC input-wire labels, so the only $x_D$ that
     can be fed into the DSGC is the on-chain-committed one. For each
@@ -298,6 +313,12 @@ By linearity of $vk_x$ and bilinearity of $e$:
   Y \;=\; Y_S \cdot e(P_D, \gamma).
   \label{eq:y-split}
 \end{equation}
+Let $B \in \Gone$ be a fresh verifier-chosen blinding point and
+write
+\begin{equation}
+  \widetilde{Y}_S \;:=\; Y_S \cdot e(B, \gamma)^{-1}.
+  \label{eq:ys-tilde}
+\end{equation}
 
 \begin{algorithm}[H]
 \caption{$\Enc^\star(vk, x_S, S, D;\, I)$ \hfill{\footnotesize Verifier, off-chain, $T_0$}}
@@ -307,10 +328,12 @@ By linearity of $vk_x$ and bilinearity of $e$:
   instance $I = (r,\, \msg,\, \Delta,\, dsgc\_ct,\, adaptor)$
   where $dsgc\_ct$ garbles Alg.~\ref{alg:dsgc}
 \Ensure $ct = (dsgc\_ct,\, adaptor,\, ct_2,\, ct_3)$
-\State $ct_2 \gets r \cdot \delta$
+\State $ct_2 \gets r \cdot \deltatwo$
 \State $P_S \gets \sum_{j \in S} x_j \cdot L_j$
 \State $Y_S \gets e(\alpha, \beta) \cdot e(P_S, \gamma)$
-\State $ct_3 \gets \msg \oplus H(r \cdot Y_S)$ \Comment{mask uses $Y_S$, not $Y$}
+\State choose random $B \in \Gone$ and bake $r \cdot B$ into $dsgc\_ct$
+\State $\widetilde{Y}_S \gets Y_S \cdot e(B, \gamma)^{-1}$
+\State $ct_3 \gets \msg \oplus H(r \cdot \widetilde{Y}_S)$ \Comment{mask uses blinded $Y_S$}
 \State \Return $(dsgc\_ct,\, adaptor,\, ct_2,\, ct_3)$
 \end{algorithmic}
 \end{algorithm}
@@ -320,10 +343,11 @@ By linearity of $vk_x$ and bilinearity of $e$:
 \label{alg:dsgc}
 \begin{algorithmic}[1]
 \Require $\pi_1 \in \Gone$ (Lamport-revealed); $x_D \in \Fr^{|D|}$ (Lamport-revealed)
-  \Statex constants (baked at garbling): $r \in \Fr$, $\{r \cdot L_j\}_{j \in D} \subset \Gone$
-\Ensure $(c_1, c_1') = (r \cdot \pi_1,\ r \cdot P_D) \in \Gone^2$
+  \Statex constants (baked at garbling): $r \in \Fr$, $\{r \cdot L_j\}_{j \in D} \subset \Gone$, $r \cdot B \in \Gone$
+\Ensure $(c_1, c_1') = (r \cdot \pi_1,\ r \cdot P_D + r \cdot B) \in \Gone^2$
 \State $c_1 \gets r \cdot \pi_1$ \Comment{variable-base scalar-mul}
-\State $c_1' \gets \sum_{j \in D} x_j \cdot (r \cdot L_j)$ \Comment{$|D|$ fixed-base scalar-muls, summed}
+\State $c_1' \gets \sum_{j \in D} x_j \cdot (r \cdot L_j) + r \cdot B$
+\Comment{$|D|$ fixed-base scalar-muls, summed, then blinded}
 \State \Return $(c_1, c_1')$
 \end{algorithmic}
 \end{algorithm}
@@ -335,10 +359,12 @@ By linearity of $vk_x$ and bilinearity of $e$:
 \Require $\pi = (\pi_1, \pi_2, \pi_3)$ for $(vk, (x_S, x_D))$; $ct$
 \Ensure $\msg$
 \State $(ct_1, ct_1') \gets \mathsf{DSGC}(\pi_1,\, x_D)$ \Comment{via GC unlock; both outputs together}
-\State $Q \gets e(ct_1',\, \gamma)$ \Comment{$Q = e(P_D, \gamma)^r$}
+\State $Q_{\mathrm{blind}} \gets e(ct_1',\, \gamma)$
+\Comment{$= e(P_D, \gamma)^r \cdot e(B, \gamma)^r$}
 \State $r \cdot Y \gets e(ct_1,\, \pi_2) / e(\pi_3,\, ct_2)$ \Comment{by \eqref{eq:g16}}
-\State $r \cdot Y_S \gets (r \cdot Y) / Q$ \Comment{by \eqref{eq:y-split}}
-\State $\msg \gets ct_3 \oplus H(r \cdot Y_S)$
+\State $r \cdot \widetilde{Y}_S \gets (r \cdot Y) / Q_{\mathrm{blind}}$
+\Comment{by \eqref{eq:y-split} and \eqref{eq:ys-tilde}}
+\State $\msg \gets ct_3 \oplus H(r \cdot \widetilde{Y}_S)$
 \State \Return $\msg$
 \end{algorithmic}
 \end{algorithm}
@@ -354,11 +380,13 @@ public input.
 \begin{proof}
 Let $\pi$ be valid for $(vk, (x_S, x_D))$. The DSGC on
 $(\pi_1, x_D)$ outputs $ct_1 = r \cdot \pi_1$ and
-$ct_1' = r \cdot P_D$. By \eqref{eq:g16},
+$ct_1' = r \cdot P_D + r \cdot B$. By \eqref{eq:g16},
 $e(ct_1, \pi_2) / e(\pi_3, ct_2) = r \cdot Y$. Line~2 yields
-$Q = e(P_D, \gamma)^r$. Applying \eqref{eq:y-split}:
-$r \cdot Y / Q = r \cdot Y_S$. Since
-$ct_3 = \msg \oplus H(r \cdot Y_S)$, line~5 recovers $\msg$.
+$Q_{\mathrm{blind}} = e(P_D, \gamma)^r \cdot e(B, \gamma)^r$.
+Applying \eqref{eq:y-split} and \eqref{eq:ys-tilde}:
+$r \cdot Y / Q_{\mathrm{blind}} = r \cdot \widetilde{Y}_S$. Since
+$ct_3 = \msg \oplus H(r \cdot \widetilde{Y}_S)$, line~5 recovers
+$\msg$.
 \end{proof}
 
 \subsection{On-chain surface}
@@ -367,8 +395,8 @@ Algorithms~\ref{alg:pb-enc}--\ref{alg:pb-dec} run entirely off-chain.
 The on-chain surface of partial-binding equals that of basic BABE
 plus Lamport commitments on $x_D$ in the Assert transaction (routed
 into DSGC input wires, analogous to Lamport-on-$\pi_1$). No new
-Bitcoin-script primitive is required; only additional Lamport slots
-per bit of $x_D$.
+Bitcoin-script primitive is required; the deltas are additional
+Lamport slots per bit of $x_D$ and a larger dispute-path GC witness.
 
 % ============================================================
 \section{Protocol integration: deferred-proof setting}\label{sec:protocol}
@@ -391,7 +419,8 @@ events on Bitcoin.
 \midrule
 $T_0$ (peg-in) & Verifier, off-chain & Compute $x_S$; run
 $\Enc^\star(vk, x_S, S, D;\ I)$ for each C\&C instance; publish
-commitments to $(ct_2, ct_3, ct_D)$ on-chain ($\blacksquare_{\mathrm{com}}$). \\
+commitments to $(ct_2, ct_3)$ and the DSGC transcript on-chain
+($\blacksquare_{\mathrm{com}}$). \\
 $T_1$ (Kickoff) & Prover, on-chain & Broadcast Kickoff tx; opens
 challenge window. No proof yet. $x_D$ unknown. \\
 $[T_1, T_2]$ & Prover, off-chain & Observe watchtower challenges;
@@ -400,7 +429,9 @@ auxiliary proofs (header chain, state chain); run Groth16 prover to
 produce $\pi = \mathsf{Prove}(vk, (x_S, x_D), w)$. \\
 $T_2$ (Assert) & Prover, on-chain & Broadcast Assert tx with Lamport
 reveals of $\pi_1$ and $x_D$; GC gate-by-gate unlocking yields
-$ct_1 = r \cdot \pi_1$. Run $\Dec^\star(\pi, (x_S, x_D), ct)$
+$ct_1 = r \cdot \pi_1$ and
+$ct_1' = r \cdot P_D + r \cdot B$. Run
+$\Dec^\star(\pi, (x_S, x_D), ct)$
 off-chain to obtain $\msg$. \\
 $T_3$ (Take) & Prover, on-chain & Spend dispute UTXO via hashlock
 $\mathrm{RIPEMD160}(\mathrm{SHA256}(\msg))$. Take1/Take2 scripts
@@ -424,7 +455,7 @@ assumed cryptographically absent after peg-in).
 Partial-binding lifts exactly this constraint: $\Enc^\star$
 (Alg.~\ref{alg:pb-enc}) needs only $x_S$, which is peg-in-knowable.
 The runtime values are absorbed at decryption
-(Alg.~\ref{alg:pb-dec}, lines 2--5) using the published $ct_D$.
+(Alg.~\ref{alg:pb-dec}, lines 2--5) using the DSGC outputs.
 
 \subsection{Consistency across the timeline}
 
@@ -440,13 +471,14 @@ composable properties, each discharged by a distinct mechanism.
 $x_S$ is peg-in-fixed & $ct_3$ binding via $Y_S$ in $\Enc^\star$
 (Lemma~\ref{lem:pbwe}, prefix soundness). \\
 $\pi$ is valid for $(x_S, x_D)$ & Lemma~\ref{lem:dsgc-binding}: the
-DSGC binds $r \cdot P_D$ to Lamport-committed $x_D$; a mismatched
+DSGC binds the blinded dynamic term
+$r \cdot P_D + r \cdot B$ to Lamport-committed $x_D$; a mismatched
 proof fails bilinear cancellation. \\
 $x_D$ is unique (no equivocation) & Lamport commitment on $x_D$ in
 Assert tx: double-reveal discloses secret and burns deposit. \\
 $x_D$ used in $\pi$ matches Lamport-committed $x_D$ &
 DSGC binding (\S\ref{sec:dsgc}, Lemma~\ref{lem:dsgc-binding}):
-$r \cdot P_D$ output is uniquely determined by Lamport-revealed
+the dynamic DSGC output is uniquely determined by Lamport-revealed
 $x_D$; substitution attempts fail the bilinear cancellation. \\
 \bottomrule
 \end{tabular}
@@ -464,7 +496,7 @@ reduction (Lemma~\ref{lem:pbwe}, Lemma~\ref{lem:dsgc-binding}).
 \textbf{Failure} & \textbf{Resolution} \\
 \midrule
 Prover produces $\pi$ with wrong $x_S$ & Verifier equation
-cancellation in $\Dec^\star$ line 5 fails; $\msg$ not recovered;
+cancellation in $\Dec^\star$ lines 2--4 fails; $\msg$ not recovered;
 dispute path blocked. \\
 Prover chooses $x_D$ not consistent with on-chain observations
 (e.g.\ fails watchtower dual-check) & Circuit-internal constraints
@@ -523,12 +555,16 @@ There exists a PPT reduction such that
 The scheme differs from basic BABE in two places: the single-output
 scalar-mul GC is replaced with the DSGC of
 Algorithm~\ref{alg:dsgc}, and the mask in $ct_3$ uses $Y_S$ rather
-than $Y$. GC security bounds the probability that an adversary
-learns unintended outputs of the DSGC evaluation. The $Y$-to-$Y_S$
-shift is reconciled via the bilinearity identity \eqref{eq:y-split}
-inside the decryption equation. Any attack that recovers $\msg$
-without a valid proof extracts proof elements from the GC
-transcript, yielding an attack on basic BABE.
+than $Y$. In the final construction this masked term is
+$\widetilde{Y}_S = Y_S \cdot e(B, \gamma)^{-1}$, where the
+blinding point $B$ is verifier-chosen and hidden inside the DSGC.
+GC security bounds the probability that an adversary learns
+unintended outputs of the DSGC evaluation. The $Y$-to-$\widetilde{Y}_S$
+shift is reconciled via the bilinearity identities
+\eqref{eq:y-split} and \eqref{eq:ys-tilde} inside the decryption
+equation. Any attack that recovers $\msg$ without a valid proof
+extracts proof elements from the GC transcript, yielding an attack
+on basic BABE.
 \end{proof}
 
 \subsection{$r$-leakage analysis}
@@ -545,11 +581,14 @@ Then
 \end{lemma}
 
 \begin{proof}[Proof sketch]
-Public exposures of $r$-scaled samples are $ct_2 = r \cdot \delta$,
-$ct_1 = r \cdot \pi_1$, and $ct_1' = r \cdot P_D$. These are
+Public exposures of $r$-scaled samples are $ct_2 = r \cdot \deltatwo$,
+$ct_1 = r \cdot \pi_1$, and
+$ct_1' = r \cdot P_D + r \cdot B$. These are
 multi-instance DLog challenges with a shared scalar; self-reducibility
 reduces to single-instance DLog. Cross-group combinations add at
-most a co-DLog term.
+most a co-DLog term. In particular, the blinding term prevents the
+one-dimensional GOAT setting from leaking $r \cdot L_D$ by direct
+division through a known scalar $x_D$.
 \end{proof}
 
 \subsection{$x_D$-substitution attack on a naive scheme}\label{sec:subst}
@@ -581,10 +620,11 @@ to the off-chain computation of $r \cdot P_D$.
 
 \subsection{DSGC binding closes the attack}
 
-The construction of \S\ref{sec:construction} replaces $ct_D$ with the
-DSGC of Algorithm~\ref{alg:dsgc}: $r \cdot P_D$ becomes a GC output
-parameterized by Lamport-committed $x_D$, rather than a Prover-chosen
-off-chain quantity.
+The construction of \S\ref{sec:construction} replaces the naive
+plaintext $ct_D$ interface with the DSGC of
+Algorithm~\ref{alg:dsgc}: the dynamic term becomes the blinded GC
+output $r \cdot P_D + r \cdot B$, parameterized by Lamport-committed
+$x_D$, rather than a Prover-chosen off-chain quantity.
 
 \begin{lemma}[DSGC binding]\label{lem:dsgc-binding}
 Let $\mathcal{A}$ control a Prover who produces $\msg$ via
@@ -601,14 +641,15 @@ Then $x_D^{\mathrm{Lam}} = x_D^{\pi}$ except with probability
 \begin{proof}[Proof sketch]
 Two facts, each reducing to a named assumption:
 
-\emph{(a) GC privacy hides $\{r \cdot L_j\}_{j \in D}$.} Constants
+\emph{(a) GC privacy hides $\{r \cdot L_j\}_{j \in D}$ and $r \cdot B$.} Constants
 baked into the DSGC at garbling time are not extractable by the
 evaluator: by GC privacy, the evaluator's view on a single
 evaluation reveals only the output labels for the specific inputs
 provided, not constants or intermediate wire values
 (Lindell--Pinkas; Bellare--Hoang--Rogaway). Hence the adversary
-cannot directly compute $r \cdot P_{D'}$ for $x_D' \neq x_D^{\mathrm{Lam}}$
-by combining extracted $\{r \cdot L_j\}$.
+cannot directly compute $r \cdot P_{D'}$ for
+$x_D' \neq x_D^{\mathrm{Lam}}$ by combining extracted
+$\{r \cdot L_j\}$, nor can it peel off the blinding term.
 
 \emph{(b) Lamport soldering fixes DSGC input to $x_D^{\mathrm{Lam}}$.}
 By construction, the DSGC input-wire labels for $x_D$ are derived
@@ -620,13 +661,15 @@ equivocation: it simultaneously exposes both halves of at least one
 Lamport slot, which is slashable.
 
 Combining (a) and (b): any DSGC evaluation accessible to the Prover
-yields $r \cdot P_D$ with $x_D = x_D^{\mathrm{Lam}}$. Therefore line~2
-of Alg.~\ref{alg:pb-dec} computes
-$Q = e(P_{D, \mathrm{Lam}}, \gamma)^r$. The decryption quotient
-$r \cdot Y / Q$ evaluates to $r \cdot Y_S$ iff
+yields $r \cdot P_D + r \cdot B$ with
+$x_D = x_D^{\mathrm{Lam}}$. Therefore line~2 of
+Alg.~\ref{alg:pb-dec} computes
+$Q_{\mathrm{blind}} = e(P_{D, \mathrm{Lam}}, \gamma)^r \cdot e(B, \gamma)^r$.
+The decryption quotient $r \cdot Y / Q_{\mathrm{blind}}$ evaluates
+to $r \cdot \widetilde{Y}_S$ iff
 $x_D^{\pi} = x_D^{\mathrm{Lam}}$; otherwise the residual factor
 $e(P_{D, \pi} - P_{D, \mathrm{Lam}}, \gamma)^r \neq 1$ and the mask
-$H(r \cdot Y_S)$ is not recovered. A Prover who still outputs $\msg$
+$H(r \cdot \widetilde{Y}_S)$ is not recovered. A Prover who still outputs $\msg$
 either inverts $H$ or produces a proof extracting to no witness,
 contradicting Groth16 KS.
 \end{proof}
@@ -665,7 +708,8 @@ infrastructure applied to the extended input space.
 \toprule
 \textbf{Item} & \textbf{Basic BABE} & \textbf{Partial-binding (delta)} \\
 \midrule
-GC: output count                        & $r \cdot \pi_1$             & $+\,r \cdot P_D$ (DSGC) \\
+GC: output count                        & $r \cdot \pi_1$             & $+\,\bigl(r \cdot P_D + r \cdot B\bigr)$ (DSGC) \\
+GC: blinded offset                      & none                        & $+\,r \cdot B$ \\
 GC: gate count                          & $\sim 4.7 \times 10^8$      & $+\,\sim |D| \cdot 1.5 \times 10^8$ (fixed-base) \\
 Encryption: $\Gone$ scalar-muls         & $O(n)$                      & $+\,|D|$ (baked into DSGC constants) \\
 Encryption: pairings                    & $2$                         & unchanged \\
@@ -674,7 +718,7 @@ Decryption: $\Gone$ scalar-muls         & --                          & $+\,|D|$
 Decryption: pairings                    & $2$                         & $+\,1$ \\
 Decryption: $\Gt$ divisions             & $1$                         & $+\,1$ \\
 Lamport slots on-chain                  & $\pi_1$ only (\textasciitilde 508 bits) & $+\,|D| \cdot 254$ bits for $x_D$ \\
-On-chain primitives                     & hashlock, GC, Lamport       & unchanged \\
+On-chain primitives                     & hashlock, GC, Lamport       & unchanged; witness size increases on dispute path \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -693,12 +737,13 @@ rare dispute path.
 Partial-binding WE resolves the full-public-input requirement of
 basic BABE for protocols with deferred public inputs. The
 construction uses a Dual-Scalar Garbled Circuit (\S\ref{sec:dsgc})
-whose two outputs---$r \cdot \pi_1$ and $r \cdot P_D$---together
+whose two outputs---$r \cdot \pi_1$ and
+$r \cdot P_D + r \cdot B$---together
 provide prefix binding on $x_S$ and proactive cryptographic binding
-on $x_D$. The reduction stays within standard BABE assumptions plus
-GC-security and Lamport one-wayness. No new on-chain primitive is
-introduced; BABE's core property of avoiding a full on-chain Groth16
-verifier is preserved.
+on $x_D$ without leaking low-dimensional basis terms. The reduction
+stays within standard BABE assumptions plus GC-security and Lamport
+one-wayness. No new on-chain primitive is introduced; BABE's core
+property of avoiding a full on-chain Groth16 verifier is preserved.
 
 % ============================================================
 \appendix
@@ -770,7 +815,8 @@ against $\mathcal{F}_{\mathrm{pbWE}}$:
   \item \emph{At DEC.} $\mathcal{S}$ applies the Groth16 KS extractor
     to $\pi$, forwards $\pi$ to $\mathcal{F}_{\mathrm{pbWE}}$. On
     $(\mathsf{DEC\_OK}, \msg)$, $\mathcal{S}$ programs
-    $\mathcal{F}_{\mathrm{RO}}$ so that $\widetilde{ct}_3 \oplus H(r \cdot Y_S) = \msg$,
+    $\mathcal{F}_{\mathrm{RO}}$ so that
+    $\widetilde{ct}_3 \oplus H(r \cdot \widetilde{Y}_S) = \msg$,
     preserving transcript consistency. On
     $(\mathsf{DEC\_FAIL})$, $\mathcal{S}$ emits the residual garbage
     that $\Dec^\star$ would compute (Lemma~\ref{lem:dsgc-binding}).
