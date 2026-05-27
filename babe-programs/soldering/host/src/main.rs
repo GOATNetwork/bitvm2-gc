@@ -48,9 +48,9 @@ fn main() {
     let builder = BabeBundleBuilder::new();
     let bundle = builder
         .babe_verifier_open_and_solder(&verifier, &finalized_indices)
-        .expect("soldering proof");
+        .expect("open and solder failed");
     builder
         .babe_prover_verify_setup(&package, &bundle, &vk, &public_inputs)
-        .expect("soldering proof verification failed");
+        .expect("setup verification failed");
     info!(elapsed = ?start.elapsed(), "soldering proof generated and verified");
 }
