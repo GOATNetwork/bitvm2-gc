@@ -1,6 +1,6 @@
-use crate::babe::compute_epk_with_delta;
 use crate::gc::gc_ciphertexts_commit;
 use crate::instance::BABEInstance;
+use crate::lamport::compute_lamport_epk_with_delta;
 use crate::utils::{derive_hashlock, h_256};
 
 /// Per-instance commitment sent from Verifier to Prover during C&C commit phase.
@@ -24,7 +24,7 @@ impl CACInstanceCommit {
     pub fn from_instance(instance: &BABEInstance) -> Self {
         let delta = instance.secrets.delta;
 
-        let input_commits = compute_epk_with_delta(&instance.secrets.encoding_keys, delta).0;
+        let input_commits = compute_lamport_epk_with_delta(&instance.secrets.input_0labels, delta).0;
 
         let constant_commits = std::array::from_fn(|w| {
             let l0 = instance.secrets.constant_0labels[w];

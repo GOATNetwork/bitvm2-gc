@@ -39,7 +39,7 @@ impl BABEInstance {
         // Apply encoding keys and constant 0-labels to input wires.
         circuit.0[0].borrow_mut().label = Some(secrets.constant_0labels[0]);
         circuit.0[1].borrow_mut().label = Some(secrets.constant_0labels[1]);
-        for (i, &key) in secrets.encoding_keys.iter().enumerate() {
+        for (i, &key) in secrets.input_0labels.iter().enumerate() {
             circuit.0[2 + i].borrow_mut().label = Some(key);
         }
 
@@ -116,21 +116,37 @@ impl BABEInstance {
         Ok(())
     }
 
-    /// Returns the input labels given the bits of pi1.
+    /// Returns the input labels for all 512 WOTS64 message bit positions.
+    /// Layout mirrors the 64-byte WOTS message: x_254bits || 00 || y_254bits || 00.
+    /// Padding positions (254-255, 510-511) are filled with S([0u8; 16]) because
+    /// BN254 Fq elements are < 2^254, so those bits are always 0.
     pub fn compute_pi1_labels_based_on_value(&self, pi1: ark_bn254::G1Affine) -> Vec<S> {
-        let x_bits = Fq::to_bits(pi1.x);
-        let y_bits = Fq::to_bits(pi1.y);
-        let witness: Vec<bool> = x_bits.into_iter().chain(y_bits.into_iter()).collect();
+        let x_bits = Fq::to_bits(pi1.x);  // 254 bits
+        let y_bits = Fq::to_bits(pi1.y);  // 254 bits
         let delta = self.secrets.delta;
 
-        let mut labels = Vec::new();
+        let mut labels = Vec::with_capacity(2 + 512);
         labels.push(self.secrets.constant_0labels[0]);
         labels.push(self.secrets.constant_0labels[1] ^ delta);
-        let tail: Vec<S> = witness.iter().enumerate().map(|(i, &b)| {
-            let key = self.secrets.encoding_keys[i];
-            if b { key ^ delta } else { key }
-        }).collect();
-        labels.extend(tail);
+
+        // x-coordinate labels: positions 0..253
+        for (i, &b) in x_bits.iter().enumerate() {
+            let key = self.secrets.input_0labels[i];
+            labels.push(if b { key ^ delta } else { key });
+        }
+        // padding: positions 254..255 (always 0)
+        labels.push(S([0u8; 16]));
+        labels.push(S([0u8; 16]));
+
+        // y-coordinate labels: positions 256..509
+        for (i, &b) in y_bits.iter().enumerate() {
+            let key = self.secrets.input_0labels[254 + i];
+            labels.push(if b { key ^ delta } else { key });
+        }
+        // padding: positions 510..511 (always 0)
+        labels.push(S([0u8; 16]));
+        labels.push(S([0u8; 16]));
+
         labels
     }
 

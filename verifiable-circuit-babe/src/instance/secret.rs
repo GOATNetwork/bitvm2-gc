@@ -10,7 +10,7 @@ pub struct InstanceSecrets {
     pub r:             Fr,
     pub msg:           [u8; 32],
     /// label0 per input wire, size = 2 * N
-    pub encoding_keys: Vec<S>,
+    pub input_0labels: Vec<S>,
     /// Two constant-wire 0-labels
     pub constant_0labels: [S; 2],
     pub rhos:          Vec<G1Affine>,
@@ -31,7 +31,8 @@ impl InstanceSecrets {
         let mut msg = [0u8; 32];
         rand::RngCore::fill_bytes(&mut rng, &mut msg);
 
-        let encoding_keys: Vec<S> = (0..2 * N)
+        // input labels.
+        let input_0labels: Vec<S> = (0..2 * N)
             .map(|_| {
                 let mut b = [0u8; 16];
                 rand::RngCore::fill_bytes(&mut rng, &mut b);
@@ -58,6 +59,6 @@ impl InstanceSecrets {
             })
             .collect();
 
-        Self { delta, r, msg, encoding_keys, constant_0labels, rhos, fq_deltas }
+        Self { delta, r, msg, input_0labels, constant_0labels, rhos, fq_deltas }
     }
 }
