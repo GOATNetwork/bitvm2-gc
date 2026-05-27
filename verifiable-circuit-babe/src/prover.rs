@@ -410,7 +410,7 @@ mod tests {
             finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
         let found = prover.check_compute_msg_with_soldered_output(
             &finalized,
-            base_input_labels,
+            &base_input_labels,
             &soldered_output,
             &h_msgs_onchain,
         );
@@ -425,7 +425,7 @@ mod tests {
         h_msgs_onchain[0] = [0u8; 20];
         let found = prover.check_compute_msg_with_soldered_output(
             &finalized,
-            base_input_labels,
+            &base_input_labels,
             &soldered_output,
             &h_msgs_onchain,
         );
