@@ -28,13 +28,13 @@ use zkm_sdk::{include_elf, ProverClient, ZKMProvingKey, ZKMStdin, ZKMVerifyingKe
 
 const SOLDERING_GUEST: &[u8] = include_elf!("soldering-guest");
 
-pub struct SolderingProofBuilder {
+pub struct BabeBundleBuilder {
     client: ProverClient,
     proving_key: ZKMProvingKey,
     verifying_key: ZKMVerifyingKey,
 }
 
-pub struct SolderingProofBundle {
+pub struct BabeBundle {
     pub opened: Vec<(usize, u64)>,
     pub finalized: Vec<FinalizedInstanceData>,
     pub soldering: SolderingData,
@@ -48,18 +48,18 @@ pub struct BabeCACE2ERun {
     pub wrongly_challenged_witness: TxWronglyChallengedWitness,
 }
 
-impl SolderingProofBuilder {
+impl BabeBundleBuilder {
     pub fn new() -> Self {
         let client = ProverClient::new();
         let (proving_key, verifying_key) = client.setup(SOLDERING_GUEST);
         Self { client, proving_key, verifying_key }
     }
 
-    pub fn build_proof(
+    pub fn babe_verifier_open_and_solder(
         &self,
         verifier: &BABEVerifier,
         finalized_indices: &[usize],
-    ) -> Result<SolderingProofBundle, String> {
+    ) -> Result<BabeBundle, String> {
         let (opened, finalized) = verifier.open(finalized_indices);
         let soldered_input = build_soldered_wires_input(verifier, finalized_indices);
         let mut stdin = ZKMStdin::new();
@@ -71,7 +71,7 @@ impl SolderingProofBuilder {
             .run()
             .map_err(|e| format!("failed to prove soldering program: {e:?}"))?;
 
-        Ok(SolderingProofBundle {
+        Ok(BabeBundle {
             opened,
             finalized,
             soldering: SolderingData {
@@ -82,10 +82,10 @@ impl SolderingProofBuilder {
         })
     }
 
-    pub fn verify_proof(
+    pub fn babe_prover_verify_setup(
         &self,
         package: &CACSetupPackage,
-        bundle: &SolderingProofBundle,
+        bundle: &BabeBundle,
         vk: &Groth16VerifyingKey<Bn254>,
         public_inputs: &[Fr],
     ) -> Result<(), String> {
@@ -139,11 +139,11 @@ impl SolderingProofBuilder {
 
         // Verifier opens non-finalized instances and generates soldering proof.
         println!("Verifier: opening and soldering...");
-        let bundle = self.build_proof(&verifier, &finalized_indices)?;
+        let bundle = self.babe_verifier_open_and_solder(&verifier, &finalized_indices)?;
 
         println!("Prover: verifying opening and soldering proof...");
         // Prover verifies everything.
-        self.verify_proof(&package, &bundle, &vk, &public_inputs)?;
+        self.babe_prover_verify_setup(&package, &bundle, &vk, &public_inputs)?;
 
         println!("Prover: generating Lamport signature...");
         let (lsk_p, lpk_p) = lamport_keygen(&mut rng);
@@ -241,7 +241,7 @@ impl SolderingProofBuilder {
     }
 }
 
-impl Default for SolderingProofBuilder {
+impl Default for BabeBundleBuilder {
     fn default() -> Self {
         Self::new()
     }

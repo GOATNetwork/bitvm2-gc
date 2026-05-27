@@ -4,7 +4,7 @@ use ark_bn254::{Bn254, Fr};
 use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
 use ark_groth16::Groth16;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use soldering_host::SolderingProofBuilder;
+use soldering_host::BabeBundleBuilder;
 use tracing::info;
 use verifiable_circuit_babe::verifier::BABEVerifier;
 use zkm_sdk::utils as sdk_utils;
@@ -45,10 +45,12 @@ fn main() {
 
     //  3. Generate and verify soldering proof through the reusable host API.
     let start = Instant::now();
-    let builder = SolderingProofBuilder::new();
-    let bundle = builder.build_proof(&verifier, &finalized_indices).expect("soldering proof");
+    let builder = BabeBundleBuilder::new();
+    let bundle = builder
+        .babe_verifier_open_and_solder(&verifier, &finalized_indices)
+        .expect("soldering proof");
     builder
-        .verify_proof(&package, &bundle, &vk, &public_inputs)
+        .babe_prover_verify_setup(&package, &bundle, &vk, &public_inputs)
         .expect("soldering proof verification failed");
     info!(elapsed = ?start.elapsed(), "soldering proof generated and verified");
 }
