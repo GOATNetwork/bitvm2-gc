@@ -6836,6 +6836,7 @@ dependencies = [
  "ripemd 0.2.0",
  "serde",
  "sha2",
+ "zkm-sdk",
  "zkm-zkvm",
 ]
 

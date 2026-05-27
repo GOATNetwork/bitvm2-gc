@@ -1,26 +1,26 @@
+use crate::cac::{CACSetupPackage, FinalizedInstanceData};
+use crate::lamport::{LamportPk, LamportSk, lamport_sign, lamport_verify};
+use crate::prover::BABEProver;
+use crate::soldering::SolderingData;
+use crate::transactions::{
+    TxAssertWitness, TxChallengeAssertOutputLock, TxChallengeAssertWitness, TxDepositLock,
+    TxNoWithdrawWitness, TxWithdrawWitness, TxWronglyChallengedWitness,
+};
+pub use crate::utils::{
+    derive_hashlock, g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x,
+    h_256, ro_from_pairing_bytes,
+};
+use crate::verifier::BABEVerifier;
 use ark_bn254::{Bn254, Fr, G1Affine};
 use ark_ec::AffineRepr;
+use ark_ec::pairing::Pairing;
 use ark_ff::PrimeField;
 use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_relations::lc;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-use rand::SeedableRng;
-use serde::{Deserialize, Serialize};
-use std::marker::PhantomData;
-use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
-use ark_ec::pairing::Pairing;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use garbled_snark_verifier::bag::S;
-use crate::cac::{
-    cac_finalize_indices, verify_finalized_instances, verify_opened_instances,
-    CACSetupPackage, FinalizedInstanceData,
-};
-use crate::lamport::{lamport_keygen, lamport_sign, lamport_verify, LamportPk, LamportSk};
-use crate::prover::BABEProver;
-use crate::soldering::{build_soldered_wires_input, soldering_guest_compute, SolderingData, SolderingProof};
-use crate::transactions::{OnchainSize, TxAssertWitness, TxChallengeAssertOutputLock, TxChallengeAssertWitness, TxDepositLock, TxNoWithdrawWitness, TxWithdrawWitness, TxWronglyChallengedWitness};
-pub use crate::utils::{derive_hashlock, g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x, h_256, ro_from_pairing_bytes};
-use crate::verifier::BABEVerifier;
+use serde::{Deserialize, Serialize};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,10 @@ pub enum BabeBtcSig {
 pub struct EncodingKeyPublic(pub Vec<[[u8; 20]; 2]>);
 
 pub fn compute_epk_with_delta(encoding_keys: &[S], delta: S) -> EncodingKeyPublic {
-    let pairs = encoding_keys.iter().map(|&key| [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta).0)]).collect();
+    let pairs = encoding_keys
+        .iter()
+        .map(|&key| [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta).0)])
+        .collect();
     EncodingKeyPublic(pairs)
 }
 
@@ -127,13 +130,6 @@ pub struct VerifierSetupState {
 }
 
 /// Result of the C&C e2e happy path.
-pub struct BabeCACE2ERun {
-    pub deposit_lock: TxDepositLock,
-    pub assert_witness: TxAssertWitness,
-    pub challenge_assert_witness: TxChallengeAssertWitness,
-    pub wrongly_challenged_witness: TxWronglyChallengedWitness,
-}
-
 // ─── Setup phase ─────────────────────────────────────────────────────────────
 
 /// Verifier: create N_CC instances and commit. Returns the verifier (retains all private state)
@@ -146,41 +142,6 @@ pub fn babe_verifier_cac_setup(
     println!("Verifier: committing all instances..");
     let package = verifier.commit();
     (verifier, package)
-}
-
-/// Verifier: open non-finalized instances (reveal seeds) and generate the ZK-soldering proof
-/// for the finalized instances.
-pub fn babe_verifier_open_and_solder(
-    verifier: &BABEVerifier,
-    finalized_indices: &[usize],
-) -> (Vec<(usize, u64)>, Vec<FinalizedInstanceData>, SolderingData, [u8; 20]) {
-    let (opened, finalized) = verifier.open(finalized_indices);
-
-    // Note that this part will be replaced by generating soldering proof in production.
-    let soldered_input = build_soldered_wires_input(verifier, finalized_indices);
-    let soldered_output = soldering_guest_compute(&soldered_input);
-
-    let soldering = SolderingData {
-        finalized_indices: finalized_indices.to_vec(),
-        soldering_proof: SolderingProof { soldered_output, _proof: PhantomData },
-    };
-    
-    (opened, finalized, soldering, derive_hashlock(&verifier.temp_val))
-}
-
-/// Prover: verify the opened instances, the finalized instances, and the soldering proof.
-pub fn babe_prover_verify_setup(
-    package: &CACSetupPackage,
-    opened: &[(usize, u64)],
-    finalized: &[FinalizedInstanceData],
-    soldering: &SolderingData,
-    vk: &Groth16VerifyingKey<Bn254>,
-    public_inputs: &[Fr],
-) -> Result<(), String> {
-    verify_opened_instances(package, opened, vk, public_inputs)?;
-    verify_finalized_instances(package, finalized)?;
-    BABEProver::verify_soldering_output(package, soldering)?;
-    Ok(())
 }
 
 // ─── Presign exchange ─────────────────────────────────────────────────────────
@@ -212,7 +173,8 @@ pub fn babe_verify_prover_presigs(
     package: &CACSetupPackage,
     finalized_indices: &[usize],
 ) -> bool {
-    let presigs_valid = prover_presigs.sig_challenge_assert == BabeBtcSig::ProverPresigChallengeAssert
+    let presigs_valid = prover_presigs.sig_challenge_assert
+        == BabeBtcSig::ProverPresigChallengeAssert
         && prover_presigs.sig_no_withdraw == BabeBtcSig::ProverPresigNoWithdraw;
 
     // This is hardcoded, let check after
@@ -220,9 +182,11 @@ pub fn babe_verify_prover_presigs(
         && challenge_assert_outlock.pk_v == *verifier_pkey;
 
     let h_msgs_valid = challenge_assert_outlock.h_msgs.len() == finalized_indices.len()
-        && challenge_assert_outlock.h_msgs.iter().zip(finalized_indices.iter()).all(|(&h_msg, &idx)| {
-            h_msg == package.commits[idx].h_msg
-        });
+        && challenge_assert_outlock
+            .h_msgs
+            .iter()
+            .zip(finalized_indices.iter())
+            .all(|(&h_msg, &idx)| h_msg == package.commits[idx].h_msg);
 
     presigs_valid && keys_valid && h_msgs_valid
 }
@@ -251,11 +215,7 @@ pub fn build_ca_outlock(
     pk_v: &BtcPk,
     h_msgs: Vec<[u8; 20]>,
 ) -> TxChallengeAssertOutputLock {
-    TxChallengeAssertOutputLock {
-        pk_p: pk_p.clone(),
-        pk_v: pk_v.clone(),
-        h_msgs,
-    }
+    TxChallengeAssertOutputLock { pk_p: pk_p.clone(), pk_v: pk_v.clone(), h_msgs }
 }
 
 /// Verifier: verify Lamport sig in assert_witness, then compute input labels for π₁
@@ -267,7 +227,9 @@ pub fn babe_verifier_challenge_assert_cac(
 ) -> Option<TxChallengeAssertWitness> {
     let pi1 = G1Affine::deserialize_compressed(assert_witness.pi1.as_slice()).ok()?;
 
-    println!("Verifier: Checking the Lamport signature in tx_Assert witness against pi1 and lpk_P...");
+    println!(
+        "Verifier: Checking the Lamport signature in tx_Assert witness against pi1 and lpk_P..."
+    );
     if !lamport_verify(&verifier_state.lpk_p, &pi1, &assert_witness.lamport_sig) {
         return None;
     }
@@ -306,10 +268,15 @@ pub fn babe_prover_wrongly_challenged_cac(
         &prover_state.h_msgs,
     );
 
-    found.then(|| (TxWronglyChallengedWitness {
-        sig_p: BabeBtcSig::ProverLiveSig,
-        msg: prover.valid_msg.unwrap(),
-    }, prover.valid_finalized_id.unwrap()))
+    found.then(|| {
+        (
+            TxWronglyChallengedWitness {
+                sig_p: BabeBtcSig::ProverLiveSig,
+                msg: prover.valid_msg.unwrap(),
+            },
+            prover.valid_finalized_id.unwrap(),
+        )
+    })
 }
 
 // ─── No-withdraw / Withdraw phases ───────────────────────────────────────────
@@ -379,141 +346,6 @@ pub fn we_known_pi1_dec(
     Some(ctsetup.ct3_masked_msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect())
 }
 
-// ─── BABE C&C Soldering E2E flow ─────────────────────────────────────────────────────
-pub fn run_babe_e2e_cac() -> BabeCACE2ERun {
-    let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);
-    let a = Fr::from(7u64);
-    let b = Fr::from(9u64);
-
-    let (groth16_pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
-        DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
-    ).expect("groth16 setup");
-    let proof = ark_groth16::Groth16::<Bn254>::prove(
-        &groth16_pk,
-        DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
-        &mut rng,
-    ).expect("groth16 prove");
-    let public_inputs = vec![a * b];
-
-    // ── Setup phase ───────────────────────────────────────────────────────────
-
-    // Prover sends pk_p to Verifier.
-    let pk_p = BtcPk([0u8; 33]);
-    // let (lsk_p, lpk_p) = babe_prover_keygen(&mut rng);
-    println!("Prover: generating BTC keys and sending pk_p to Verifier");
-
-    // Verifier creates N_CC instances and sends CACSetupPackage.
-    println!("Verifier generating BTC keys");
-    let pk_v = BtcPk([1u8; 33]);
-    println!("Verifier: building {} instances...", N_CC);
-    let (verifier, package) = babe_verifier_cac_setup(&vk, &public_inputs);
-    // Verifier sends vk and package to Prover
-    println!("Verifier: sending pk_v and {} instance commitment to Prover", N_CC);
-
-    // Prover samples M_CC finalized indices (Fiat-Shamir over all commits).
-    // Todo: can be replace by randomize.
-    let finalized_indices = cac_finalize_indices(&package, M_CC);
-    println!("Prover: finalized indices = {:?}", &finalized_indices);
-
-    // Verifier opens non-finalized instances and generates soldering proof.
-    println!("Verifier: opening and soldering...");
-    let (opened, finalized, soldering, _hash_temp_val) = babe_verifier_open_and_solder(&verifier, &finalized_indices);
-
-    println!("Prover: verifying opening and soldering proof...");
-    // Prover verifies everything.
-    babe_prover_verify_setup(&package, &opened, &finalized, &soldering, &vk, &public_inputs)
-        .expect("prover setup verification failed");
-
-    println!("Prover: generating Lamport signature...");
-    let (lsk_p, lpk_p) = lamport_keygen(&mut rng);
-
-    // ── Create Txn Set and Presign ──────────────────────────────────────────────────
-    println!("Prover: creating Tx Set and pre sign...");
-    let h_msgs_p: Vec<[u8; 20]> = finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
-    let tx_challenge_assert_outlock_p = build_ca_outlock(
-        &pk_p,
-        &pk_v,
-        h_msgs_p,
-    );
-    let prover_presigs = babe_prover_presign();
-    println!("Prover: sending lpk_p, presigs_p to Verifier");
-    println!("Verifier: verifying presigs_p...");
-    let check = babe_verify_prover_presigs(
-        &prover_presigs,
-        &tx_challenge_assert_outlock_p,
-        &pk_p,
-        &pk_v,
-        &package,
-        &finalized_indices
-    );
-    assert!(check, "Prover verification presigs failed");
-
-    println!("Verifier: creating Tx Set and pre sign...");
-    // same as above, no need to implement
-    let verifier_presigs = babe_verifier_presign();
-    println!("Verifier: sending presigs_v to Verifier...");
-
-    println!("Prover: verifying presigs_p...");
-    assert!(babe_verify_verifier_presigs(&verifier_presigs), "verifier presigs invalid");
-
-    // ── Deposit ───────────────────────────────────────────────────────────────
-
-    println!("Prover: submitting Deposit Txn...");
-    let deposit_lock = babe_build_deposit_lock(pk_p, pk_v, 100_000);
-    // Both parties persist their setup state.
-    let prover_state = ProverSetupState {
-        lsk_p,
-        finalized,
-        soldering,
-        h_msgs: tx_challenge_assert_outlock_p.h_msgs,
-        presigs_v: verifier_presigs,
-    };
-    let verifier_state = VerifierSetupState {
-        verifier,
-        package,
-        finalized_indices,
-        lpk_p,
-        presigs_p: prover_presigs,
-    };
-
-    // ── Proving phase ─────────────────────────────────────────────────────────
-
-    // Assert: Prover posts π₁ + Lamport sig on-chain.
-    let assert_witness = babe_prover_assert(&proof, &prover_state.lsk_p);
-    println!("Prover: posting tx_Assert...");
-    println!("tx_Assert witness:            {} bytes", assert_witness.size_bytes());
-
-    // ChallengeAssert: Verifier verifies Lamport sig and reveals base-instance labels.
-    let challenge_witness = babe_verifier_challenge_assert_cac(
-        &assert_witness,
-        &verifier_state,
-        verifier_state.presigs_p.sig_challenge_assert.clone(),
-    ).expect("Lamport sig invalid in assert witness");
-    println!("Verifier: posting tx_ChallengeAssert...");
-    println!("tx_ChallengeAssert witness:   {} bytes", challenge_witness.size_bytes());
-
-    println!("Script: checking the valid of Verifier labels...");
-    // WronglyChallenged: Prover evaluates GC (base first, then non-base if needed).
-    println!("Prover: Finding msg...");
-    let (wc_witness, instance_id) = babe_prover_wrongly_challenged_cac(
-        &challenge_witness,
-        &proof,
-        &prover_state,
-    ).expect("failed to find valid msg");
-    println!("Prover: posting tx_WronglyChallenged...");
-    println!("tx_WronglyChallenged witness: {} bytes", wc_witness.size_bytes());
-
-    // Sanity: msg must satisfy the on-chain hashlock.
-    let finalized_id = prover_state.finalized.iter().position(|d| d.index == instance_id).unwrap();
-    assert_eq!(
-        derive_hashlock(&wc_witness.msg),
-        prover_state.h_msgs[finalized_id],
-        "decrypted msg does not match h_msg"
-    );
-
-    BabeCACE2ERun { deposit_lock, assert_witness, challenge_assert_witness: challenge_witness, wrongly_challenged_witness: wc_witness }
-}
-
 // ─── Shared test circuit ──────────────────────────────────────────────────────
 
 #[derive(Copy, Clone)]
@@ -537,6 +369,7 @@ impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lamport::lamport_keygen;
     use ark_bn254::{Bn254, Fr};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ff::UniformRand;
@@ -567,20 +400,25 @@ mod tests {
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
         let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
-            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
-        ).unwrap();
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        )
+        .unwrap();
         let proof = ark_groth16::Groth16::<Bn254>::prove(
             &pk,
             DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
-        ).unwrap();
+        )
+        .unwrap();
         let public_inputs = vec![a * b];
         let secret = b"test-secret-32by";
         let r_bytes = h_256(b"r-test");
 
         let ct_setup = we_known_pi1_encsetup(&vk, &public_inputs, secret, r_bytes).unwrap();
         let ctprove = we_known_pi1_encprove(proof.a.into_group(), r_bytes);
-        let decrypted = we_known_pi1_dec(&ct_setup, &ctprove, proof.b.into_group(), proof.c.into_group()).unwrap();
+        let decrypted =
+            we_known_pi1_dec(&ct_setup, &ctprove, proof.b.into_group(), proof.c.into_group())
+                .unwrap();
         assert_eq!(decrypted, secret);
     }
 }

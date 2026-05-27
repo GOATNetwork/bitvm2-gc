@@ -1,17 +1,17 @@
-use ark_bn254::{Bn254, G1Affine, G1Projective, G2Affine};
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ec::pairing::Pairing;
-use ark_ff::{One, Zero};
-use ark_groth16::Proof as Groth16Proof;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use garbled_snark_verifier::bag::{Circuit, S};
-use garbled_snark_verifier::dv_bn254::fq::Fq;
 use crate::babe::{WeKnownPi1ProveCt, WeKnownPi1SetupCt};
 use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
 use crate::gc::SparseAdaptorTable;
 use crate::soldering::{SolderedLabelsData, SolderingData};
 use crate::utils::{derive_hashlock, h_160, h_256};
+use ark_bn254::{Bn254, G1Affine, G1Projective, G2Affine};
+use ark_ec::pairing::Pairing;
+use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::{One, Zero};
+use ark_groth16::Proof as Groth16Proof;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use garbled_snark_verifier::bag::{Circuit, S};
+use garbled_snark_verifier::dv_bn254::fq::Fq;
 
 pub struct BABEProver {
     groth16_proof: Groth16Proof<Bn254>,
@@ -22,12 +22,7 @@ pub struct BABEProver {
 
 impl BABEProver {
     pub fn new(groth16_proof: Groth16Proof<Bn254>) -> Self {
-        Self {
-            groth16_proof,
-            valid_msg: None,
-            valid_ct_prove: None,
-            valid_finalized_id: None,
-        }
+        Self { groth16_proof, valid_msg: None, valid_ct_prove: None, valid_finalized_id: None }
     }
 
     /// Verify that the guest output's commitments match the `CACSetupPackage`.
@@ -67,9 +62,20 @@ impl BABEProver {
     pub fn verify_soldering_output(
         package: &CACSetupPackage,
         soldering: &SolderingData,
+        client: &zkm_sdk::ProverClient,
+        verifying_key: &zkm_sdk::ZKMVerifyingKey,
     ) -> Result<(), String> {
-        let sld_output = &soldering.soldering_proof.soldered_output;
-        Self::verify_soldering_output_match_commitment(sld_output, package, &soldering.finalized_indices)?;
+        client
+            .verify(&soldering.soldering_proof.proof, verifying_key)
+            .map_err(|e| format!("failed to verify soldering proof: {e:?}"))?;
+
+        let sld_output = soldering.soldering_proof.output()?;
+        Self::verify_soldering_output_match_commitment(
+            &sld_output,
+            package,
+            &soldering.finalized_indices,
+        )?;
+
         Ok(())
     }
 
@@ -82,8 +88,28 @@ impl BABEProver {
         soldering: &SolderingData,
         h_msgs_onchain: &[[u8; 20]],
     ) -> bool {
-        let sld = &soldering.soldering_proof.soldered_output;
+        let sld_output = match soldering.soldering_proof.output() {
+            Ok(output) => output,
+            Err(error) => {
+                eprintln!("failed to decode soldering public values: {error}");
+                return false;
+            }
+        };
+        self.check_compute_msg_with_soldered_output(
+            finalized,
+            base_input_labels,
+            &sld_output,
+            h_msgs_onchain,
+        )
+    }
 
+    fn check_compute_msg_with_soldered_output(
+        &mut self,
+        finalized: &[FinalizedInstanceData],
+        base_input_labels: &[S],
+        sld: &SolderedLabelsData,
+        h_msgs_onchain: &[[u8; 20]],
+    ) -> bool {
         println!("Trying base instance...");
         let base_full = Self::build_full_labels(&finalized[0].constant_labels, base_input_labels);
         let base_res = self.try_evaluate_instance(&finalized[0], &base_full, h_msgs_onchain[0]);
@@ -174,10 +200,8 @@ impl BABEProver {
             garbled_circuit.0[i].borrow_mut().label = Some(lbl);
         }
 
-        let witness: Vec<bool> = Fq::to_bits(pi1.x)
-            .into_iter()
-            .chain(Fq::to_bits(pi1.y).into_iter())
-            .collect();
+        let witness: Vec<bool> =
+            Fq::to_bits(pi1.x).into_iter().chain(Fq::to_bits(pi1.y).into_iter()).collect();
 
         garbled_circuit.set_witness_value(&witness);
         for gate in &mut garbled_circuit.1 {
@@ -241,16 +265,17 @@ impl BABEProver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::marker::PhantomData;
-    use ark_bn254::{Bn254, Fr};
-    use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
-    use rand::SeedableRng;
-    use garbled_snark_verifier::core::utils::reset_gid;
     use crate::babe::DummyMulCircuit;
     use crate::cac::cac_finalize_indices;
     use crate::instance::BABEInstance;
-    use crate::soldering::{build_soldered_wires_input, soldering_guest_compute, SolderingProof};
+    use crate::soldering::{
+        build_soldered_wires_input, soldering_guest_compute, SolderedLabelsData,
+    };
     use crate::verifier::BABEVerifier;
+    use ark_bn254::{Bn254, Fr};
+    use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
+    use garbled_snark_verifier::core::utils::reset_gid;
+    use rand::SeedableRng;
 
     const TEST_N_CC: usize = 4;
     const TEST_M_CC: usize = 2;
@@ -266,12 +291,14 @@ mod tests {
         let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
             DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
-        ).unwrap();
+        )
+        .unwrap();
         let proof = ark_groth16::Groth16::<Bn254>::prove(
             &pk,
             DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
-        ).unwrap();
+        )
+        .unwrap();
         let public_inputs = vec![a * b];
 
         // 2. Verifier enc_setup.
@@ -299,20 +326,17 @@ mod tests {
     }
 
     /// Build the common C&C + soldering scaffolding used by both tests below.
-    /// Returns `(verifier, package, finalized_indices, finalized, soldering, h_msgs_onchain)`.
-    fn setup_cac_soldering() -> (
-        BABEVerifier,
-        CACSetupPackage,
-        Vec<usize>,
-        Vec<FinalizedInstanceData>,
-        SolderingData,
-    ) {
+    fn setup_cac_soldering(
+    ) -> (BABEVerifier, CACSetupPackage, Vec<usize>, Vec<FinalizedInstanceData>, SolderedLabelsData)
+    {
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(1);
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
         let (_, vk) = ark_groth16::Groth16::<Bn254>::setup(
-            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
-        ).unwrap();
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        )
+        .unwrap();
         let public_inputs = vec![a * b];
 
         let verifier = BABEVerifier::new(TEST_N_CC, &vk, &public_inputs).unwrap();
@@ -323,28 +347,27 @@ mod tests {
         let soldered_input = build_soldered_wires_input(&verifier, &finalized_indices);
         let soldered_output = soldering_guest_compute(&soldered_input);
 
-        let soldering = SolderingData {
-            finalized_indices: finalized_indices.clone(),
-            soldering_proof: SolderingProof { soldered_output, _proof: PhantomData },
-        };
-
-        (verifier, package, finalized_indices, finalized, soldering)
+        (verifier, package, finalized_indices, finalized, soldered_output)
     }
 
     // ── verify_soldering_output ───────────────────────────────────────────────
 
     #[test]
     fn test_verify_soldering_output_ok() {
-        let (_, package, _, _, soldering) = setup_cac_soldering();
-        BABEProver::verify_soldering_output(&package, &soldering)
-            .expect("verify_soldering_output should succeed");
+        let (_, package, finalized_indices, _, soldered_output) = setup_cac_soldering();
+        BABEProver::verify_soldering_output_match_commitment(
+            &soldered_output,
+            &package,
+            &finalized_indices,
+        )
+        .expect("soldering commitments should match");
     }
 
     // ── check_compute_msg ─────────────────────────────────────────────────────
 
     #[test]
     fn test_check_compute_msg_finds_valid_msg() {
-        let (verifier, package, finalized_indices, finalized, soldering) =
+        let (verifier, package, finalized_indices, finalized, soldered_output) =
             setup_cac_soldering();
 
         // Prove with the same dummy circuit.
@@ -352,13 +375,16 @@ mod tests {
         let a = Fr::from(3u64);
         let b = Fr::from(7u64);
         let (pk, _) = ark_groth16::Groth16::<Bn254>::setup(
-            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
-        ).unwrap();
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        )
+        .unwrap();
         let proof = ark_groth16::Groth16::<Bn254>::prove(
             &pk,
             DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
             &mut rng,
-        ).unwrap();
+        )
+        .unwrap();
 
         // base_input_labels: active labels for the 508 π₁ input wires of the base instance.
         let base_idx = finalized_indices[0];
@@ -369,9 +395,13 @@ mod tests {
 
         // Extract h_msgs from bitcoin script of WronglyChallenged Txn
         // But in this test, we just get from package
-        let mut h_msgs_onchain: Vec<[u8; 20]> = finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
-        let found = prover.check_compute_msg(
-            &finalized, base_input_labels, &soldering, &h_msgs_onchain,
+        let mut h_msgs_onchain: Vec<[u8; 20]> =
+            finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
+        let found = prover.check_compute_msg_with_soldered_output(
+            &finalized,
+            base_input_labels,
+            &soldered_output,
+            &h_msgs_onchain,
         );
 
         assert!(found, "expected a valid msg to be found");
@@ -382,8 +412,11 @@ mod tests {
         // change the base msg to access non-base instance
         let mut prover = BABEProver::new(proof);
         h_msgs_onchain[0] = [0u8; 20];
-        let found = prover.check_compute_msg(
-            &finalized, base_input_labels, &soldering, &h_msgs_onchain,
+        let found = prover.check_compute_msg_with_soldered_output(
+            &finalized,
+            base_input_labels,
+            &soldered_output,
+            &h_msgs_onchain,
         );
         assert!(found, "expected a valid msg to be found");
         assert!(prover.valid_msg.is_some());

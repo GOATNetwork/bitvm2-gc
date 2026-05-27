@@ -26,5 +26,8 @@ ripemd = "0.2.0"
 [target.'cfg(all(target_os = "zkvm"))'.dependencies]
 zkm-zkvm = { workspace = true }
 
+[target.'cfg(not(target_os = "zkvm"))'.dependencies]
+zkm-sdk = { workspace = true }
+
 [features]
 garbled = ["garbled-snark-verifier/garbled"]
