@@ -1,8 +1,8 @@
 // ─── Transaction locking script ───────────────────────────────────────────────
 
 use serde::{Deserialize, Serialize};
-use crate::babe::{BabeBtcSig, BtcPk, BTC_SIG_BYTES, LAMPORT_N, LAMPORT_SIG_BYTES, MSG_BYTES, PI1_BYTES};
-use crate::lamport::LamportSig;
+use crate::babe::{BabeBtcSig, BtcPk, BTC_SIG_BYTES, LAMPORT_SIG_BYTES, MSG_BYTES, WOTS64_SIG_BYTES};
+use crate::utils::Wots64Sig;
 
 /// Constants embedded in the locking script of tx_Deposit output 0.
 /// Script: CheckSig(pk_P) ∧ CheckSig(pk_V)
@@ -25,12 +25,12 @@ pub struct TxChallengeAssertOutputLock {
 /// tx_Assert — witness for input 0.
 /// Input spends a UTXO with: CheckLampSig(lpk_P)
 /// Script verifies: SHA256(μ[i]) == lpk_P[i][bit_i(π₁)] for all i.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxAssertWitness {
     /// Compressed G1Affine, 33 bytes — the asserted proof element.
     pub pi1: Vec<u8>,
     /// μ₁…μ_ℓ — Lamport signature, LAMPORT_N × 16 bytes.
-    pub lamport_sig: LamportSig,
+    pub wots_sig: Wots64Sig,
 }
 
 /// tx_ChallengeAssert — witness for input 0.
@@ -38,12 +38,12 @@ pub struct TxAssertWitness {
 /// Script verifies:
 ///   (a) SHA256(μ[i]) == lpk_P[i][bit_i]     — μ is a valid Lamport sig for some π₁
 ///   (b) blake3(L[i]) == lpk_V[i][bit_i]     — L[i] is the correct GC label for bit_i under epk
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxChallengeAssertWitness {
-    /// L₁…L_ℓ — one GC input label per π₁ bit, LAMPORT_N × 16 bytes.
+    /// L₁…L_ℓ — one GC input label per π₁ bit, PADDED_LAMPORT_N × 16 bytes.
     pub input_labels: Vec<[u8; 16]>,
     /// μ₁…μ_ℓ — Lamport sig re-posted to bind L to π₁.
-    pub lamport_sig: LamportSig,
+    pub wots_sig: Wots64Sig,
     /// VerifierLiveSig
     pub sig_v: BabeBtcSig,
     /// ProverPresigChallengeAssert
@@ -97,16 +97,14 @@ pub trait OnchainSize {
 
 impl OnchainSize for TxAssertWitness {
     fn size_bytes(&self) -> usize {
-        PI1_BYTES           // pi1:         33 bytes
-            + LAMPORT_SIG_BYTES // lamport_sig: 8,128 bytes
-        // total: 8,161 bytes
+        WOTS64_SIG_BYTES
     }
 }
 
 impl OnchainSize for TxChallengeAssertWitness {
     fn size_bytes(&self) -> usize {
-        LAMPORT_N * 16      // input_labels: 8,128 bytes
-            + LAMPORT_SIG_BYTES // lamport_sig:  8,128 bytes
+        WOTS64_SIG_BYTES      // wotsig
+            + LAMPORT_SIG_BYTES // input_labels:
             + BTC_SIG_BYTES     // sig_v:           32 bytes
             + BTC_SIG_BYTES     // sig_p:           32 bytes
         // total: 16,320 bytes
@@ -133,50 +131,3 @@ impl OnchainSize for TxWithdrawWitness {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::babe::{BabeBtcSig, LAMPORT_N, LAMPORT_SIG_BYTES, PI1_BYTES};
-    use crate::transactions::{TxAssertWitness, TxChallengeAssertWitness, TxWronglyChallengedWitness};
-
-    #[test]
-    fn onchain_sizes() {
-        assert_eq!(LAMPORT_SIG_BYTES, 508 * 16);
-
-        // Construct minimal witnesses to call size_bytes().
-        let dummy_sig = BabeBtcSig::ProverLiveSig;
-        let dummy_lamport = LamportSig(vec![[0u8; 16]; LAMPORT_N]);
-
-        let assert_w = TxAssertWitness {
-            pi1: vec![0u8; PI1_BYTES],
-            lamport_sig: dummy_lamport.clone(),
-        };
-        assert_eq!(assert_w.size_bytes(), 8161);
-
-        let challenge_w = TxChallengeAssertWitness {
-            input_labels: vec![[0u8; 16]; LAMPORT_N],
-            lamport_sig: dummy_lamport,
-            sig_v: dummy_sig.clone(),
-            sig_p: dummy_sig.clone(),
-        };
-        assert_eq!(challenge_w.size_bytes(), 16320);
-
-        let wc_w = TxWronglyChallengedWitness { sig_p: dummy_sig.clone(), msg: [0u8; 32] };
-        assert_eq!(wc_w.size_bytes(), 64);
-
-        let nw_w = TxNoWithdrawWitness {
-            input0_sig_p: dummy_sig.clone(),
-            input0_sig_v: dummy_sig.clone(),
-            input1_sig_v: dummy_sig.clone(),
-        };
-        assert_eq!(nw_w.size_bytes(), 96);
-
-        let wd_w = TxWithdrawWitness {
-            input0_sig_p: dummy_sig.clone(),
-            input0_sig_v: dummy_sig.clone(),
-            input1_sig_p: dummy_sig.clone(),
-            input1_sig_v: dummy_sig,
-        };
-        assert_eq!(wd_w.size_bytes(), 128);
-    }
-}

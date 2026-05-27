@@ -1,5 +1,4 @@
 use crate::cac::{CACSetupPackage, FinalizedInstanceData};
-use crate::lamport::{LamportPk, LamportSk, lamport_sign, lamport_verify};
 use crate::prover::BABEProver;
 use crate::soldering::SolderingData;
 use crate::transactions::{
@@ -19,13 +18,17 @@ use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
 use ark_relations::lc;
 use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use bitvm::signatures::{WinternitzSecret, Wots, Wots64};
 use garbled_snark_verifier::bag::S;
 use serde::{Deserialize, Serialize};
-
+use crate::utils::{pi1_to_wots64_msg, wots64_verify, Wots64PublicKey};
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /// Number of bits in π₁ (G1Affine): 254 bits for x + 254 bits for y.
 pub const LAMPORT_N: usize = 508;
+
+// Number of bits in padded lamport signature, adapt to Winternitz
+pub const PADDED_LAMPORT_N: usize = 512;
 
 /// Total number of C&C instances the Verifier creates and commits to.
 /// In practice, N_CC = 181.
@@ -34,8 +37,11 @@ pub const N_CC: usize = 10;
 /// Number of instances the Prover finalizes (keeps hidden); rest are opened.
 pub const M_CC: usize = 4;
 
-/// Byte size of a Lamport signature on-chain: LAMPORT_N revealed 16-byte secrets.
-pub const LAMPORT_SIG_BYTES: usize = LAMPORT_N * 16;
+/// Byte size of a Lamport signature on-chain: PADDED_LAMPORT_N revealed 16-byte secrets.
+pub const LAMPORT_SIG_BYTES: usize = PADDED_LAMPORT_N * 16;
+
+/// Byte size of a Wots64 signature on-chain: 131 digit-signatures × 21 bytes each.
+pub const WOTS64_SIG_BYTES: usize = 131 * 21;
 
 /// Byte size of a Bitcoin signature placeholder (64 bytes in production).
 pub const BTC_SIG_BYTES: usize = 32;
@@ -112,7 +118,7 @@ pub struct WeKnownPi1ProveCt {
 
 /// Everything the Prover stores after completing the setup phase.
 pub struct ProverSetupState {
-    pub lsk_p: LamportSk,
+    pub wots_sk_p: WinternitzSecret,
     pub finalized: Vec<FinalizedInstanceData>,
     pub soldering: SolderingData,
     /// h_msg per finalized instance, in finalized-index order.
@@ -125,7 +131,7 @@ pub struct VerifierSetupState {
     pub verifier: BABEVerifier,
     pub package: CACSetupPackage,
     pub finalized_indices: Vec<usize>,
-    pub lpk_p: LamportPk,
+    pub wots_pk_p: Wots64PublicKey,
     pub presigs_p: ProverPresigs,
 }
 
@@ -200,12 +206,13 @@ pub fn babe_build_deposit_lock(pk_p: BtcPk, pk_v: BtcPk, amount: u64) -> TxDepos
 // ─── Assert phase (Prover posts π₁) ─────────────────────────────────────────
 
 /// Prover: sign π₁ with lsk_P and build the assert witness.
-pub fn babe_prover_assert(proof: &Groth16Proof<Bn254>, lsk_p: &LamportSk) -> TxAssertWitness {
+pub fn babe_prover_assert(proof: &Groth16Proof<Bn254>, wots_sk: &WinternitzSecret) -> TxAssertWitness {
     let pi1 = proof.a;
     let mut pi1_bytes = Vec::new();
     pi1.serialize_compressed(&mut pi1_bytes).expect("serialize π₁");
-    let lamport_sig = lamport_sign(lsk_p, &pi1);
-    TxAssertWitness { pi1: pi1_bytes, lamport_sig }
+    let msg = pi1_to_wots64_msg(&pi1);
+    let wots_sig = Wots64::sign(&wots_sk, &msg);
+    TxAssertWitness { pi1: pi1_bytes, wots_sig }
 }
 
 // ─── ChallengeAssert phase (Verifier reveals base-instance labels) ────────────
@@ -218,7 +225,7 @@ pub fn build_ca_outlock(
     TxChallengeAssertOutputLock { pk_p: pk_p.clone(), pk_v: pk_v.clone(), h_msgs }
 }
 
-/// Verifier: verify Lamport sig in assert_witness, then compute input labels for π₁
+/// Verifier: verify Wots64 sig in assert_witness, then compute input labels for π₁
 /// from the base finalized instance and return them in the ChallengeAssert witness.
 pub fn babe_verifier_challenge_assert_cac(
     assert_witness: &TxAssertWitness,
@@ -227,10 +234,9 @@ pub fn babe_verifier_challenge_assert_cac(
 ) -> Option<TxChallengeAssertWitness> {
     let pi1 = G1Affine::deserialize_compressed(assert_witness.pi1.as_slice()).ok()?;
 
-    println!(
-        "Verifier: Checking the Lamport signature in tx_Assert witness against pi1 and lpk_P..."
-    );
-    if !lamport_verify(&verifier_state.lpk_p, &pi1, &assert_witness.lamport_sig) {
+    let msg = pi1_to_wots64_msg(&pi1);
+    println!("Verifier: Checking Wots96 signature in tx_Assert against pi1, x_d and wots_pk_p...");
+    if !wots64_verify(&verifier_state.wots_pk_p, &msg, &assert_witness.wots_sig) {
         return None;
     }
 
@@ -238,12 +244,13 @@ pub fn babe_verifier_challenge_assert_cac(
     let base_idx = verifier_state.finalized_indices[0];
     let base_inst = &verifier_state.verifier.instances[base_idx];
     let all_labels = base_inst.compute_pi1_labels_based_on_value(pi1);
-    // all_labels[0..2] are constant-wire labels; [2..] are π₁ input labels.
+    // all_labels[0..2] are constant-wire labels; [2..] are 512 input labels
+    // (254 x-bits, 2 zero-padding, 254 y-bits, 2 zero-padding).
     let input_labels: Vec<[u8; 16]> = all_labels[2..].iter().map(|s| s.0).collect();
 
     Some(TxChallengeAssertWitness {
         input_labels,
-        lamport_sig: assert_witness.lamport_sig.clone(),
+        wots_sig: assert_witness.wots_sig.clone(),
         sig_v: BabeBtcSig::VerifierLiveSig,
         sig_p: sig_p_presig,
     })
@@ -259,11 +266,15 @@ pub fn babe_prover_wrongly_challenged_cac(
     prover_state: &ProverSetupState,
 ) -> Option<(TxWronglyChallengedWitness, usize)> {
     let base_input_labels: Vec<S> = challenge_witness.input_labels.iter().map(|&b| S(b)).collect();
+    let pi1_input_labels: Vec<S> = base_input_labels[..254].iter()
+        .chain(base_input_labels[256..510].iter())
+        .copied()
+        .collect();
 
     let mut prover = BABEProver::new(proof.clone());
     let found = prover.check_compute_msg(
         &prover_state.finalized,
-        &base_input_labels,
+        &pi1_input_labels,
         &prover_state.soldering,
         &prover_state.h_msgs,
     );
@@ -369,7 +380,7 @@ impl<F: PrimeField> ConstraintSynthesizer<F> for DummyMulCircuit<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lamport::lamport_keygen;
+    use crate::lamport::{lamport_keygen, lamport_sign_g1_affine, lamport_verify_g1_affine};
     use ark_bn254::{Bn254, Fr};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ff::UniformRand;
@@ -387,11 +398,11 @@ mod tests {
     fn lamport_sign_verify_roundtrip() {
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(1);
         let pi1 = G1Affine::from(ark_bn254::G1Projective::rand(&mut rng));
-        let (lsk, lpk) = lamport_keygen(&mut rng);
-        let sig = lamport_sign(&lsk, &pi1);
-        assert!(lamport_verify(&lpk, &pi1, &sig));
+        let (lsk, lpk) = lamport_keygen(&mut rng, LAMPORT_N);
+        let sig = lamport_sign_g1_affine(&lsk, &pi1);
+        assert!(lamport_verify_g1_affine(&lpk, &pi1, &sig));
         let pi1_other = G1Affine::from(ark_bn254::G1Projective::rand(&mut rng));
-        assert!(!lamport_verify(&lpk, &pi1_other, &sig));
+        assert!(!lamport_verify_g1_affine(&lpk, &pi1_other, &sig));
     }
 
     #[test]

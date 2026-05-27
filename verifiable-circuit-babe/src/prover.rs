@@ -305,8 +305,13 @@ mod tests {
         let mut verifier = BABEInstance::new_from_seed(rand::random());
         verifier.enc_setup(&vk, &public_inputs).unwrap();
 
-        // 3. Full labels: [const_0, const_1, pi1_bits...].
+        // 3. Full labels: [const_0, const_1, x_bits(254), pad(2), y_bits(254), pad(2)] = 514 entries.
+        //    Strip the 4 padding zeros to get the 510 labels the circuit expects.
         let full_labels = verifier.compute_pi1_labels_based_on_value(proof.a);
+        let circuit_labels: Vec<S> = full_labels[..256].iter()
+            .chain(full_labels[258..512].iter())
+            .copied()
+            .collect();
 
         // 4. Prover evaluates the garbled circuit.
         let prover = BABEProver::new(proof.clone());
@@ -314,7 +319,7 @@ mod tests {
         let ct_prove = prover.compute_ct_prove(
             &mut circuit,
             &gc_output_indices,
-            &full_labels,
+            &circuit_labels,
             &verifier.ciphertexts,
             &verifier.adaptor_table,
         );
@@ -387,9 +392,15 @@ mod tests {
         .unwrap();
 
         // base_input_labels: active labels for the 508 π₁ input wires of the base instance.
+        // compute_pi1_labels_based_on_value returns 514 entries (2 constant + 512 padded input).
+        // Strip constant labels and the 4 padding zeros at positions 256-257 and 512-513.
         let base_idx = finalized_indices[0];
         let all_labels = verifier.instances[base_idx].compute_pi1_labels_based_on_value(proof.a);
-        let base_input_labels = &all_labels[2..]; // strip constant-wire labels
+        let padded_input = &all_labels[2..]; // 512 entries (254 x-bits, 2 pad, 254 y-bits, 2 pad)
+        let base_input_labels: Vec<S> = padded_input[..254].iter()
+            .chain(padded_input[256..510].iter())
+            .copied()
+            .collect(); // 508 entries
 
         let mut prover = BABEProver::new(proof.clone());
 

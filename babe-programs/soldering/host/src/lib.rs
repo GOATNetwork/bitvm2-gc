@@ -1,19 +1,13 @@
 use ark_bn254::{Bn254, Fr};
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
+use bitvm::signatures::{Wots, Wots64};
 use rand::{rngs::StdRng, SeedableRng};
-use verifiable_circuit_babe::babe::{
-    babe_build_deposit_lock, babe_prover_assert, babe_prover_presign,
-    babe_prover_wrongly_challenged_cac, babe_verifier_cac_setup,
-    babe_verifier_challenge_assert_cac, babe_verifier_presign, babe_verify_prover_presigs,
-    babe_verify_verifier_presigs, build_ca_outlock, BtcPk, DummyMulCircuit, ProverSetupState,
-    VerifierSetupState, M_CC, N_CC,
-};
+use verifiable_circuit_babe::babe::{babe_build_deposit_lock, babe_prover_assert, babe_prover_presign, babe_prover_wrongly_challenged_cac, babe_verifier_cac_setup, babe_verifier_challenge_assert_cac, babe_verifier_presign, babe_verify_prover_presigs, babe_verify_verifier_presigs, build_ca_outlock, BtcPk, DummyMulCircuit, ProverSetupState, VerifierSetupState, M_CC, N_CC};
 use verifiable_circuit_babe::cac::{
     cac_finalize_indices, verify_finalized_instances, verify_opened_instances, CACSetupPackage,
     FinalizedInstanceData,
 };
-use verifiable_circuit_babe::lamport::lamport_keygen;
 use verifiable_circuit_babe::prover::BABEProver;
 use verifiable_circuit_babe::soldering::{
     build_soldered_wires_input, SolderingData, SolderingProof,
@@ -121,6 +115,8 @@ impl BabeBundleBuilder {
 
         // Prover sends pk_p to Verifier.
         let pk_p = BtcPk([0u8; 33]);
+        let wots_sk_p = Wots64::generate_secret_key();
+        let wots_pk_p = Wots64::generate_public_key(&wots_sk_p);
         // let (lsk_p, lpk_p) = babe_prover_keygen(&mut rng);
         println!("Prover: generating BTC keys and sending pk_p to Verifier");
 
@@ -145,8 +141,7 @@ impl BabeBundleBuilder {
         // Prover verifies everything.
         self.babe_prover_verify_setup(&package, &bundle, &vk, &public_inputs)?;
 
-        println!("Prover: generating Lamport signature...");
-        let (lsk_p, lpk_p) = lamport_keygen(&mut rng);
+
 
         // ── Create Txn Set and Presign ──────────────────────────────────────────────────
         println!("Prover: creating Tx Set and pre sign...");
@@ -182,7 +177,7 @@ impl BabeBundleBuilder {
         let deposit_lock = babe_build_deposit_lock(pk_p, pk_v, 100_000);
         // Both parties persist their setup state.
         let prover_state = ProverSetupState {
-            lsk_p,
+            wots_sk_p,
             finalized: bundle.finalized,
             soldering: bundle.soldering,
             h_msgs: tx_challenge_assert_outlock_p.h_msgs,
@@ -192,14 +187,14 @@ impl BabeBundleBuilder {
             verifier,
             package,
             finalized_indices,
-            lpk_p,
+            wots_pk_p,
             presigs_p: prover_presigs,
         };
 
         // ── Proving phase ─────────────────────────────────────────────────────────
 
-        // Assert: Prover posts π₁ + Lamport sig on-chain.
-        let assert_witness = babe_prover_assert(&proof, &prover_state.lsk_p);
+        // Assert: Prover posts π₁ + Wots64 sig on-chain.
+        let assert_witness = babe_prover_assert(&proof, &prover_state.wots_sk_p);
         println!("Prover: posting tx_Assert...");
         println!("tx_Assert witness:            {} bytes", assert_witness.size_bytes());
 
@@ -209,7 +204,7 @@ impl BabeBundleBuilder {
             &verifier_state,
             verifier_state.presigs_p.sig_challenge_assert.clone(),
         )
-        .ok_or_else(|| "invalid Lamport signature in assert witness".to_string())?;
+        .ok_or_else(|| "invalid Wots64 signature in assert witness".to_string())?;
         println!("Verifier: posting tx_ChallengeAssert...");
         println!("tx_ChallengeAssert witness:   {} bytes", challenge_assert_witness.size_bytes());
 

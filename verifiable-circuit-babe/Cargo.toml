@@ -23,6 +23,12 @@ garbled-snark-verifier = { workspace = true, features = ["_poseidon2", "_getrand
 aes = "0.8"
 cfg-if = "1.0.4"
 ripemd = "0.2.0"
+[target.'cfg(not(target_os = "zkvm"))'.dependencies.bitvm]
+git = "https://github.com/GOATNetwork/BitVM.git"
+branch = "GA"
+[target.'cfg(not(target_os = "zkvm"))'.dependencies.bitcoin]
+version = "0.32.5"
+features = ["rand-std"]
 [target.'cfg(all(target_os = "zkvm"))'.dependencies]
 zkm-zkvm = { workspace = true }
 
