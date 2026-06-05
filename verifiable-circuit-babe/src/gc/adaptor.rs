@@ -2,7 +2,7 @@ use ark_bn254::{Fq, Fr, G1Affine};
 use ark_ff::Zero;
 use ark_serialize::CanonicalSerialize;
 use sha2::{Digest, Sha256};
-use crate::dre::{DREDecoding, L, N};
+use crate::dre::{DREDecoding, N, U_BAR_SIZE};
 use crate::dre::matrices::{build_d_i_sparse, nonzero_col_indices};
 use crate::gc::utils::{aes_dec, aes_enc, prf_fq};
 
@@ -32,19 +32,31 @@ pub struct SparseAdaptorTable {
 }
 
 impl SparseAdaptorTable {
-    pub fn build_from_r_and_labels(
+    pub fn build_from_r_and_u_bar_labels(
         r: Fr,
         labels: &[[u8; 16]],
         rhos: &[G1Affine],
         fq_deltas: &[Fq],
     ) -> Self {
-        assert_eq!(labels.len(), 2 * L);
+        assert_eq!(labels.len(), 2 * U_BAR_SIZE);
         assert_eq!(rhos.len(), N);
         assert_eq!(fq_deltas.len(), N);
 
+        #[cfg(debug_assertions)]
+        {
+            use ark_bn254::G1Projective;
+            let mut sum = G1Projective::zero();
+            let mut pw = Fr::from(1u64);
+            for rho in rhos {
+                sum += G1Projective::from(*rho) * pw;
+                pw += pw;
+            }
+            debug_assert!(sum.is_zero(), "ρ constraint ∑ 2^i·ρ_i = O violated");
+        }
+
         let r_bits = garbled_snark_verifier::dv_bn254::fr::Fr::to_bits(r);
         let col_indices = nonzero_col_indices();
-        let prf_cache: Vec<Fq> = (0..L).map(|k| prf_fq(&labels[2 * k + 1])).collect();
+        let prf_cache: Vec<Fq> = (0..U_BAR_SIZE).map(|k| prf_fq(&labels[2 * k + 1])).collect();
 
         let entries = (0..N)
             .map(|i| {
@@ -76,6 +88,48 @@ impl SparseAdaptorTable {
         SparseAdaptorTable { entries }
     }
 
+    /// Build the adaptor table entry-by-entry, hashing each row on-the-fly without
+    /// materializing the full `Vec<SparseAdaptorEntry>`. Produces the same hash as
+    /// `SparseAdaptorTable::build_from_r_and_u_bar_labels(...).commit()`.
+    pub fn build_and_hash(
+        r: Fr,
+        labels: &[[u8; 16]],
+        rhos: &[G1Affine],
+        fq_deltas: &[Fq],
+    ) -> [u8; 32] {
+        assert_eq!(labels.len(), 2 * U_BAR_SIZE);
+        assert_eq!(rhos.len(), N);
+        assert_eq!(fq_deltas.len(), N);
+
+        let r_bits = garbled_snark_verifier::dv_bn254::fr::Fr::to_bits(r);
+        let col_indices = nonzero_col_indices();
+        let prf_cache: Vec<Fq> = (0..U_BAR_SIZE).map(|k| prf_fq(&labels[2 * k + 1])).collect();
+
+        let mut hasher = Sha256::new();
+        let mut buf = Vec::new();
+
+        for i in 0..N {
+            let r_i = Fq::from(r_bits[i] as u8);
+            let d = build_d_i_sparse(fq_deltas[i], r_i, &rhos[i]);
+
+            for j in 0..3 {
+                let mut offset = Fq::zero();
+                for (&k, &d_val) in col_indices[j].iter().zip(d[j].iter()) {
+                    let s_k = prf_cache[k] - d_val;
+                    offset += s_k;
+                    let ct = aes_enc(&s_k, &labels[2 * k]);
+                    hasher.update(ct.as_slice());
+                }
+                buf.clear();
+                offset.serialize_compressed(&mut buf).expect("serialize Fq offset");
+                hasher.update(&buf);
+                // row data is never stored — dropped here
+            }
+        }
+
+        hasher.finalize().into()
+    }
+
     /// SHA256 over all ciphertexts and Fq offsets in entry/row order.
     /// Used by the Prover to verify an opened C&C instance's adaptor table.
     pub fn commit(&self) -> [u8; 32] {
@@ -95,8 +149,8 @@ impl SparseAdaptorTable {
 
     /// Decrypt the adaptor table and sum each row to recover Jacobian coords of r_i·π + ρ_i.
     pub fn eval(&self, labels: &[[u8; 16]], u_bar: &[Fq]) -> Vec<DREDecoding> {
-        assert_eq!(labels.len(), L);
-        assert_eq!(u_bar.len(), L);
+        assert_eq!(labels.len(), U_BAR_SIZE);
+        assert_eq!(u_bar.len(), U_BAR_SIZE);
 
         let col_indices = nonzero_col_indices();
 
@@ -104,6 +158,8 @@ impl SparseAdaptorTable {
             .iter()
             .map(|entry| {
                 let dec_row = |row: &SparseAdaptorRow, j: usize| -> Fq {
+                    // Per-entry integrity is guaranteed by the com_adaptor SHA256 commitment
+                    // verified in verify_finalized_instances; no additional MAC is needed.
                     let raw: Fq = col_indices[j]
                         .iter()
                         .zip(row.cts.iter())
@@ -135,7 +191,6 @@ mod tests {
     use garbled_snark_verifier::core::s::S;
     // Todo: change to use own delta, instead of NON_CAC_DELTA
     use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
-    use crate::dre::L;
     use crate::dre::matrices::u_bar_vec;
 
     #[test]
@@ -146,7 +201,7 @@ mod tests {
 
         let u_bar_pi = u_bar_vec(&pi);
 
-        let labels: Vec<[u8; 16]> = (0..L)
+        let labels: Vec<[u8; 16]> = (0..U_BAR_SIZE)
             .flat_map(|_| {
                 let l0 = S::random();
                 let l1 = l0 ^ NON_CAC_DELTA;
@@ -161,9 +216,9 @@ mod tests {
                 if !Zero::is_zero(&v) { break v; }
             })
             .collect();
-        let table = SparseAdaptorTable::build_from_r_and_labels(r, &labels, &rhos, &fq_deltas);
+        let table = SparseAdaptorTable::build_from_r_and_u_bar_labels(r, &labels, &rhos, &fq_deltas);
 
-        let eval_labels: Vec<[u8; 16]> = (0..L)
+        let eval_labels: Vec<[u8; 16]> = (0..U_BAR_SIZE)
             .map(|k| if u_bar_pi[k].is_zero() { labels[2 * k] } else { labels[2 * k + 1] })
             .collect();
 

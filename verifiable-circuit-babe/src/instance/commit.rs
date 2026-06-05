@@ -1,6 +1,6 @@
+use ark_serialize::CanonicalSerialize;
 use crate::gc::gc_ciphertexts_commit;
-use crate::instance::BABEInstance;
-use crate::lamport::compute_lamport_epk_with_delta;
+use crate::instance::CACInstance;
 use crate::utils::{derive_hashlock, h_256};
 
 /// Per-instance commitment sent from Verifier to Prover during C&C commit phase.
@@ -9,39 +9,69 @@ pub struct CACInstanceCommit {
     /// RIPEMD(SHA256)(label0) and RIPEMD(SHA256)(label1) for each input wire.
     /// We need to use RIPEMD(SHA256) to put this on skeleton Txn.
     pub epk: Vec<[[u8; 20]; 2]>,
-    /// SHA256(label0) and SHA256(label1) for each of the 2 constant wires.
-    pub constant_commits: [[[u8; 32]; 2]; 2],
+    /// SHA256(label0) and SHA256(label1) for each of the 2 constant wires in fgc.
+    pub constant_commits_0: [[[u8; 32]; 2]; 2],
+    /// constant commit for sgc, size = 2 + 2*N
+    pub constant_commits_1: [[[u8; 32]; 2]; 510],
+    /// commitment of b_blind in this instance.
+    pub b_blind_commit: [u8; 32],
     pub h_msg: [u8; 20],
     /// RO(ct_setup) = SHA256(ct2_r_delta_g2 || ct3_masked_msg).
     pub h_ct_setup: [u8; 32],
     /// SHA256 commitment to the adaptor table.
-    pub com_adaptor: [u8; 32],
+    pub com_adaptor: [[u8; 32]; 2],
     /// SHA256 commitment to the GC gate ciphertexts.
-    pub com_gc: [u8; 32],
+    pub com_gc: [[u8; 32]; 3],
 }
 
 impl CACInstanceCommit {
-    pub fn from_instance(instance: &BABEInstance) -> Self {
+    pub fn from_instance(instance: &CACInstance) -> Self {
         let delta = instance.secrets.delta;
 
-        let input_commits = compute_lamport_epk_with_delta(&instance.secrets.input_0labels, delta).0;
+        let input_commits = {
+            let fgc_pairs: Vec<[[u8; 20]; 2]> = instance.secrets.encoding_keys[0]
+                .iter()
+                .map(|&key| [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta[0]).0)])
+                .collect();
+            let sgc_pairs: Vec<[[u8; 20]; 2]> = instance.secrets.encoding_keys[1]
+                .iter()
+                .map(|&key| [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta[1]).0)])
+                .collect();
+            let pairs: Vec<[[u8; 20]; 2]> = fgc_pairs.into_iter().chain(sgc_pairs).collect();
+            pairs
+        };
 
-        let constant_commits = std::array::from_fn(|w| {
-            let l0 = instance.secrets.constant_0labels[w];
-            [h_256(&l0.0), h_256(&(l0 ^ delta).0)]
+        let constant_commits_0 = std::array::from_fn(|w| {
+            let l0 = instance.secrets.constant_0labels[0][w];
+            [h_256(&l0.0), h_256(&(l0 ^ delta[0]).0)]
+        });
+        let constant_commits_1 = std::array::from_fn(|w| {
+            let l0 = instance.secrets.constant_0labels[1][w];
+            [h_256(&l0.0), h_256(&(l0 ^ delta[1]).0)]
         });
 
         let mut ct_setup_bytes = Vec::new();
         ct_setup_bytes.extend_from_slice(&instance.ct_setup.ct2_r_delta_g2);
         ct_setup_bytes.extend_from_slice(&instance.ct_setup.ct3_masked_msg);
 
+        let mut b_blind_bytes = Vec::new();
+        instance.secrets.b.serialize_compressed(&mut b_blind_bytes).expect("serialize r·G1P");
+
+        let b_blind_commit = h_256(&b_blind_bytes);
+
         CACInstanceCommit {
             epk: input_commits,
-            constant_commits,
+            constant_commits_0,
+            constant_commits_1,
+            b_blind_commit,
             h_msg: derive_hashlock(&instance.secrets.msg),
             h_ct_setup: h_256(&ct_setup_bytes),
-            com_adaptor: instance.adaptor_table.commit(),
-            com_gc: gc_ciphertexts_commit(&instance.ciphertexts),
+            com_adaptor: [instance.adaptor_tables[0].commit(), instance.adaptor_tables[1].commit()],
+            com_gc: [
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[0]),
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[1]),
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[2]),
+            ]
         }
     }
 }

@@ -2,14 +2,24 @@ use aes::Aes128;
 use aes::cipher::generic_array::GenericArray;
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use ark_bn254::Fq;
-use ark_ff::PrimeField;
+use ark_ff::{BigInteger, PrimeField};
 use crate::gc::adaptor::Ct;
 
-/// Two fixed public keys for the PRF (domain-separated).
-const PRF_KEY_0: [u8; 16] = [0xBA, 0xBE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-const PRF_KEY_1: [u8; 16] = [0xBA, 0xBE, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-                              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+// These are PUBLICLY KNOWN fixed constants used as AES keys for the adaptor-table PRF.
+// Security relies on the correlation-robustness assumption: AES with a fixed public key
+// is indistinguishable from a random function when inputs are uniformly random GC labels.
+// This is the standard assumption in garbled-circuit literature (half-gates, free-XOR).
+//
+// WARNING: You MUST replace these constants with independently sampled random values
+// before deploying in any production protocol. Using the defaults in production
+// breaks the correlation-robustness assumption across independent deployments.
+//
+// Current values are the first two SHA-256 initial hash constants (H₀, H₁ from
+// FIPS 180-4, derived from fractional parts of √2 and √3).
+const PRF_KEY_0: [u8; 16] = [0x6a, 0x09, 0xe6, 0x67, 0xf3, 0xbc, 0xc9, 0x08,
+                              0xb2, 0xfb, 0x13, 0x6c, 0xe3, 0x7e, 0x94, 0x11];
+const PRF_KEY_1: [u8; 16] = [0xbb, 0x67, 0xae, 0x85, 0x84, 0xca, 0xa7, 0x3b,
+                              0x9c, 0xa2, 0xfc, 0xe9, 0xd7, 0x8a, 0x58, 0x6a];
 
 /// This is the "random oracle on label", using AES
 #[inline(always)]
@@ -29,8 +39,7 @@ pub fn prf_fq(label: &[u8; 16]) -> Fq {
 }
 
 fn fq_to_bytes(fq: &Fq) -> [u8; 32] {
-    // [u64; 4] and [u8; 32] are identical in memory on little-endian (RISC-V is LE)
-    unsafe { std::mem::transmute(fq.into_bigint().0) }
+    fq.into_bigint().to_bytes_le().try_into().expect("Fq serializes to exactly 32 bytes")
 }
 
 fn bytes_to_fq(bytes: &[u8; 32]) -> Fq {

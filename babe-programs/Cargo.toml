@@ -1,11 +1,5 @@
 [workspace]
 members = [
-    "aes-enc/guest",
-    "aes-enc/host",
-    "garbled-circuit/guest",
-    "garbled-circuit/host",
-    "enc-setup/guest",
-    "enc-setup/host",
     "soldering/guest",
     "soldering/host",
 ]

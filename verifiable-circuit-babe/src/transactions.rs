@@ -1,8 +1,11 @@
 // ─── Transaction locking script ───────────────────────────────────────────────
 
+use ark_bn254::{Fq, Fr, G1Affine};
+use ark_serialize::CanonicalDeserialize;
 use serde::{Deserialize, Serialize};
-use crate::babe::{BabeBtcSig, BtcPk, BTC_SIG_BYTES, LAMPORT_SIG_BYTES, MSG_BYTES, WOTS64_SIG_BYTES};
-use crate::utils::Wots64Sig;
+use crate::babe::{BabeBtcSig, BtcPk, BTC_SIG_BYTES, MSG_BYTES};
+use crate::wots::{Wots96, Wots96Sig};
+use bitvm::signatures::Wots;
 
 /// Constants embedded in the locking script of tx_Deposit output 0.
 /// Script: CheckSig(pk_P) ∧ CheckSig(pk_V)
@@ -23,27 +26,43 @@ pub struct TxChallengeAssertOutputLock {
 // ─── Transaction witnesses (on-chain data) ────────────────────────────────────
 
 /// tx_Assert — witness for input 0.
-/// Input spends a UTXO with: CheckLampSig(lpk_P)
-/// Script verifies: SHA256(μ[i]) == lpk_P[i][bit_i(π₁)] for all i.
+/// Input spends a UTXO with: CheckWotsSig(wots_pk_P)
+/// Script verifies the Wots96 signature over the 96-byte message (π₁.x ∥ π₁.y ∥ x_d).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxAssertWitness {
-    /// Compressed G1Affine, 33 bytes — the asserted proof element.
-    pub pi1: Vec<u8>,
-    /// μ₁…μ_ℓ — Lamport signature, LAMPORT_N × 16 bytes.
-    pub wots_sig: Wots64Sig,
+    /// Wots96 signature over the 96-byte message (π₁.x LE-32 ∥ π₁.y LE-32 ∥ x_d LE-32).
+    /// π₁ and x_d are recoverable from the digit values embedded in this signature.
+    pub wots_sig: Wots96Sig,
+}
+
+impl TxAssertWitness {
+    /// Extract π₁ and x_d from the digit values embedded in the Wots96 signature.
+    /// The 96-byte message layout is: π₁.x (LE-32) ∥ π₁.y (LE-32) ∥ x_d (LE-32).
+    /// Does NOT verify the signature — caller must call wots96_verify separately.
+    pub fn recover_pi1_xd_without_verify(&self) -> Option<(G1Affine, Fr)> {
+        let msg = Wots96::signature_to_message(&self.wots_sig);
+        let x = Fq::deserialize_uncompressed(&msg[0..32]).ok()?;
+        let y = Fq::deserialize_uncompressed(&msg[32..64]).ok()?;
+        let pi1 = G1Affine::new(x, y);
+        let x_d = Fr::deserialize_uncompressed(&msg[64..96]).ok()?;
+        Some((pi1, x_d))
+    }
 }
 
 /// tx_ChallengeAssert — witness for input 0.
-/// Input spends tx_Assert output 1: CheckLampSigsMatch(lpk_P, lpk_V) ∧ CheckSig(pk_V) ∧ CheckSig(pk_P)
+/// Input spends tx_Assert output 1: CheckSigsConsistent(wots_pk_P, epk_V) ∧ CheckSig(pk_V) ∧ CheckSig(pk_P)
 /// Script verifies:
-///   (a) SHA256(μ[i]) == lpk_P[i][bit_i]     — μ is a valid Lamport sig for some π₁
-///   (b) blake3(L[i]) == lpk_V[i][bit_i]     — L[i] is the correct GC label for bit_i under epk
+///   (a) Wots96 sig is valid for some 96-byte message m — binds π₁ and x_d to the prover
+///   (b) SHA256(L[i]) == epk_V[i][bit_i(m)]  — L[i] is the correct GC label for bit_i under epk
+///   (c) Wots96 sig and epk labels are consistent over the same message m — both sign/encode the same bits
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxChallengeAssertWitness {
-    /// L₁…L_ℓ — one GC input label per π₁ bit, PADDED_LAMPORT_N × 16 bytes.
+    /// L₁…L_M — one GC input label per bit of π₁ and x_d, LAMPORT_N × 16 bytes.
     pub input_labels: Vec<[u8; 16]>,
-    /// μ₁…μ_ℓ — Lamport sig re-posted to bind L to π₁.
-    pub wots_sig: Wots64Sig,
+    /// Wots96 sig re-posted from TxAssertWitness to bind the labels to π₁ and x_d.
+    /// The script checks that the bit sequence recovered from this sig matches the
+    /// bit indices used to select each label in input_labels.
+    pub wots_sig: Wots96Sig,
     /// VerifierLiveSig
     pub sig_v: BabeBtcSig,
     /// ProverPresigChallengeAssert
@@ -97,17 +116,17 @@ pub trait OnchainSize {
 
 impl OnchainSize for TxAssertWitness {
     fn size_bytes(&self) -> usize {
-        WOTS64_SIG_BYTES
+        // Signature size
+        Wots96::TOTAL_DIGIT_LEN as usize * 21
     }
 }
 
 impl OnchainSize for TxChallengeAssertWitness {
     fn size_bytes(&self) -> usize {
-        WOTS64_SIG_BYTES      // wotsig
-            + LAMPORT_SIG_BYTES // input_labels:
-            + BTC_SIG_BYTES     // sig_v:           32 bytes
-            + BTC_SIG_BYTES     // sig_p:           32 bytes
-        // total: 16,320 bytes
+        self.input_labels.len() * 16                 // LAMPORT_N × 16 bytes
+            + Wots96::TOTAL_DIGIT_LEN as usize * 20  // wots_sig preimages
+            + BTC_SIG_BYTES                          // sig_v: 32 bytes
+            + BTC_SIG_BYTES                          // sig_p: 32 bytes
     }
 }
 
@@ -115,7 +134,6 @@ impl OnchainSize for TxWronglyChallengedWitness {
     fn size_bytes(&self) -> usize {
         BTC_SIG_BYTES // sig_p: 32 bytes
             + MSG_BYTES   // msg:   32 bytes
-        // total: 64 bytes
     }
 }
 
@@ -130,4 +148,3 @@ impl OnchainSize for TxWithdrawWitness {
         BTC_SIG_BYTES * 4 // 4 sigs × 32 bytes = 128 bytes
     }
 }
-
