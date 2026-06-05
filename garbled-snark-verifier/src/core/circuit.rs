@@ -109,23 +109,20 @@ impl Circuit {
         }
     }
 
-    pub fn set_witness_value(&mut self, witness: &[bool]) {
+    pub fn set_witness_value(&mut self, witness: &[bool], skip: usize) {
         // Gate wires are Rc<RefCell<Wire>> sharing the same data as self.0, so this covers all.
         witness.iter()
-            .zip(self.0.iter().skip(2))
+            .zip(self.0.iter().skip(skip))
             .for_each(|(bit, wirex)| wirex.borrow_mut().set_value_for_uninitialized(*bit));
     }
 
-    pub fn reset_circuit_except_constants(&mut self) {
+    pub fn reset_circuit_except_01_constants(&mut self) {
         for wirex in self.0.iter().skip(2) {
             wirex.borrow_mut().value = None;
         }
         for wirex in self.0.iter() {
             wirex.borrow_mut().label = None;
         }
-        // compute the size of circuit, because this resetted circuit will be reused for multiple proofs
-        let size = self.size_in_bytes();
-        println!("Reset circuit, size: {} MB", size as f64 / 1_048_576.0);
     }
 
     pub fn is_fresh(&self) -> bool {

@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 use ark_bn254::{Fq, G1Affine};
 use ark_ff::{BigInteger, One, PrimeField, Zero};
-use crate::dre::{L, N};
+use crate::dre::{U_BAR_SIZE, N};
 
 /// Structural nonzero block flags per row (columns 0..=5 of C).
 const NONZERO_BLOCKS: [[bool; 6]; 3] = [
@@ -131,7 +131,7 @@ fn u_vec(pi: &G1Affine) -> [Fq; 6] {
 /// Layout: (1, bits(x), bits(y), bits(x²), bits(y²), bits(xy)) in LSB-first
 pub fn u_bar_vec(pi: &G1Affine) -> Vec<Fq> {
     let u = u_vec(pi);
-    let mut u_bar = Vec::with_capacity(L);
+    let mut u_bar = Vec::with_capacity(U_BAR_SIZE);
     u_bar.push(Fq::one()); // u_0 = 1
     for u_i in &u[1..] {
         let bits = u_i.into_bigint().to_bits_le();
@@ -210,7 +210,7 @@ mod tests {
         let u_bar = u_bar_vec(&pi);
 
         // Check length
-        assert_eq!(u_bar.len(), L);
+        assert_eq!(u_bar.len(), U_BAR_SIZE);
 
         // First entry must be 1
         assert_eq!(u_bar[0], Fq::one());
