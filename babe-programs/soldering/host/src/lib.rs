@@ -1,14 +1,14 @@
 use ark_bn254::{Bn254, Fr};
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
-use bitvm::signatures::{Wots, Wots64};
-use rand::{rngs::StdRng, SeedableRng};
+use bitvm::signatures::{Wots};
+use rand::SeedableRng;
 use verifiable_circuit_babe::babe::{babe_build_deposit_lock, babe_prover_assert, babe_prover_presign, babe_prover_wrongly_challenged_cac, babe_verifier_cac_setup, babe_verifier_challenge_assert_cac, babe_verifier_presign, babe_verify_prover_presigs, babe_verify_verifier_presigs, build_ca_outlock, BtcPk, DummyMulCircuit, ProverSetupState, VerifierSetupState, M_CC, N_CC};
 use verifiable_circuit_babe::cac::{
     cac_finalize_indices, verify_finalized_instances, verify_opened_instances, CACSetupPackage,
     FinalizedInstanceData,
 };
-use verifiable_circuit_babe::prover::BABEProver;
+use verifiable_circuit_babe::prover::{BABEProver, GROTH_16_SEED};
 use verifiable_circuit_babe::soldering::{
     build_soldered_wires_input, SolderingData, SolderingProof,
 };
@@ -19,6 +19,7 @@ use verifiable_circuit_babe::transactions::{
 use verifiable_circuit_babe::utils::derive_hashlock;
 use verifiable_circuit_babe::verifier::BABEVerifier;
 use zkm_sdk::{include_elf, ProverClient, ZKMProvingKey, ZKMStdin, ZKMVerifyingKey};
+use verifiable_circuit_babe::wots::Wots96;
 
 const SOLDERING_GUEST: &[u8] = include_elf!("soldering-guest");
 
@@ -32,7 +33,6 @@ pub struct BabeBundle {
     pub opened: Vec<(usize, u64)>,
     pub finalized: Vec<FinalizedInstanceData>,
     pub soldering: SolderingData,
-    pub temp_hashlock: [u8; 20],
 }
 
 pub struct BabeCACE2ERun {
@@ -54,7 +54,8 @@ impl BabeBundleBuilder {
         verifier: &BABEVerifier,
         finalized_indices: &[usize],
     ) -> Result<BabeBundle, String> {
-        let (opened, finalized) = verifier.open(finalized_indices);
+        let (opened, finalized) = verifier.open(finalized_indices)
+            .expect("verifier open failed");
         let soldered_input = build_soldered_wires_input(verifier, finalized_indices);
         let mut stdin = ZKMStdin::new();
         stdin.write(&soldered_input);
@@ -72,7 +73,6 @@ impl BabeBundleBuilder {
                 finalized_indices: finalized_indices.to_vec(),
                 soldering_proof: SolderingProof { proof },
             },
-            temp_hashlock: derive_hashlock(&verifier.temp_val),
         })
     }
 
@@ -81,9 +81,9 @@ impl BabeBundleBuilder {
         package: &CACSetupPackage,
         bundle: &BabeBundle,
         vk: &Groth16VerifyingKey<Bn254>,
-        public_inputs: &[Fr],
+        static_public_inputs: Fr,
     ) -> Result<(), String> {
-        verify_opened_instances(package, &bundle.opened, vk, public_inputs)?;
+        verify_opened_instances(package, &bundle.opened, vk, static_public_inputs)?;
         verify_finalized_instances(package, &bundle.finalized)?;
 
         BABEProver::verify_soldering_output(
@@ -95,7 +95,7 @@ impl BabeBundleBuilder {
     }
 
     pub fn run_babe_e2e_cac(&self) -> Result<BabeCACE2ERun, String> {
-        let mut rng = StdRng::seed_from_u64(42);
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(GROTH_16_SEED);
         let a = Fr::from(7u64);
         let b = Fr::from(9u64);
         let (groth16_pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
@@ -109,14 +109,13 @@ impl BabeBundleBuilder {
             &mut rng,
         )
         .map_err(|e| format!("failed to prove Groth16 fixture: {e:?}"))?;
-        let public_inputs = vec![a * b];
+        let static_public_inputs = a * b;
+        let dynamic_public_inputs = a * a;
 
         // ── Setup phase ───────────────────────────────────────────────────────────
 
         // Prover sends pk_p to Verifier.
         let pk_p = BtcPk([0u8; 33]);
-        let wots_sk_p = Wots64::generate_secret_key();
-        let wots_pk_p = Wots64::generate_public_key(&wots_sk_p);
         // let (lsk_p, lpk_p) = babe_prover_keygen(&mut rng);
         println!("Prover: generating BTC keys and sending pk_p to Verifier");
 
@@ -124,7 +123,7 @@ impl BabeBundleBuilder {
         println!("Verifier generating BTC keys");
         let pk_v = BtcPk([1u8; 33]);
         println!("Verifier: building {} instances...", N_CC);
-        let (verifier, package) = babe_verifier_cac_setup(&vk, &public_inputs);
+        let (verifier, package) = babe_verifier_cac_setup(&vk, static_public_inputs);
         // Verifier sends vk and package to Prover
         println!("Verifier: sending pk_v and {} instance commitment to Prover", N_CC);
 
@@ -139,9 +138,11 @@ impl BabeBundleBuilder {
 
         println!("Prover: verifying opening and soldering proof...");
         // Prover verifies everything.
-        self.babe_prover_verify_setup(&package, &bundle, &vk, &public_inputs)?;
+        self.babe_prover_verify_setup(&package, &bundle, &vk, static_public_inputs)?;
 
-
+        println!("Prover: generating Wots96 signing key...");
+        let wots_sk_p = Wots96::generate_secret_key();
+        let wots_pk_p = Wots96::generate_public_key(&wots_sk_p);
 
         // ── Create Txn Set and Presign ──────────────────────────────────────────────────
         println!("Prover: creating Tx Set and pre sign...");
@@ -193,24 +194,32 @@ impl BabeBundleBuilder {
 
         // ── Proving phase ─────────────────────────────────────────────────────────
 
-        // Assert: Prover posts π₁ + Wots64 sig on-chain.
-        let assert_witness = babe_prover_assert(&proof, &prover_state.wots_sk_p);
+        // Assert: Prover posts π₁ + x_d and Wots96 sig on-chain.
+        let assert_witness = babe_prover_assert(&proof, &prover_state.wots_sk_p, dynamic_public_inputs);
         println!("Prover: posting tx_Assert...");
         println!("tx_Assert witness:            {} bytes", assert_witness.size_bytes());
 
-        // ChallengeAssert: Verifier verifies Lamport sig and reveals base-instance labels.
+        // ChallengeAssert: Verifier verifies Wots sig and reveals base-instance labels.
         let challenge_assert_witness = babe_verifier_challenge_assert_cac(
             &assert_witness,
             &verifier_state,
             verifier_state.presigs_p.sig_challenge_assert.clone(),
         )
-        .ok_or_else(|| "invalid Wots64 signature in assert witness".to_string())?;
+        .ok_or_else(|| "invalid Wots96 signature in assert witness".to_string())?;
         println!("Verifier: posting tx_ChallengeAssert...");
         println!("tx_ChallengeAssert witness:   {} bytes", challenge_assert_witness.size_bytes());
 
         println!("Script: checking the valid of Verifier labels...");
+        // WronglyChallenged: Prover evaluates GC (base first, then non-base if needed).
+        println!("Prover: Finding msg...");
         let (wrongly_challenged_witness, instance_id) =
-            babe_prover_wrongly_challenged_cac(&challenge_assert_witness, &proof, &prover_state)
+            babe_prover_wrongly_challenged_cac(
+                &groth16_pk,
+                dynamic_public_inputs,
+                &challenge_assert_witness,
+                &proof,
+                &prover_state,
+            )
                 .ok_or_else(|| {
                     "failed to recover a valid wrongly-challenged message".to_string()
                 })?;

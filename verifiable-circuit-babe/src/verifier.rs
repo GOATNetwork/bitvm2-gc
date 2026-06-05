@@ -74,7 +74,7 @@ impl BABEVerifier {
                                 CACInstance::commit_from_seed(seed, vk, static_public_inputs)?;
                             let ls = InstanceLightSecrets {
                                 delta: secrets.delta,
-                                encoding_keys: secrets.encoding_keys,
+                                encoding_keys: secrets.input_0labels,
                             };
                             Ok((commit, ls))
                         })

@@ -46,7 +46,7 @@ impl CACInstance {
             for (i, l) in secrets.constant_0labels[0].iter().enumerate() {
                 buf.set_label(i, l.0);
             }
-            for (i, &key) in secrets.encoding_keys[0].iter().enumerate() {
+            for (i, &key) in secrets.input_0labels[0].iter().enumerate() {
                 buf.set_label(2 + i, key.0);
             }
             buf.garble_and_collect(fgc_flat, fgc_indices, secrets.delta[0].0)
@@ -59,7 +59,7 @@ impl CACInstance {
             for (i, l) in secrets.constant_0labels[1].iter().enumerate() {
                 buf.set_label(i, l.0);
             }
-            for (i, &key) in secrets.encoding_keys[1].iter().enumerate() {
+            for (i, &key) in secrets.input_0labels[1].iter().enumerate() {
                 buf.set_label(SGC_PART1_CONSTANT_SIZE + i, key.0);
             }
             buf.garble_and_collect(sgc_flat, sgc_indices, secrets.delta[1].0)
@@ -169,10 +169,10 @@ impl CACInstance {
 
         // Build the commit from hashes and small secret data — no GC data retained.
         let delta = secrets.delta;
-        let epk: Vec<[[u8; 20]; 2]> = secrets.encoding_keys[0]
+        let epk: Vec<[[u8; 20]; 2]> = secrets.input_0labels[0]
             .iter()
             .map(|&key| [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta[0]).0)])
-            .chain(secrets.encoding_keys[1].iter().map(|&key| {
+            .chain(secrets.input_0labels[1].iter().map(|&key| {
                 [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta[1]).0)]
             }))
             .collect();
@@ -244,7 +244,7 @@ impl CACInstance {
         let delta = self.secrets.delta[0];
 
         let labels: Vec<S> = witness.iter().enumerate().map(|(i, &b)| {
-            let key = self.secrets.encoding_keys[0][i];
+            let key = self.secrets.input_0labels[0][i];
             if b { key ^ delta } else { key }
         }).collect();
         labels
@@ -257,7 +257,7 @@ impl CACInstance {
         let delta = self.secrets.delta[1];
 
         let labels: Vec<S> = witness.iter().enumerate().map(|(i, &b)| {
-            let key = self.secrets.encoding_keys[1][i];
+            let key = self.secrets.input_0labels[1][i];
             if b { key ^ delta } else { key }
         }).collect();
         labels

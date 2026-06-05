@@ -29,11 +29,11 @@ impl CACInstanceCommit {
         let delta = instance.secrets.delta;
 
         let input_commits = {
-            let fgc_pairs: Vec<[[u8; 20]; 2]> = instance.secrets.encoding_keys[0]
+            let fgc_pairs: Vec<[[u8; 20]; 2]> = instance.secrets.input_0labels[0]
                 .iter()
                 .map(|&key| [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta[0]).0)])
                 .collect();
-            let sgc_pairs: Vec<[[u8; 20]; 2]> = instance.secrets.encoding_keys[1]
+            let sgc_pairs: Vec<[[u8; 20]; 2]> = instance.secrets.input_0labels[1]
                 .iter()
                 .map(|&key| [derive_hashlock(&key.0), derive_hashlock(&(key ^ delta[1]).0)])
                 .collect();

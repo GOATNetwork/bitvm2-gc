@@ -1,20 +1,17 @@
 use std::time::Instant;
 
 use ark_bn254::{Bn254, Fr};
-use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
-use ark_groth16::Groth16;
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK};
 use soldering_host::BabeBundleBuilder;
 use tracing::info;
 use rand::SeedableRng;
-use zkm_sdk::{include_elf, utils as sdk_utils, ProverClient, ZKMStdin};
+use zkm_sdk::{utils as sdk_utils, ZKMStdin};
 use verifiable_circuit_babe::babe::DummyMulCircuit;
-use verifiable_circuit_babe::prover::{BABEProver, GROTH_16_SEED};
+use verifiable_circuit_babe::prover::GROTH_16_SEED;
 use verifiable_circuit_babe::soldering::{
-    build_soldered_wires_input, SolderedLabelsData, SolderedWiresInput,
+    build_soldered_wires_input, SolderedWiresInput,
 };
 use verifiable_circuit_babe::verifier::BABEVerifier;
-use zkm_sdk::utils as sdk_utils;
 
 const M_CC: usize = 4; // Number of finalized C&C instances.
 
@@ -26,16 +23,10 @@ fn main() {
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(GROTH_16_SEED);
     let a = Fr::from(3u64);
     let b = Fr::from(7u64);
-    let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
+    let (_pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
         DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
     ).unwrap();
-    let proof = ark_groth16::Groth16::<Bn254>::prove(
-        &pk,
-        DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
-        &mut rng,
-    ).unwrap();
     let static_public_inputs = a * b;
-    let dynamic_public_inputs = a * a;
 
     //  1. Create N_CC instances
     let start = Instant::now();
@@ -55,8 +46,6 @@ fn main() {
     let mut stdin = ZKMStdin::new();
     stdin.write::<SolderedWiresInput>(&soldering_input);
 
-    let client = ProverClient::new();
-
     //  3. Generate and verify soldering proof through the reusable host API.
     let start = Instant::now();
     let builder = BabeBundleBuilder::new();
@@ -64,7 +53,7 @@ fn main() {
         .babe_verifier_open_and_solder(&verifier, &finalized_indices)
         .expect("open and solder failed");
     builder
-        .babe_prover_verify_setup(&package, &bundle, &vk, &public_inputs)
+        .babe_prover_verify_setup(&package, &bundle, &vk, static_public_inputs)
         .expect("setup verification failed");
     info!(elapsed = ?start.elapsed(), "soldering proof generated and verified");
 }

@@ -6147,6 +6147,7 @@ dependencies = [
  "ark-ff 0.5.0",
  "ark-groth16",
  "ark-relations",
+ "bitvm",
  "garbled-snark-verifier",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -7159,6 +7160,7 @@ dependencies = [
  "ripemd 0.2.0",
  "serde",
  "sha2",
+ "zkm-sdk",
  "zkm-zkvm",
 ]
 

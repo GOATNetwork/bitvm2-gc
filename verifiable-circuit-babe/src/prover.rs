@@ -108,7 +108,13 @@ impl BABEProver {
         soldering: &SolderingData,
         h_msgs_onchain: &[[u8; 20]],
     ) -> bool {
-        let sld = &soldering.soldering_proof.soldered_output;
+        let sld = match soldering.soldering_proof.output() {
+            Ok(output) => output,
+            Err(error) => {
+                eprintln!("failed to decode soldering public values: {error}");
+                return false;
+            }
+        };
         let (mut fgc, fgc_indices, mut sgc, sgc_indices) = crate::gc::read_flat_original_gc();
 
         println!("Trying base instance...");
