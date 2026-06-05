@@ -115,6 +115,24 @@ impl BABEProver {
                 return false;
             }
         };
+
+        self.check_compute_msg_with_soldered_output(
+            finalized,
+            pi1_labels,
+            x_d_labels,
+            &sld,
+            h_msgs_onchain,
+        )
+    }
+
+    pub fn check_compute_msg_with_soldered_output(
+        &mut self,
+        finalized: &[FinalizedInstanceData],
+        pi1_labels: &[S],
+        x_d_labels: &[S],
+        sld: &SolderedLabelsData,
+        h_msgs_onchain: &[[u8; 20]],
+    ) -> bool {
         let (mut fgc, fgc_indices, mut sgc, sgc_indices) = crate::gc::read_flat_original_gc();
 
         println!("Trying base instance...");
@@ -395,7 +413,6 @@ impl BABEProver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::marker::PhantomData;
     use ark_bn254::{Bn254, Fr};
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use rand::SeedableRng;
@@ -403,7 +420,7 @@ mod tests {
     use crate::babe::DummyMulCircuit;
     use crate::cac::cac_finalize_indices;
     use crate::instance::CACInstance;
-    use crate::soldering::{build_soldered_wires_input, soldering_guest_compute, SolderingProof};
+    use crate::soldering::{build_soldered_wires_input, soldering_guest_compute};
     use crate::verifier::BABEVerifier;
 
     const TEST_N_CC: usize = 4;
@@ -543,8 +560,8 @@ mod tests {
         // Extract h_msgs from bitcoin script of WronglyChallenged Txn
         // But in this test, we just get from package
         let mut h_msgs_onchain: Vec<[u8; 20]> = finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
-        let found = prover.check_compute_msg(
-            &finalized, &pi1_labels, &x_d_labels, &soldering, &h_msgs_onchain,
+        let found = prover.check_compute_msg_with_soldered_output(
+            &finalized, &pi1_labels, &x_d_labels, &soldered_output, &h_msgs_onchain,
         );
 
         assert!(found, "expected a valid msg to be found");
@@ -556,8 +573,8 @@ mod tests {
         println!("change the base msg to access non-base instance");
         let mut prover = BABEProver::new(pk, proof, dynamic_public_inputs);
         h_msgs_onchain[0] = [0u8; 20];
-        let found = prover.check_compute_msg(
-            &finalized, &pi1_labels, &x_d_labels, &soldering, &h_msgs_onchain,
+        let found = prover.check_compute_msg_with_soldered_output(
+            &finalized, &pi1_labels, &x_d_labels, &soldered_output, &h_msgs_onchain,
         );
         assert!(found, "expected a valid msg to be found");
         assert!(prover.valid_msg.is_some());
