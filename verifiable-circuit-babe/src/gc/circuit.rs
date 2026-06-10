@@ -211,10 +211,7 @@ pub fn gc_garble_and_hash(
     delta: garbled_snark_verifier::bag::S,
 ) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    for (i, gate) in circuit.1.iter().enumerate() {
-        if i.is_multiple_of(1000000) {
-            println!("Garble batch: {}/{}", i, circuit.1.len());
-        }
+    for (_, gate) in circuit.1.iter().enumerate() {
         match gate.garbled_with_delta(delta) {
             None    => hasher.update([0u8]),
             Some(s) => { hasher.update([1u8]); hasher.update(s.0); }

@@ -23,9 +23,6 @@ impl Circuit {
             .iter()
             .enumerate()
             .map(|(i, gate)| {
-                if i.is_multiple_of(1000000) {
-                    println!("Garble batch: {}/{}", i, self.1.len());
-                }
                 gate.garbled_with_delta(delta)
             })
             .collect()
