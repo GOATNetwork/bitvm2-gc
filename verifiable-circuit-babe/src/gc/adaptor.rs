@@ -1,23 +1,26 @@
 use ark_bn254::{Fq, Fr, G1Affine};
 use ark_ff::Zero;
 use ark_serialize::CanonicalSerialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use crate::dre::{DREDecoding, N, U_BAR_SIZE};
 use crate::dre::matrices::{build_d_i_sparse, nonzero_col_indices};
 use crate::gc::utils::{aes_dec, aes_enc, prf_fq};
+use crate::utils::{deserialize_fq, serialize_fq};
 
 /// Ciphertext of one Fq element (32 bytes = 2 AES-128 blocks)
 pub type Ct = [u8; 32];
 
 /// Ciphertexts for ubar=0.
 /// `offset` = Σ_k s_k = Σ_k (prf_fq(label_1_k) - D_k).
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SparseAdaptorRow {
     pub cts: Vec<Ct>,
+    #[serde(serialize_with = "serialize_fq", deserialize_with = "deserialize_fq")]
     pub offset: Fq,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SparseAdaptorEntry {
     pub x: SparseAdaptorRow,
     pub y: SparseAdaptorRow,
@@ -26,7 +29,7 @@ pub struct SparseAdaptorEntry {
 
 /// Adaptor table storing ciphertexts only for structurally nonzero D entries.
 /// Reduces size by ~1.87× vs the dense table.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SparseAdaptorTable {
     pub entries: Vec<SparseAdaptorEntry>,
 }

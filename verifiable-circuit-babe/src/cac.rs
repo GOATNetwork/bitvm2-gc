@@ -1,8 +1,9 @@
 use ark_bn254::{Fr, G1Affine};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
+use serde::{Deserialize, Serialize};
 use crate::babe::WeKnownPi1SetupCt;
 use crate::instance::commit::CACInstanceCommit;
-use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable};
+use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
 use garbled_snark_verifier::bag::S;
 use rand::Rng;
 use rand_chacha::ChaCha12Rng;
@@ -10,10 +11,11 @@ use rand::SeedableRng;
 use sha2::{Digest, Sha256};
 use garbled_snark_verifier::dv_bn254::fq::Fq;
 use crate::instance::CACInstance;
-use crate::utils::h_256;
+use crate::utils::{deserialize_g1affine, h_256, serialize_g1affine};
 use crate::verifier::BATCH_SIZE;
 
 /// What the Verifier sends to the Prover during the C&C commit phase.
+#[derive(Serialize, Deserialize)]
 pub struct CACSetupPackage {
     pub commits: Vec<CACInstanceCommit>,
 }
@@ -65,6 +67,7 @@ pub fn cac_finalize_indices(package: &CACSetupPackage, m_cc: usize) -> Vec<usize
 }
 
 /// GC data the Verifier reveals for each finalized (kept) instance.
+#[derive(Serialize, Deserialize)]
 pub struct FinalizedInstanceData {
     pub index: usize,
     pub ciphertext_sets: [Vec<Option<S>>; 3],
@@ -72,8 +75,9 @@ pub struct FinalizedInstanceData {
     pub ct_setup: WeKnownPi1SetupCt,
     /// [0-label of wire-0 (constant false), 1-label of wire-1 (constant true)].
     pub constant_labels_0: [S; 2],
-    /// value-based labels
-    pub constant_labels_1: [S; 510],
+    /// value-based labels. Length must be `SGC_PART1_CONSTANT_SIZE` (510).
+    pub constant_labels_1: Vec<S>,
+    #[serde(serialize_with = "serialize_g1affine", deserialize_with = "deserialize_g1affine")]
     pub b: G1Affine,
 }
 
@@ -152,6 +156,13 @@ pub fn verify_finalized_instances(
     for data in finalized {
         let idx = data.index;
         let committed = &package.commits[idx];
+
+        if data.constant_labels_1.len() != SGC_PART1_CONSTANT_SIZE
+            || committed.constant_commits_1.len() != SGC_PART1_CONSTANT_SIZE {
+            return Err(format!(
+                "instance {idx}: constant_labels_1/constant_commits_1 must have length {SGC_PART1_CONSTANT_SIZE}"
+            ));
+        }
 
         for i in 0..3 {
             if gc_ciphertexts_commit(&data.ciphertext_sets[i]) != committed.com_gc[i] {

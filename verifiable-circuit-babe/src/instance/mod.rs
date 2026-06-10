@@ -11,7 +11,7 @@ use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
 use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
 use crate::dre::{Q_SIZE, U_BAR_SIZE};
 use crate::instance::commit::CACInstanceCommit;
-use crate::utils::{derive_hashlock, g2_to_ser, h_256, ro_from_pairing_bytes};
+use crate::utils::{derive_hashlock, g2_project_to_ser, h_256, ro_from_pairing_bytes};
 
 pub mod secret;
 pub mod commit;
@@ -181,10 +181,11 @@ impl CACInstance {
             let l0 = secrets.constant_0labels[0][w];
             [h_256(&l0.0), h_256(&(l0 ^ delta[0]).0)]
         });
-        let constant_commits_1: [[[u8; 32]; 2]; 510] = std::array::from_fn(|w| {
-            let l0 = secrets.constant_0labels[1][w];
-            [h_256(&l0.0), h_256(&(l0 ^ delta[1]).0)]
-        });
+        assert_eq!(secrets.constant_0labels[1].len(), SGC_PART1_CONSTANT_SIZE);
+        let constant_commits_1: Vec<[[u8; 32]; 2]> = secrets.constant_0labels[1]
+            .iter()
+            .map(|&l0| [h_256(&l0.0), h_256(&(l0 ^ delta[1]).0)])
+            .collect();
 
         let mut b_blind_bytes = Vec::new();
         secrets.b.serialize_compressed(&mut b_blind_bytes).expect("serialize b");
@@ -230,7 +231,7 @@ impl CACInstance {
         let ct3 = secrets.msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect::<Vec<_>>();
 
         Ok(WeKnownPi1SetupCt {
-            ct2_r_delta_g2: g2_to_ser(r_delta),
+            ct2_r_delta_g2: g2_project_to_ser(r_delta),
             ct3_masked_msg: ct3,
         })
     }

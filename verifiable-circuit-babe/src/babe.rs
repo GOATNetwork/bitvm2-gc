@@ -19,7 +19,7 @@ use bitvm::signatures::Wots;
 use crate::prover::BABEProver;
 use crate::soldering::SolderingData;
 use crate::transactions::{TxAssertWitness, TxChallengeAssertOutputLock, TxChallengeAssertWitness, TxDepositLock, TxWronglyChallengedWitness};
-pub use crate::utils::{derive_hashlock, g1_from_ser_checked, g1_to_ser, g2_from_ser_checked, g2_to_ser, groth16_vk_x, h_256, ro_from_pairing_bytes};
+pub use crate::utils::{derive_hashlock, g1_from_ser_checked, g1_project_to_ser, g2_from_ser_checked, g2_project_to_ser, groth16_vk_x, h_256, ro_from_pairing_bytes};
 use crate::verifier::BABEVerifier;
 
 // ─── Constants ────────────────────────────────────────────────────────────────

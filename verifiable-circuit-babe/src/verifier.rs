@@ -3,6 +3,7 @@ use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use garbled_snark_verifier::bag::S;
 use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
 use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
+use crate::gc::SGC_PART1_CONSTANT_SIZE;
 use crate::instance::CACInstance;
 use crate::instance::commit::CACInstanceCommit;
 
@@ -139,6 +140,7 @@ impl BABEVerifier {
                     inst.secrets.constant_0labels[1][1] ^ inst.secrets.delta[1],
                 ];
                 constant_labels_1.extend(inst.get_b_value_labels());
+                assert_eq!(constant_labels_1.len(), SGC_PART1_CONSTANT_SIZE);
 
                 Ok(crate::cac::FinalizedInstanceData {
                     index: i,
@@ -146,7 +148,7 @@ impl BABEVerifier {
                     adaptor_tables: inst.adaptor_tables,
                     ct_setup: inst.ct_setup,
                     constant_labels_0,
-                    constant_labels_1: constant_labels_1.try_into().unwrap(),
+                    constant_labels_1,
                     b: inst.secrets.b,
                 })
                 // inst is dropped here

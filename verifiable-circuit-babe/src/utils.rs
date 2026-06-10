@@ -1,8 +1,9 @@
-use ark_bn254::{Fr, G1Affine, G2Affine};
+use ark_bn254::{Fq, Fr, G1Affine, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use ripemd::{Ripemd160, Digest as RipemdDigest};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
 pub fn groth16_vk_x(
@@ -19,13 +20,13 @@ pub fn groth16_vk_x(
     Some(acc)
 }
 
-pub fn g2_to_ser(p: ark_bn254::G2Projective) -> Vec<u8> {
+pub fn g2_project_to_ser(p: ark_bn254::G2Projective) -> Vec<u8> {
     let mut out = Vec::new();
     p.into_affine().serialize_compressed(&mut out).expect("serialize g2");
     out
 }
 
-pub fn g1_to_ser(p: ark_bn254::G1Projective) -> Vec<u8> {
+pub fn g1_project_to_ser(p: ark_bn254::G1Projective) -> Vec<u8> {
     let mut out = Vec::new();
     p.into_affine().serialize_compressed(&mut out).expect("serialize g1");
     out
@@ -117,4 +118,30 @@ pub fn h_160(data: &[u8]) -> [u8; 20] {
 /// h_msg = RIPEMD160(SHA256(data)) — the hashlock value.
 pub fn derive_hashlock(secret: &[u8]) -> [u8; 20] {
     h_160(&h_256(&secret))
+}
+
+/// `serde` shim for `Fq` via its compressed `ark-serialize` byte form.
+/// Use with `#[serde(serialize_with = "crate::utils::serialize_fq", deserialize_with = "crate::utils::deserialize_fq")]`.
+pub fn serialize_fq<S: Serializer>(val: &Fq, serializer: S) -> Result<S::Ok, S::Error> {
+    let mut bytes = Vec::new();
+    val.serialize_compressed(&mut bytes).map_err(serde::ser::Error::custom)?;
+    bytes.serialize(serializer)
+}
+
+pub fn deserialize_fq<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Fq, D::Error> {
+    let bytes = Vec::<u8>::deserialize(deserializer)?;
+    Fq::deserialize_compressed(bytes.as_slice()).map_err(serde::de::Error::custom)
+}
+
+/// `serde` shim for `G1Affine` via its compressed `ark-serialize` byte form.
+/// Use with `#[serde(serialize_with = "crate::utils::serialize_g1affine", deserialize_with = "crate::utils::deserialize_g1affine")]`.
+pub fn serialize_g1affine<S: Serializer>(val: &G1Affine, serializer: S) -> Result<S::Ok, S::Error> {
+    let mut bytes = Vec::new();
+    val.serialize_compressed(&mut bytes).map_err(serde::ser::Error::custom)?;
+    bytes.serialize(serializer)
+}
+
+pub fn deserialize_g1affine<'de, D: Deserializer<'de>>(deserializer: D) -> Result<G1Affine, D::Error> {
+    let bytes = Vec::<u8>::deserialize(deserializer)?;
+    G1Affine::deserialize_compressed(bytes.as_slice()).map_err(serde::de::Error::custom)
 }

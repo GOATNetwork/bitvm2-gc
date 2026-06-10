@@ -252,6 +252,11 @@ impl BABEProver {
         adaptor_tables: &[SparseAdaptorTable; 2],
         b: &ark_bn254::G1Affine,
     ) -> WeKnownPi1ProveCt {
+        assert_eq!(
+            const_labels[1].len(), SGC_PART1_CONSTANT_SIZE,
+            "const_labels[1] (SGC constant labels) must have length SGC_PART1_CONSTANT_SIZE"
+        );
+
         let pi1 = self.groth16_proof.a;
         let x_d = self.dyn_pubin;
 
