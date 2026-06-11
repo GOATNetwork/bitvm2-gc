@@ -111,7 +111,7 @@ impl BABEProver {
         let sld = match soldering.soldering_proof.output() {
             Ok(output) => output,
             Err(error) => {
-                eprintln!("failed to decode soldering public values: {error}");
+                tracing::error!("failed to decode soldering public values: {error}");
                 return false;
             }
         };
@@ -135,7 +135,7 @@ impl BABEProver {
     ) -> bool {
         let (mut fgc, fgc_indices, mut sgc, sgc_indices) = crate::gc::read_flat_original_gc();
 
-        println!("Trying base instance...");
+        tracing::info!("Trying base instance...");
         let base_res = self.try_evaluate_instance(
             &finalized[0],
             &pi1_labels,
@@ -145,12 +145,12 @@ impl BABEProver {
         );
         match base_res {
             Ok(true) => return true,
-            Ok(false) => eprintln!("Warning: base instance did not yield valid msg"),
-            Err(e) => eprintln!("Error evaluating base instance: {e}"),
+            Ok(false) => tracing::warn!("base instance did not yield valid msg"),
+            Err(e) => tracing::error!("evaluating base instance: {e}"),
         }
 
         // If cant get valid msg from base instance, try non-base instances using per-wire deltas.
-        println!("Trying non-base instance...");
+        tracing::info!("Trying non-base instance...");
         for i in 1..finalized.len() {
             let deltas_i = &sld.deltas[i - 1];
             let instance_pi1_labels: Vec<S> = pi1_labels
@@ -191,8 +191,8 @@ impl BABEProver {
             );
             match temp {
                 Ok(true) => return true,
-                Ok(false) => eprintln!("Warning: non-base instance: {i} did not yield valid msg"),
-                Err(e) => eprintln!("Error evaluating non-base instance: {e}"),
+                Ok(false) => tracing::warn!("non-base instance {i} did not yield valid msg"),
+                Err(e) => tracing::error!("evaluating non-base instance: {e}"),
             }
         }
 
@@ -215,7 +215,7 @@ impl BABEProver {
         let ct_prove = self.compute_ct_prove_for_instance(
             fgc, fgc_indices, sgc, sgc_indices, data, pi1_labels, x_d_labels,
         );
-        println!("compute ct_prove done");
+        tracing::info!("compute ct_prove done");
 
         let msg = Self::compute_msg(&self.groth16_proof, &ct_prove, &data.ct_setup, &self.vk)?;
         // found the valid one.
@@ -523,7 +523,7 @@ mod tests {
 
         let verifier = BABEVerifier::new(TEST_N_CC, &vk, static_public_inputs).unwrap();
         let package = verifier.commit();
-        let finalized_indices = cac_finalize_indices(&package, TEST_M_CC);
+        let finalized_indices = cac_finalize_indices(TEST_N_CC, TEST_M_CC);
         let (_temp, finalized) = verifier.open(&finalized_indices).expect("verifier open failed");
 
         let soldered_input = build_soldered_wires_input(&verifier, &finalized_indices);

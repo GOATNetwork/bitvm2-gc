@@ -70,11 +70,6 @@ pub fn pi1_xd_to_wots96_msg(pi1: &G1Affine, x_d: Fr) -> [u8; 96] {
     msg
 }
 
-pub fn pi1_to_bits(pi1: &G1Affine) -> Vec<bool> {
-    use garbled_snark_verifier::dv_bn254::fq::Fq as GcFq;
-    GcFq::to_bits(pi1.x).into_iter().chain(GcFq::to_bits(pi1.y)).collect()
-}
-
 pub fn ro_from_pairing_bytes(seed: &[u8], msg_len: usize) -> Vec<u8> {
     let key = h_256(seed);
     let mut nonce = [0u8; 12];

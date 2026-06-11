@@ -203,23 +203,6 @@ pub fn gc_ciphertexts_commit(ciphertexts: &[Option<garbled_snark_verifier::bag::
     hasher.finalize().into()
 }
 
-/// Garble all gates and hash their ciphertexts on-the-fly without materializing
-/// the full `Vec<Option<S>>`. Produces the same hash as
-/// `gc_ciphertexts_commit(&circuit.garbled_gates_with_delta(delta))`.
-pub fn gc_garble_and_hash(
-    circuit: &garbled_snark_verifier::bag::Circuit,
-    delta: garbled_snark_verifier::bag::S,
-) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    for (_, gate) in circuit.1.iter().enumerate() {
-        match gate.garbled_with_delta(delta) {
-            None    => hasher.update([0u8]),
-            Some(s) => { hasher.update([1u8]); hasher.update(s.0); }
-        }
-    }
-    hasher.finalize().into()
-}
-
 /// Build the unsigned w=8 Base table.
 ///
 /// Layout: window `i` (i = 0..WINDOW_COUNT), entry `j` (j = 0..WINDOW_ENTRIES) stores

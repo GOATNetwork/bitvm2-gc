@@ -127,9 +127,8 @@ impl BabeBundleBuilder {
         // Verifier sends vk and package to Prover
         println!("Verifier: sending pk_v and {} instance commitment to Prover", N_CC);
 
-        // Prover samples M_CC finalized indices (Fiat-Shamir over all commits).
-        // Todo: can be replace by randomize.
-        let finalized_indices = cac_finalize_indices(&package, M_CC);
+        // Prover samples M_CC finalized indices
+        let finalized_indices = cac_finalize_indices(N_CC, M_CC);
         println!("Prover: finalized indices = {:?}", &finalized_indices);
 
         // Verifier opens non-finalized instances and generates soldering proof.

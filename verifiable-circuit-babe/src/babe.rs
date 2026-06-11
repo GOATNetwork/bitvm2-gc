@@ -147,7 +147,7 @@ pub fn babe_verifier_cac_setup(
     static_public_inputs: Fr,
 ) -> (BABEVerifier, CACSetupPackage) {
     let verifier = BABEVerifier::new(N_CC, vk, static_public_inputs).expect("verifier CAC setup failed");
-    println!("Verifier: committing all instances..");
+    tracing::info!("Verifier: committing all instances..");
     let package = verifier.commit();
     (verifier, package)
 }
@@ -262,7 +262,7 @@ pub fn build_challenge_assert_witness(
     let (pi1, x_d) = assert_witness.recover_pi1_xd_without_verify()?;
 
     let msg = pi1_xd_to_wots96_msg(&pi1, x_d);
-    println!("Verifier: Checking Wots96 signature in tx_Assert against pi1, x_d and wots_pk_p...");
+    tracing::info!("Verifier: Checking Wots96 signature in tx_Assert against pi1, x_d and wots_pk_p...");
     if !wots96_verify(operator_wots_pubkey, &msg, &assert_witness.wots_sig) {
         return None;
     }

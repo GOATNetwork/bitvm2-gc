@@ -6,9 +6,6 @@ use crate::instance::commit::CACInstanceCommit;
 use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
 use garbled_snark_verifier::bag::S;
 use rand::Rng;
-use rand_chacha::ChaCha12Rng;
-use rand::SeedableRng;
-use sha2::{Digest, Sha256};
 use garbled_snark_verifier::dv_bn254::fq::Fq;
 use crate::instance::CACInstance;
 use crate::utils::{deserialize_g1affine, h_256, serialize_g1affine};
@@ -20,41 +17,11 @@ pub struct CACSetupPackage {
     pub commits: Vec<CACInstanceCommit>,
 }
 
-/// Derive the finalized instance indices deterministically from the committed values.
-/// Note that in practice, prover doesnt need to use this. Instead, he can generate indices
-/// using random.
-// TODO: fold a session nonce into this hash once Bitcoin transaction integration is complete,
-// to prevent replay across protocol runs that share the same CACSetupPackage.
-pub fn cac_finalize_indices(package: &CACSetupPackage, m_cc: usize) -> Vec<usize> {
-    let n_cc = package.commits.len();
+/// Prover use randomness to random m_cc difference indices
+pub fn cac_finalize_indices(n_cc: usize, m_cc: usize) -> Vec<usize> {
     assert!(m_cc <= n_cc, "m_cc ({m_cc}) must be <= n_cc ({n_cc})");
 
-    let mut hasher = Sha256::new();
-    for commit in &package.commits {
-        for wire_pair in &commit.epk {
-            hasher.update(wire_pair[0]);
-            hasher.update(wire_pair[1]);
-        }
-        for wire_pair in &commit.constant_commits_0 {
-            hasher.update(wire_pair[0]);
-            hasher.update(wire_pair[1]);
-        }
-        for wire_pair in &commit.constant_commits_1 {
-            hasher.update(wire_pair[0]);
-            hasher.update(wire_pair[1]);
-        }
-        hasher.update(commit.b_blind_commit);
-        hasher.update(commit.h_msg);
-        hasher.update(commit.h_ct_setup);
-        hasher.update(commit.com_adaptor[0]);
-        hasher.update(commit.com_adaptor[1]);
-        hasher.update(commit.com_gc[0]);
-        hasher.update(commit.com_gc[1]);
-        hasher.update(commit.com_gc[2]);
-    }
-    let seed: [u8; 32] = hasher.finalize().into();
-    let mut rng = ChaCha12Rng::from_seed(seed);
-
+    let mut rng = rand::thread_rng();
     let mut seen = std::collections::HashSet::new();
     let mut indices = Vec::with_capacity(m_cc);
     while indices.len() < m_cc {
@@ -208,6 +175,7 @@ pub fn verify_finalized_instances(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand_chacha::ChaCha12Rng;
     use ark_bn254::Fr;
     use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
     use rand::SeedableRng;
@@ -243,8 +211,7 @@ mod tests {
         let elapsed = now.elapsed();
         println!("Verifier commit for {TEST_N_CC} instances took {elapsed:.2?}");
 
-        // Replaced by random in practice
-        let finalized_indices = cac_finalize_indices(&package, TEST_M_CC);
+        let finalized_indices = cac_finalize_indices(TEST_N_CC, TEST_M_CC);
 
         // Verifier opens: seeds for the rest, GC data for finalized.
         let now = std::time::Instant::now();

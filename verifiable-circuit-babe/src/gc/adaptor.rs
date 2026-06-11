@@ -192,7 +192,6 @@ mod tests {
     use ark_ec::CurveGroup;
     use ark_ff::{UniformRand, Zero, One};
     use garbled_snark_verifier::core::s::S;
-    // Todo: change to use own delta, instead of NON_CAC_DELTA
     use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
     use crate::dre::matrices::u_bar_vec;
 

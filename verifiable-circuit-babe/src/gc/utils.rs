@@ -99,7 +99,6 @@ mod tests {
         let fq = Fq::from(123456789u64);
         let ct = aes_enc(&fq, &key);
         let decrypted = aes_dec(&ct, &key);
-        println!("Decrypted: {:?}", decrypted);
         assert_eq!(fq, decrypted, "AES encryption/decryption failed");
     }
 }
