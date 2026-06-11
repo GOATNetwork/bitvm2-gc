@@ -128,8 +128,6 @@ pub fn deserialize_fq<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Fq, 
     Fq::deserialize_compressed(bytes.as_slice()).map_err(serde::de::Error::custom)
 }
 
-/// `serde` shim for `G1Affine` via its compressed `ark-serialize` byte form.
-/// Use with `#[serde(serialize_with = "crate::utils::serialize_g1affine", deserialize_with = "crate::utils::deserialize_g1affine")]`.
 pub fn serialize_g1affine<S: Serializer>(val: &G1Affine, serializer: S) -> Result<S::Ok, S::Error> {
     let mut bytes = Vec::new();
     val.serialize_compressed(&mut bytes).map_err(serde::ser::Error::custom)?;

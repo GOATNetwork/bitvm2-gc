@@ -33,9 +33,6 @@ fn compile_to_flat(
     (num_wires, gates, output_indices)
 }
 
-/// Forward pass over gates to record the last step at which each wire is read as input.
-/// Pre-initialized wires (constants + inputs) and output wires are pinned to u32::MAX
-/// so their slots are never freed or reused.
 fn compute_last_read(
     gates: &[(u32, u32, u32, u8, u32)],
     num_wires: usize,
@@ -48,9 +45,6 @@ fn compute_last_read(
         last_read[b as usize] = step as u32;
     }
     // Pre-initialized wires (constants 0/1 + inputs) must never be freed.
-    // The gate loop above may have overwritten their entries with the last
-    // step that reads them; restore the sentinel so remap_wire_ids never
-    // puts their slots back on the free list.
     for i in 0..num_pre_initialized {
         last_read[i] = u32::MAX;
     }
@@ -77,8 +71,6 @@ fn remap_wire_ids(
     let mut next_fresh: u32 = 0;
     let mut max_slot: u32 = 0;
 
-    // Pre-initialized wires (constants + inputs) get slots 0..num_pre_initialized-1.
-    // This preserves the set_label(i, ...) calls in commit_from_seed / new_from_seed.
     for wire_id in 0..num_pre_initialized {
         slot_of[wire_id] = next_fresh;
         max_slot = max_slot.max(next_fresh);
@@ -93,9 +85,7 @@ fn remap_wire_ids(
         let sb = slot_of[b as usize];
 
         // Allocate output slot BEFORE freeing inputs. This guarantees c's slot never
-        // equals a's or b's slot within the same gate — required for the Rc<RefCell<Wire>>
-        // circuit representation (read_flat_original_gc), where wire_a and wire_c sharing a slot
-        // would cause a simultaneous-borrow panic.
+        // equals a's or b's slot within the same gate.
         let slot = free_list.pop().unwrap_or_else(|| {
             let s = next_fresh;
             next_fresh += 1;
@@ -166,13 +156,6 @@ fn print_report(stats: &[CircuitStats; 2]) {
 }
 
 /// Generate, compact, and write all circuit artifacts from scratch.
-///
-/// Runs liveness analysis on each circuit, remaps wire IDs to the minimum
-/// required slot count, and writes the compacted `.bin` files to the paths
-/// controlled by `FGC_GATES_PATH`, `FGC_OUT_INDICES_PATH`, `SGC_GATES_PATH`,
-/// `SGC_OUT_INDICES_PATH` env vars (defaulting to `./fgc_gates.bin` etc.).
-///
-/// `l2_point` is the L₂ parameter for SGC Part 1 (typically from the verifying key).
 pub fn generate_compact_artifacts(l2_point: G1Affine) -> [CircuitStats; 2] {
     reset_gid();
     let g = G1Affine::generator();
@@ -185,8 +168,6 @@ pub fn generate_compact_artifacts(l2_point: G1Affine) -> [CircuitStats; 2] {
     let fgc_wires_orig = fgc_num_wires as usize;
 
     // Write original (non-compacted) artifacts for read_flat_original_gc() BEFORE remapping.
-    // garbled_evaluate_without_delta requires each Wire to be the output of exactly
-    // one gate; slot reuse would break its single-pass global-state assumption.
     write_circuit(fgc_num_wires, &fgc_gates, &fgc_out_idx,
                   &super::fgc_gates_path(), &super::fgc_indices_path());
 

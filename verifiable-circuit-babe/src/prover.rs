@@ -13,7 +13,7 @@ use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
 use crate::dre::N;
 use crate::gc::{SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
-use crate::instance::set_gc_const_labels;
+use crate::instance::{b_value_bits, set_gc_const_labels};
 use crate::soldering::{SolderedLabelsData, SolderingData};
 use crate::utils::{derive_hashlock, h_160, h_256, ro_from_pairing_bytes};
 
@@ -278,9 +278,7 @@ impl BABEProver {
             sgc.0[i + SGC_PART1_CONSTANT_SIZE].borrow_mut().label = Some(lbl);
         }
         // Compute B bit representation (Montgomery form) for use as constant wires.
-        // Todo: move it to a function in instance.mod.rs
-        let b_x_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b.x));
-        let b_y_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b.y));
+        let (b_x_bits, b_y_bits) = b_value_bits(b);
         for (i, bit) in b_x_bits.iter().enumerate() {
             sgc.0[2 + i].borrow_mut().value = Some(*bit);
         }

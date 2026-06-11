@@ -16,6 +16,14 @@ use crate::utils::{derive_hashlock, g2_project_to_ser, h_256, ro_from_pairing_by
 pub mod secret;
 pub mod commit;
 
+/// Decompose `b`'s x/y coordinates (Montgomery form) into bits, as used for the
+/// SGC Part 1 constant wires `2..2+N` (x) and `2+N..2+2N` (y).
+pub fn b_value_bits(b: &ark_bn254::G1Affine) -> (Vec<bool>, Vec<bool>) {
+    let b_x_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b.x));
+    let b_y_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b.y));
+    (b_x_bits, b_y_bits)
+}
+
 pub struct CACInstance {
     pub seed: u64,
     pub secrets: InstanceSecrets,
@@ -97,12 +105,7 @@ impl CACInstance {
     }
 
     /// Commitment-only path: same circuit setup as `new_from_seed` but ciphertexts and
-    /// adaptor tables are stream-hashed without being stored. Produces identical
-    /// `CACInstanceCommit` values while keeping peak memory at O(circuit_size) instead
-    /// of O(circuit_size + ciphertexts + adaptor_tables).
-    ///
-    /// Returns the full `InstanceSecrets` alongside the commit so the caller can
-    /// extract encoding keys and deltas without a second derivation.
+    /// adaptor tables are stream-hashed without being stored.
     pub fn commit_from_seed(
         seed: u64,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
@@ -265,8 +268,7 @@ impl CACInstance {
     }
 
     pub fn get_b_value_labels(&self) -> Vec<S> {
-        let b_x_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(self.secrets.b.x));
-        let b_y_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(self.secrets.b.y));
+        let (b_x_bits, b_y_bits) = b_value_bits(&self.secrets.b);
         let mut labels = Vec::new();
         for (i, bit) in b_x_bits.iter().enumerate() {
             if *bit {
@@ -394,8 +396,7 @@ mod tests {
         for (i, &lbl) in x_d_labels.iter().enumerate() {
             sgc.0[i + SGC_PART1_CONSTANT_SIZE].borrow_mut().label = Some(lbl);
         }
-        let b_x_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b_blind.x));
-        let b_y_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b_blind.y));
+        let (b_x_bits, b_y_bits) = b_value_bits(&b_blind);
         for (i, bit) in b_x_bits.iter().enumerate() {
             sgc.0[2 + i].borrow_mut().value = Some(*bit);
         }

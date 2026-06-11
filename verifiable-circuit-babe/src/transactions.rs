@@ -1,4 +1,4 @@
-// ─── Transaction locking script ───────────────────────────────────────────────
+// ─── Transaction skeletons. This will be replaced by real Txn in Bitvm2-node ─────────
 
 use ark_bn254::{Fq, Fr, G1Affine};
 use ark_serialize::CanonicalDeserialize;

@@ -28,7 +28,6 @@ pub struct SparseAdaptorEntry {
 }
 
 /// Adaptor table storing ciphertexts only for structurally nonzero D entries.
-/// Reduces size by ~1.87× vs the dense table.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SparseAdaptorTable {
     pub entries: Vec<SparseAdaptorEntry>,
@@ -134,7 +133,6 @@ impl SparseAdaptorTable {
     }
 
     /// SHA256 over all ciphertexts and Fq offsets in entry/row order.
-    /// Used by the Prover to verify an opened C&C instance's adaptor table.
     pub fn commit(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
         for entry in &self.entries {
@@ -161,8 +159,6 @@ impl SparseAdaptorTable {
             .iter()
             .map(|entry| {
                 let dec_row = |row: &SparseAdaptorRow, j: usize| -> Fq {
-                    // Per-entry integrity is guaranteed by the com_adaptor SHA256 commitment
-                    // verified in verify_finalized_instances; no additional MAC is needed.
                     let raw: Fq = col_indices[j]
                         .iter()
                         .zip(row.cts.iter())

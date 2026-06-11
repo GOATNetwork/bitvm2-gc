@@ -15,6 +15,7 @@ use crate::cac::{
 use crate::wots::{wots96_verify, Wots96, Wots96PublicKey, Wots96Secret};
 use crate::utils::pi1_xd_to_wots96_msg;
 use bitvm::signatures::Wots;
+use crate::dre::N;
 use crate::prover::BABEProver;
 use crate::soldering::SolderingData;
 use crate::transactions::{TxAssertWitness, TxChallengeAssertOutputLock, TxChallengeAssertWitness, TxDepositLock, TxWronglyChallengedWitness};
@@ -72,11 +73,6 @@ pub fn compute_epk_with_delta(encoding_keys: &[S], delta: S) -> EncodingKeyPubli
     EncodingKeyPublic(pairs)
 }
 
-pub fn compute_epk(encoding_keys: &[S]) -> EncodingKeyPublic {
-    use garbled_snark_verifier::core::utils::NON_CAC_DELTA;
-    compute_epk_with_delta(encoding_keys, NON_CAC_DELTA)
-}
-
 // ─── Presig structs ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -109,7 +105,6 @@ pub struct WeKnownPi1ProveCt {
 
 /// Everything the Prover stores after completing the setup phase.
 /// In practice, prover has the commitment of input labels from the Verifier Txn skeletons.
-/// (Verifier just need to commit the base instance input labels)
 pub struct ProverSetupState {
     pub wots_sk_p: Wots96Secret,
     pub finalized: Vec<FinalizedInstanceData>,
@@ -244,6 +239,9 @@ pub fn babe_verifier_challenge_assert_cac(
 /// `pi1_x | pi1_y | x_d` layout to produce the [`PADDED_INPUT_WIRES`]-sized
 /// padded layout: `pi1_x | dummy x2 | pi1_y | dummy x2 | x_d | dummy x2`.
 pub fn interleave_dummy_positions<T: Clone>(pi1_x: &[T], pi1_y: &[T], x_d: &[T], dummy: T) -> Vec<T> {
+    assert_eq!(pi1_x.len(), N);
+    assert_eq!(pi1_y.len(), N);
+    assert_eq!(x_d.len(), N);
     pi1_x.iter().cloned()
         .chain([dummy.clone(), dummy.clone()])
         .chain(pi1_y.iter().cloned())
@@ -251,6 +249,15 @@ pub fn interleave_dummy_positions<T: Clone>(pi1_x: &[T], pi1_y: &[T], x_d: &[T],
         .chain(x_d.iter().cloned())
         .chain([dummy.clone(), dummy.clone()])
         .collect()
+}
+
+/// Inverse of [`interleave_dummy_positions`]
+pub fn deinterleave_dummy_positions<T: Clone>(padded: &[T]) -> (Vec<T>, Vec<T>, Vec<T>) {
+    assert_eq!(padded.len(), PADDED_INPUT_WIRES);
+    let pi1_x = padded[..N].to_vec();
+    let pi1_y = padded[N + 2..2 * N + 2].to_vec();
+    let x_d = padded[2 * N + 4..3 * N + 4].to_vec();
+    (pi1_x, pi1_y, x_d)
 }
 
 pub fn build_challenge_assert_witness(
@@ -301,15 +308,9 @@ pub fn babe_prover_wrongly_challenged_cac(
     prover_state: &ProverSetupState,
 ) -> Option<(TxWronglyChallengedWitness, usize)> {
     let base_input_labels: Vec<S> = challenge_witness.input_labels.iter().map(|&b| S(b)).collect();
-    assert_eq!(base_input_labels.len(), 768);
-    // Layout: pi1.x[0..254] | dummy[254..256] | pi1.y[256..510] | dummy[510..512]
-    //       | x_d[512..766] | dummy[766..768]
-    // Strip the 6 dummy labels before passing to the GC (which has 762 real wires).
-    let pi1_labels: Vec<S> = base_input_labels[..254].iter()
-        .chain(base_input_labels[256..510].iter())
-        .copied()
-        .collect();
-    let x_d_labels: Vec<S> = base_input_labels[512..766].to_vec();
+    // Strip the 6 dummy labels before passing to the GC (which has GC_INPUT_WIRES real wires).
+    let (pi1_x_labels, pi1_y_labels, x_d_labels) = deinterleave_dummy_positions(&base_input_labels);
+    let pi1_labels: Vec<S> = pi1_x_labels.into_iter().chain(pi1_y_labels).collect();
     let mut prover = BABEProver::new(vk.clone(), proof.clone(), dyn_pubin);
     let found = prover.check_compute_msg(
         &prover_state.finalized,

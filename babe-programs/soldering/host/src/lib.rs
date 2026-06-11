@@ -1,7 +1,7 @@
 use ark_bn254::{Bn254, Fr};
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
-use bitvm::signatures::{Wots};
+use bitvm::signatures::Wots;
 use rand::SeedableRng;
 use verifiable_circuit_babe::babe::{babe_build_deposit_lock, babe_prover_assert, babe_prover_presign, babe_prover_wrongly_challenged_cac, babe_verifier_cac_setup, babe_verifier_challenge_assert_cac, babe_verifier_presign, babe_verify_prover_presigs, babe_verify_verifier_presigs, build_ca_outlock, BtcPk, DummyMulCircuit, ProverSetupState, VerifierSetupState, M_CC, N_CC};
 use verifiable_circuit_babe::cac::{
@@ -116,7 +116,6 @@ impl BabeBundleBuilder {
 
         // Prover sends pk_p to Verifier.
         let pk_p = BtcPk([0u8; 33]);
-        // let (lsk_p, lpk_p) = babe_prover_keygen(&mut rng);
         println!("Prover: generating BTC keys and sending pk_p to Verifier");
 
         // Verifier creates N_CC instances and sends CACSetupPackage.

@@ -22,10 +22,6 @@ pub struct InstanceLightSecrets {
 }
 
 /// The C&C Verifier: manages N_CC garbled-circuit instances for Cut-and-Choose.
-///
-/// Instances are generated in batches of BATCH_SIZE. After each batch the heavy
-/// GC data (ciphertexts, adaptor tables) is dropped immediately; only the
-/// commitment hash and minimal secrets are retained.
 pub struct BABEVerifier {
     seeds: Vec<u64>,
     commits: CACSetupPackage,

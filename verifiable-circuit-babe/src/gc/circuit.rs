@@ -123,7 +123,6 @@ pub fn compile_sgc_part1(l2: G1Affine) -> (CircuitAdapter, Vec<usize>) {
     (bld, output_indices)
 }
 
-// ── Shared inner ────────────────────────────────────────────────────────────
 
 /// Emit: scalar_point = x_d · L_2 (windowed private table) then add affine point P.
 ///
@@ -166,8 +165,6 @@ fn emit_scalar_mul_then_add(
     assert_eq!(output.len(), Q_SIZE);
     output
 }
-
-// ── Shared helpers ──────────────────────────────────────────────────────────
 
 /// Build constant wire indices for ū(g).
 fn g_u_bar_indices(bld: &mut CircuitAdapter, g: G1Affine) -> Vec<usize> {
