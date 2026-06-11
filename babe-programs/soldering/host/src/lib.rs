@@ -214,7 +214,7 @@ impl BabeBundleBuilder {
         println!("Prover: Finding msg...");
         let (wrongly_challenged_witness, instance_id) =
             babe_prover_wrongly_challenged_cac(
-                &groth16_pk,
+                &vk,
                 dynamic_public_inputs,
                 &challenge_assert_witness,
                 &proof,

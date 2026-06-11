@@ -3,6 +3,8 @@ use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use garbled_snark_verifier::bag::S;
 use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
 use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
+use serde::{Deserialize, Serialize};
+use crate::cac::CACSetupPackage;
 use crate::gc::SGC_PART1_CONSTANT_SIZE;
 use crate::instance::CACInstance;
 use crate::instance::commit::CACInstanceCommit;
@@ -13,6 +15,7 @@ pub const BATCH_SIZE: usize = 8;
 
 /// Minimal per-instance secrets retained after commitment phase.
 /// Only encoding keys and deltas are kept — all heavy GC data is dropped.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InstanceLightSecrets {
     pub delta: [S; 2],
     pub encoding_keys: [Vec<S>; 2],
@@ -25,7 +28,7 @@ pub struct InstanceLightSecrets {
 /// commitment hash and minimal secrets are retained.
 pub struct BABEVerifier {
     seeds: Vec<u64>,
-    commits: Vec<CACInstanceCommit>,
+    commits: CACSetupPackage,
     /// Encoding keys and deltas for every instance — needed for label computation
     /// without re-deriving the full garbled circuit.
     pub light_secrets: Vec<InstanceLightSecrets>,
@@ -35,9 +38,6 @@ pub struct BABEVerifier {
 
 impl BABEVerifier {
     /// Create `n_cc` fresh instances processed in batches of BATCH_SIZE.
-    ///
-    /// For each batch: instances are generated in parallel, their commitments
-    /// and minimal secrets extracted, then the heavy GC data is dropped.
     pub fn new(
         n_cc: usize,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
@@ -88,7 +88,7 @@ impl BABEVerifier {
                 light_secrets.push(ls);
             }
         }
-
+        let commits = CACSetupPackage { commits };
         Ok(Self {
             seeds,
             commits,
@@ -98,11 +98,20 @@ impl BABEVerifier {
         })
     }
 
+    /// Restore a `BABEVerifier` from previously persisted state.
+    pub fn from_state(
+        seeds: Vec<u64>,
+        commits: CACSetupPackage,
+        light_secrets: Vec<InstanceLightSecrets>,
+        vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
+        static_public_inputs: Fr,
+    ) -> Self {
+        Self { seeds, commits, light_secrets, vk: vk.clone(), static_public_inputs }
+    }
+
     /// Return the C&C commit package from pre-computed commitments.
-    pub fn commit(&self) -> crate::cac::CACSetupPackage {
-        crate::cac::CACSetupPackage {
-            commits: self.commits.clone(),
-        }
+    pub fn commit(&self) -> CACSetupPackage {
+        self.commits.clone()
     }
 
     /// After receiving the finalized indices, reveal:

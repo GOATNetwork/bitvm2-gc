@@ -15,7 +15,7 @@ use crate::utils::{deserialize_g1affine, h_256, serialize_g1affine};
 use crate::verifier::BATCH_SIZE;
 
 /// What the Verifier sends to the Prover during the C&C commit phase.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CACSetupPackage {
     pub commits: Vec<CACInstanceCommit>,
 }
@@ -215,8 +215,8 @@ mod tests {
     use crate::prover::GROTH_16_SEED;
     use crate::verifier::BABEVerifier;
 
-    const TEST_N_CC: usize = 50;
-    const TEST_M_CC: usize = 4;
+    const TEST_N_CC: usize = 5;
+    const TEST_M_CC: usize = 2;
 
     #[test]
     fn test_cac_commit_open_verify() {

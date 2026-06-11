@@ -1,7 +1,6 @@
 use ark_bn254::{Bn254, Fr};
 use ark_ff::PrimeField;
 use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
-use ark_groth16::ProvingKey as Groth16ProvingKey;
 
 use ark_serialize::CanonicalSerialize;
 use ark_relations::lc;
@@ -28,7 +27,7 @@ use crate::verifier::BABEVerifier;
 pub const N_CC: usize = 4;
 
 /// Number of instances the Prover finalizes (keeps hidden); rest are opened.
-/// In practice, M_CC = 4.
+/// In practice, M_CC = 7.
 pub const M_CC: usize = 2;
 
 /// Byte size of a Bitcoin signature placeholder (64 bytes in production).
@@ -271,7 +270,7 @@ pub fn babe_verifier_challenge_assert_cac(
 /// Prover: given the labels from TxChallengeAssert, evaluate the GC across all finalized
 /// instances (base first, then non-base via soldering deltas) and decrypt the msg.
 pub fn babe_prover_wrongly_challenged_cac(
-    pk: &Groth16ProvingKey<Bn254>,
+    vk: &Groth16VerifyingKey<Bn254>,
     dyn_pubin: Fr,
     challenge_witness: &TxChallengeAssertWitness,
     proof: &Groth16Proof<Bn254>,
@@ -287,7 +286,7 @@ pub fn babe_prover_wrongly_challenged_cac(
         .copied()
         .collect();
     let x_d_labels: Vec<S> = base_input_labels[512..766].to_vec();
-    let mut prover = BABEProver::new(pk.clone(), proof.clone(), dyn_pubin);
+    let mut prover = BABEProver::new(vk.clone(), proof.clone(), dyn_pubin);
     let found = prover.check_compute_msg(
         &prover_state.finalized,
         &pi1_labels,
