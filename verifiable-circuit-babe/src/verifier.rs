@@ -15,7 +15,7 @@ pub const BATCH_SIZE: usize = 8;
 
 /// Minimal per-instance secrets retained after commitment phase.
 /// Only encoding keys and deltas are kept — all heavy GC data is dropped.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstanceLightSecrets {
     pub delta: [S; 2],
     pub encoding_keys: [Vec<S>; 2],

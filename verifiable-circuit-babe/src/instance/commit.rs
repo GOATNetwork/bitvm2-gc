@@ -5,7 +5,7 @@ use crate::instance::CACInstance;
 use crate::utils::{derive_hashlock, h_256};
 
 /// Per-instance commitment sent from Verifier to Prover during C&C commit phase.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CACInstanceCommit {
     /// RIPEMD(SHA256)(label0) and RIPEMD(SHA256)(label1) for each input wire.
     /// We need to use RIPEMD(SHA256) to put this on skeleton Txn.

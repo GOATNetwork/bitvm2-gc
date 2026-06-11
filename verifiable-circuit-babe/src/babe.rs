@@ -30,6 +30,12 @@ pub const N_CC: usize = 4;
 /// In practice, M_CC = 7.
 pub const M_CC: usize = 2;
 
+/// Number of real GC input wires: pi1.x + pi1.y + x_d, each `dre::N` bits.
+pub const GC_INPUT_WIRES: usize = 3 * crate::dre::N;
+
+/// `GC_INPUT_WIRES` padded with 6 dummy wires (2 after each `dre::N`-bit group).
+pub const PADDED_INPUT_WIRES: usize = GC_INPUT_WIRES + 6;
+
 /// Byte size of a Bitcoin signature placeholder (64 bytes in production).
 pub const BTC_SIG_BYTES: usize = 32;
 
@@ -225,43 +231,61 @@ pub fn build_ca_outlock(
 pub fn babe_verifier_challenge_assert_cac(
     assert_witness: &TxAssertWitness,
     verifier_state: &VerifierSetupState,
-    sig_p_presig: BabeBtcSig,
+) -> Option<TxChallengeAssertWitness> {
+    build_challenge_assert_witness(
+        &verifier_state.verifier,
+        assert_witness,
+        &verifier_state.wots_pk_p,
+        verifier_state.finalized_indices[0]
+    )
+}
+
+/// Interleave 6 dummy entries into the [`GC_INPUT_WIRES`]-sized
+/// `pi1_x | pi1_y | x_d` layout to produce the [`PADDED_INPUT_WIRES`]-sized
+/// padded layout: `pi1_x | dummy x2 | pi1_y | dummy x2 | x_d | dummy x2`.
+pub fn interleave_dummy_positions<T: Clone>(pi1_x: &[T], pi1_y: &[T], x_d: &[T], dummy: T) -> Vec<T> {
+    pi1_x.iter().cloned()
+        .chain([dummy.clone(), dummy.clone()])
+        .chain(pi1_y.iter().cloned())
+        .chain([dummy.clone(), dummy.clone()])
+        .chain(x_d.iter().cloned())
+        .chain([dummy.clone(), dummy.clone()])
+        .collect()
+}
+
+pub fn build_challenge_assert_witness(
+    verifier: &BABEVerifier,
+    assert_witness: &TxAssertWitness,
+    operator_wots_pubkey: &Wots96PublicKey,
+    base_idx: usize,
 ) -> Option<TxChallengeAssertWitness> {
     let (pi1, x_d) = assert_witness.recover_pi1_xd_without_verify()?;
 
     let msg = pi1_xd_to_wots96_msg(&pi1, x_d);
     println!("Verifier: Checking Wots96 signature in tx_Assert against pi1, x_d and wots_pk_p...");
-    if !wots96_verify(&verifier_state.wots_pk_p, &msg, &assert_witness.wots_sig) {
+    if !wots96_verify(operator_wots_pubkey, &msg, &assert_witness.wots_sig) {
         return None;
     }
 
-    // Derive labels from the base instance (finalized_indices[0]).
-    let base_idx = verifier_state.finalized_indices[0];
-
-    // compute_pi1_labels returns 508 labels: [0..254] for pi1.x, [254..508] for pi1.y.
-    // compute_x_d_labels returns 254 labels.
-    // Interleave 6 dummy labels at the 2 MSB padding positions of each 256-bit field:
-    //   pi1.x[254] | dummy[2] | pi1.y[254] | dummy[2] | x_d[254] | dummy[2] = 768
-    // Dummy value [0u8; 16] is consistent: derive_hashlock(&[0u8; 16]) == epk[i][0] for
-    // the dummy EPK entries computed in compute_epk_with_delta. Note that Prover & Verifier should
-    // embed this hashlock in the challengeAssert script in order to make the check passed.
-    let pi1_labels = verifier_state.verifier.compute_pi1_labels(base_idx, pi1);
-    let x_d_labels = verifier_state.verifier.compute_x_d_labels(base_idx, x_d);
+    let pi1_labels = verifier.compute_pi1_labels(base_idx, pi1);
+    let x_d_labels = verifier.compute_x_d_labels(base_idx, x_d);
+    // hardcoded for both Prover and Verifier.
     let dummy = S([0u8; 16]);
-    let input_labels: Vec<[u8; 16]> = pi1_labels[..254].iter()
-        .chain([dummy, dummy].iter())
-        .chain(pi1_labels[254..].iter())
-        .chain([dummy, dummy].iter())
-        .chain(x_d_labels.iter())
-        .chain([dummy, dummy].iter())
-        .map(|s| s.0)
-        .collect();
+    let input_labels: Vec<[u8; 16]> = interleave_dummy_positions(
+        &pi1_labels[..crate::dre::N],
+        &pi1_labels[crate::dre::N..],
+        &x_d_labels,
+        dummy,
+    )
+    .into_iter()
+    .map(|s| s.0)
+    .collect();
 
     Some(TxChallengeAssertWitness {
         input_labels,
         wots_sig: assert_witness.wots_sig,
         sig_v: BabeBtcSig::VerifierLiveSig,
-        sig_p: sig_p_presig,
+        sig_p: BabeBtcSig::ProverPresigChallengeAssert,
     })
 }
 

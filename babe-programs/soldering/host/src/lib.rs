@@ -203,7 +203,6 @@ impl BabeBundleBuilder {
         let challenge_assert_witness = babe_verifier_challenge_assert_cac(
             &assert_witness,
             &verifier_state,
-            verifier_state.presigs_p.sig_challenge_assert.clone(),
         )
         .ok_or_else(|| "invalid Wots96 signature in assert witness".to_string())?;
         println!("Verifier: posting tx_ChallengeAssert...");
