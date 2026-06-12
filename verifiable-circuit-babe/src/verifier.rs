@@ -3,6 +3,9 @@ use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use garbled_snark_verifier::bag::S;
 use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
 use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
+use serde::{Deserialize, Serialize};
+use crate::cac::CACSetupPackage;
+use crate::gc::SGC_PART1_CONSTANT_SIZE;
 use crate::instance::CACInstance;
 use crate::instance::commit::CACInstanceCommit;
 
@@ -12,19 +15,16 @@ pub const BATCH_SIZE: usize = 8;
 
 /// Minimal per-instance secrets retained after commitment phase.
 /// Only encoding keys and deltas are kept — all heavy GC data is dropped.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstanceLightSecrets {
     pub delta: [S; 2],
     pub encoding_keys: [Vec<S>; 2],
 }
 
 /// The C&C Verifier: manages N_CC garbled-circuit instances for Cut-and-Choose.
-///
-/// Instances are generated in batches of BATCH_SIZE. After each batch the heavy
-/// GC data (ciphertexts, adaptor tables) is dropped immediately; only the
-/// commitment hash and minimal secrets are retained.
 pub struct BABEVerifier {
     seeds: Vec<u64>,
-    commits: Vec<CACInstanceCommit>,
+    commits: CACSetupPackage,
     /// Encoding keys and deltas for every instance — needed for label computation
     /// without re-deriving the full garbled circuit.
     pub light_secrets: Vec<InstanceLightSecrets>,
@@ -34,9 +34,6 @@ pub struct BABEVerifier {
 
 impl BABEVerifier {
     /// Create `n_cc` fresh instances processed in batches of BATCH_SIZE.
-    ///
-    /// For each batch: instances are generated in parallel, their commitments
-    /// and minimal secrets extracted, then the heavy GC data is dropped.
     pub fn new(
         n_cc: usize,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
@@ -87,7 +84,7 @@ impl BABEVerifier {
                 light_secrets.push(ls);
             }
         }
-
+        let commits = CACSetupPackage { commits };
         Ok(Self {
             seeds,
             commits,
@@ -97,11 +94,20 @@ impl BABEVerifier {
         })
     }
 
+    /// Restore a `BABEVerifier` from previously persisted state.
+    pub fn from_state(
+        seeds: Vec<u64>,
+        commits: CACSetupPackage,
+        light_secrets: Vec<InstanceLightSecrets>,
+        vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
+        static_public_inputs: Fr,
+    ) -> Self {
+        Self { seeds, commits, light_secrets, vk: vk.clone(), static_public_inputs }
+    }
+
     /// Return the C&C commit package from pre-computed commitments.
-    pub fn commit(&self) -> crate::cac::CACSetupPackage {
-        crate::cac::CACSetupPackage {
-            commits: self.commits.clone(),
-        }
+    pub fn commit(&self) -> CACSetupPackage {
+        self.commits.clone()
     }
 
     /// After receiving the finalized indices, reveal:
@@ -139,6 +145,7 @@ impl BABEVerifier {
                     inst.secrets.constant_0labels[1][1] ^ inst.secrets.delta[1],
                 ];
                 constant_labels_1.extend(inst.get_b_value_labels());
+                assert_eq!(constant_labels_1.len(), SGC_PART1_CONSTANT_SIZE);
 
                 Ok(crate::cac::FinalizedInstanceData {
                     index: i,
@@ -146,7 +153,7 @@ impl BABEVerifier {
                     adaptor_tables: inst.adaptor_tables,
                     ct_setup: inst.ct_setup,
                     constant_labels_0,
-                    constant_labels_1: constant_labels_1.try_into().unwrap(),
+                    constant_labels_1,
                     b: inst.secrets.b,
                 })
                 // inst is dropped here

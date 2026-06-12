@@ -123,7 +123,6 @@ pub fn compile_sgc_part1(l2: G1Affine) -> (CircuitAdapter, Vec<usize>) {
     (bld, output_indices)
 }
 
-// ── Shared inner ────────────────────────────────────────────────────────────
 
 /// Emit: scalar_point = x_d · L_2 (windowed private table) then add affine point P.
 ///
@@ -167,8 +166,6 @@ fn emit_scalar_mul_then_add(
     output
 }
 
-// ── Shared helpers ──────────────────────────────────────────────────────────
-
 /// Build constant wire indices for ū(g).
 fn g_u_bar_indices(bld: &mut CircuitAdapter, g: G1Affine) -> Vec<usize> {
     let x    = g.x;
@@ -196,26 +193,6 @@ pub fn gc_ciphertexts_commit(ciphertexts: &[Option<garbled_snark_verifier::bag::
     let mut hasher = Sha256::new();
     for ct in ciphertexts {
         match ct {
-            None    => hasher.update([0u8]),
-            Some(s) => { hasher.update([1u8]); hasher.update(s.0); }
-        }
-    }
-    hasher.finalize().into()
-}
-
-/// Garble all gates and hash their ciphertexts on-the-fly without materializing
-/// the full `Vec<Option<S>>`. Produces the same hash as
-/// `gc_ciphertexts_commit(&circuit.garbled_gates_with_delta(delta))`.
-pub fn gc_garble_and_hash(
-    circuit: &garbled_snark_verifier::bag::Circuit,
-    delta: garbled_snark_verifier::bag::S,
-) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    for (i, gate) in circuit.1.iter().enumerate() {
-        if i.is_multiple_of(1000000) {
-            println!("Garble batch: {}/{}", i, circuit.1.len());
-        }
-        match gate.garbled_with_delta(delta) {
             None    => hasher.update([0u8]),
             Some(s) => { hasher.update([1u8]); hasher.update(s.0); }
         }

@@ -11,10 +11,18 @@ use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
 use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
 use crate::dre::{Q_SIZE, U_BAR_SIZE};
 use crate::instance::commit::CACInstanceCommit;
-use crate::utils::{derive_hashlock, g2_to_ser, h_256, ro_from_pairing_bytes};
+use crate::utils::{derive_hashlock, g2_project_to_ser, h_256, ro_from_pairing_bytes};
 
 pub mod secret;
 pub mod commit;
+
+/// Decompose `b`'s x/y coordinates (Montgomery form) into bits, as used for the
+/// SGC Part 1 constant wires `2..2+N` (x) and `2+N..2+2N` (y).
+pub fn b_value_bits(b: &ark_bn254::G1Affine) -> (Vec<bool>, Vec<bool>) {
+    let b_x_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b.x));
+    let b_y_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b.y));
+    (b_x_bits, b_y_bits)
+}
 
 pub struct CACInstance {
     pub seed: u64,
@@ -97,12 +105,7 @@ impl CACInstance {
     }
 
     /// Commitment-only path: same circuit setup as `new_from_seed` but ciphertexts and
-    /// adaptor tables are stream-hashed without being stored. Produces identical
-    /// `CACInstanceCommit` values while keeping peak memory at O(circuit_size) instead
-    /// of O(circuit_size + ciphertexts + adaptor_tables).
-    ///
-    /// Returns the full `InstanceSecrets` alongside the commit so the caller can
-    /// extract encoding keys and deltas without a second derivation.
+    /// adaptor tables are stream-hashed without being stored.
     pub fn commit_from_seed(
         seed: u64,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
@@ -181,10 +184,11 @@ impl CACInstance {
             let l0 = secrets.constant_0labels[0][w];
             [h_256(&l0.0), h_256(&(l0 ^ delta[0]).0)]
         });
-        let constant_commits_1: [[[u8; 32]; 2]; 510] = std::array::from_fn(|w| {
-            let l0 = secrets.constant_0labels[1][w];
-            [h_256(&l0.0), h_256(&(l0 ^ delta[1]).0)]
-        });
+        assert_eq!(secrets.constant_0labels[1].len(), SGC_PART1_CONSTANT_SIZE);
+        let constant_commits_1: Vec<[[u8; 32]; 2]> = secrets.constant_0labels[1]
+            .iter()
+            .map(|&l0| [h_256(&l0.0), h_256(&(l0 ^ delta[1]).0)])
+            .collect();
 
         let mut b_blind_bytes = Vec::new();
         secrets.b.serialize_compressed(&mut b_blind_bytes).expect("serialize b");
@@ -230,7 +234,7 @@ impl CACInstance {
         let ct3 = secrets.msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect::<Vec<_>>();
 
         Ok(WeKnownPi1SetupCt {
-            ct2_r_delta_g2: g2_to_ser(r_delta),
+            ct2_r_delta_g2: g2_project_to_ser(r_delta),
             ct3_masked_msg: ct3,
         })
     }
@@ -264,8 +268,7 @@ impl CACInstance {
     }
 
     pub fn get_b_value_labels(&self) -> Vec<S> {
-        let b_x_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(self.secrets.b.x));
-        let b_y_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(self.secrets.b.y));
+        let (b_x_bits, b_y_bits) = b_value_bits(&self.secrets.b);
         let mut labels = Vec::new();
         for (i, bit) in b_x_bits.iter().enumerate() {
             if *bit {
@@ -393,8 +396,7 @@ mod tests {
         for (i, &lbl) in x_d_labels.iter().enumerate() {
             sgc.0[i + SGC_PART1_CONSTANT_SIZE].borrow_mut().label = Some(lbl);
         }
-        let b_x_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b_blind.x));
-        let b_y_bits: Vec<bool> = DvFq::to_bits(DvFq::as_montgomery(b_blind.y));
+        let (b_x_bits, b_y_bits) = b_value_bits(&b_blind);
         for (i, bit) in b_x_bits.iter().enumerate() {
             sgc.0[2 + i].borrow_mut().value = Some(*bit);
         }

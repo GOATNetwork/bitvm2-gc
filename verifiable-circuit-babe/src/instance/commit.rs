@@ -1,18 +1,19 @@
 use ark_serialize::CanonicalSerialize;
-use crate::gc::gc_ciphertexts_commit;
+use serde::{Deserialize, Serialize};
+use crate::gc::{gc_ciphertexts_commit, SGC_PART1_CONSTANT_SIZE};
 use crate::instance::CACInstance;
 use crate::utils::{derive_hashlock, h_256};
 
 /// Per-instance commitment sent from Verifier to Prover during C&C commit phase.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CACInstanceCommit {
     /// RIPEMD(SHA256)(label0) and RIPEMD(SHA256)(label1) for each input wire.
     /// We need to use RIPEMD(SHA256) to put this on skeleton Txn.
     pub epk: Vec<[[u8; 20]; 2]>,
     /// SHA256(label0) and SHA256(label1) for each of the 2 constant wires in fgc.
     pub constant_commits_0: [[[u8; 32]; 2]; 2],
-    /// constant commit for sgc, size = 2 + 2*N
-    pub constant_commits_1: [[[u8; 32]; 2]; 510],
+    /// constant commit for sgc. Length must be `SGC_PART1_CONSTANT_SIZE` (510, = 2 + 2*N).
+    pub constant_commits_1: Vec<[[u8; 32]; 2]>,
     /// commitment of b_blind in this instance.
     pub b_blind_commit: [u8; 32],
     pub h_msg: [u8; 20],
@@ -45,10 +46,11 @@ impl CACInstanceCommit {
             let l0 = instance.secrets.constant_0labels[0][w];
             [h_256(&l0.0), h_256(&(l0 ^ delta[0]).0)]
         });
-        let constant_commits_1 = std::array::from_fn(|w| {
-            let l0 = instance.secrets.constant_0labels[1][w];
-            [h_256(&l0.0), h_256(&(l0 ^ delta[1]).0)]
-        });
+        assert_eq!(instance.secrets.constant_0labels[1].len(), SGC_PART1_CONSTANT_SIZE);
+        let constant_commits_1: Vec<[[u8; 32]; 2]> = instance.secrets.constant_0labels[1]
+            .iter()
+            .map(|&l0| [h_256(&l0.0), h_256(&(l0 ^ delta[1]).0)])
+            .collect();
 
         let mut ct_setup_bytes = Vec::new();
         ct_setup_bytes.extend_from_slice(&instance.ct_setup.ct2_r_delta_g2);

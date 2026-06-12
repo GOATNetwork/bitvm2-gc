@@ -7156,6 +7156,7 @@ dependencies = [
  "ripemd 0.2.0",
  "serde",
  "sha2",
+ "tracing",
  "zkm-sdk",
  "zkm-zkvm",
 ]

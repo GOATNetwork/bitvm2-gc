@@ -87,9 +87,6 @@ impl Gate {
             gate_type,
             gid: {
                 let gid = inc_gid() - 1;
-                if gid.is_multiple_of(1_000_000) {
-                    println!("gid: {} M", gid / 1_000_000)
-                }
                 gid
             },
         }

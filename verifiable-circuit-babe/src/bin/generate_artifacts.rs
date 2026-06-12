@@ -25,6 +25,7 @@ use verifiable_circuit_babe::babe::DummyMulCircuit;
 use verifiable_circuit_babe::gc::generate_compact_artifacts;
 use verifiable_circuit_babe::prover::GROTH_16_SEED;
 
+// Todo: in practice, the vk should be generated differently / read from file.
 fn main() {
     // Use the same VK as all tests so the artifacts are compatible.
     let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(GROTH_16_SEED);
@@ -36,10 +37,7 @@ fn main() {
         DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
         &mut rng,
     ).expect("groth16 setup");
-
-    // l2_point = gamma_abc_g1[2] — the G1 generator for the dynamic public input x_d.
-    // SGC Part 1 computes Q = x_d · l2_point + B; this point is baked into the circuit
-    // as constant wires, so it must match the VK used at runtime.
+    
     let l2_point = vk.gamma_abc_g1[2];
 
     generate_compact_artifacts(l2_point);

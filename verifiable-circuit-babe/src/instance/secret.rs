@@ -58,7 +58,7 @@ impl InstanceSecrets {
     }
 }
 
-fn gen_s<R: rand::RngCore>(rng: &mut R, n: usize) -> Vec<S> {
+fn gen_s<R: RngCore>(rng: &mut R, n: usize) -> Vec<S> {
     (0..n)
         .map(|_| {
             let mut b = [0u8; 16];
@@ -68,7 +68,7 @@ fn gen_s<R: rand::RngCore>(rng: &mut R, n: usize) -> Vec<S> {
         .collect()
 }
 
-fn gen_fq_deltas<R: rand::RngCore>(rng: &mut R, n: usize) -> Vec<Fq> {
+fn gen_fq_deltas<R: RngCore>(rng: &mut R, n: usize) -> Vec<Fq> {
     (0..n)
         .map(|_| loop {
             let v = Fq::rand(rng);

@@ -158,8 +158,8 @@ impl FlatEvalBuffer {
     }
 }
 
-static COMPACT_CIRCUIT_1: OnceLock<(FlatGates, Vec<usize>)> = OnceLock::new();
-static COMPACT_CIRCUIT_2: OnceLock<(FlatGates, Vec<usize>)> = OnceLock::new();
+static COMPACT_FGC: OnceLock<(FlatGates, Vec<usize>)> = OnceLock::new();
+static COMPACT_SGC: OnceLock<(FlatGates, Vec<usize>)> = OnceLock::new();
 
 /// Load compact FGC and SGC gate data into `FlatGates`, cached on first call.
 /// Wire IDs are slot-remapped to minimise `FlatEvalBuffer` size.
@@ -168,7 +168,7 @@ pub fn read_compact_gc() -> (
     &'static FlatGates, &'static Vec<usize>,
     &'static FlatGates, &'static Vec<usize>,
 ) {
-    let (fgc_flat, fgc_idx) = COMPACT_CIRCUIT_1.get_or_init(|| {
+    let (fgc_flat, fgc_idx) = COMPACT_FGC.get_or_init(|| {
         let gates_path = fgc_compact_gates_path();
         let indices_path = fgc_compact_indices_path();
         let gates_bytes = fs::read(&gates_path)
@@ -177,7 +177,7 @@ pub fn read_compact_gc() -> (
             .unwrap_or_else(|_| panic!("'{}' not found — run: cargo run -r --bin generate_artifacts", indices_path));
         flat_from_bytes(&gates_bytes, &idx_bytes)
     });
-    let (sgc_flat, sgc_idx) = COMPACT_CIRCUIT_2.get_or_init(|| {
+    let (sgc_flat, sgc_idx) = COMPACT_SGC.get_or_init(|| {
         let gates_path = sgc_compact_gates_path();
         let indices_path = sgc_compact_indices_path();
         let gates_bytes = fs::read(&gates_path)
@@ -209,9 +209,6 @@ fn flat_from_bytes(gates_bytes: &[u8], output_indices_bytes: &[u8]) -> (FlatGate
 }
 
 /// Load both circuits as Rc/RefCell-based `Circuit` for evaluation.
-/// Reads from the flat (original, non-compacted) artifacts — garbled_evaluate_without_delta
-/// requires each Wire to be the output of exactly one gate, which slot-reused
-/// compact wire IDs would violate.
 pub fn read_flat_original_gc() -> (Circuit, Vec<usize>, Circuit, Vec<usize>) {
     let fgc_gates_bytes = fs::read(fgc_gates_path())
         .unwrap_or_else(|_| panic!("'{}' not found — run: cargo run -r --bin generate_artifacts", fgc_gates_path()));
@@ -263,10 +260,6 @@ mod tests {
 
     /// Verify that compact artifacts produce identical ciphertexts and output labels
     /// to the original (non-compacted) artifacts given the same pre-initialized labels.
-    ///
-    /// This confirms that liveness compaction is a pure wire-ID renaming — it does not
-    /// change any gate function, gate order, or computed label value.
-    ///
     /// Requires artifacts on disk — run `cargo run --release --bin generate_artifacts` first.
     #[test]
     #[ignore]

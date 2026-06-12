@@ -1,7 +1,7 @@
 use ark_bn254::{Bn254, Fr};
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
-use bitvm::signatures::{Wots};
+use bitvm::signatures::Wots;
 use rand::SeedableRng;
 use verifiable_circuit_babe::babe::{babe_build_deposit_lock, babe_prover_assert, babe_prover_presign, babe_prover_wrongly_challenged_cac, babe_verifier_cac_setup, babe_verifier_challenge_assert_cac, babe_verifier_presign, babe_verify_prover_presigs, babe_verify_verifier_presigs, build_ca_outlock, BtcPk, DummyMulCircuit, ProverSetupState, VerifierSetupState, M_CC, N_CC};
 use verifiable_circuit_babe::cac::{
@@ -116,7 +116,6 @@ impl BabeBundleBuilder {
 
         // Prover sends pk_p to Verifier.
         let pk_p = BtcPk([0u8; 33]);
-        // let (lsk_p, lpk_p) = babe_prover_keygen(&mut rng);
         println!("Prover: generating BTC keys and sending pk_p to Verifier");
 
         // Verifier creates N_CC instances and sends CACSetupPackage.
@@ -127,9 +126,8 @@ impl BabeBundleBuilder {
         // Verifier sends vk and package to Prover
         println!("Verifier: sending pk_v and {} instance commitment to Prover", N_CC);
 
-        // Prover samples M_CC finalized indices (Fiat-Shamir over all commits).
-        // Todo: can be replace by randomize.
-        let finalized_indices = cac_finalize_indices(&package, M_CC);
+        // Prover samples M_CC finalized indices
+        let finalized_indices = cac_finalize_indices(N_CC, M_CC);
         println!("Prover: finalized indices = {:?}", &finalized_indices);
 
         // Verifier opens non-finalized instances and generates soldering proof.
@@ -203,7 +201,6 @@ impl BabeBundleBuilder {
         let challenge_assert_witness = babe_verifier_challenge_assert_cac(
             &assert_witness,
             &verifier_state,
-            verifier_state.presigs_p.sig_challenge_assert.clone(),
         )
         .ok_or_else(|| "invalid Wots96 signature in assert witness".to_string())?;
         println!("Verifier: posting tx_ChallengeAssert...");
@@ -214,7 +211,7 @@ impl BabeBundleBuilder {
         println!("Prover: Finding msg...");
         let (wrongly_challenged_witness, instance_id) =
             babe_prover_wrongly_challenged_cac(
-                &groth16_pk,
+                &vk,
                 dynamic_public_inputs,
                 &challenge_assert_witness,
                 &proof,

@@ -1,3 +1,6 @@
+/// This is copied from:
+/// https://github.com/KSlashh/BitVM/blob/f46dbbee24e5b54cff771b155b45f6f98ea1a2bb/goat/src/wots.rs
+
 use bitcoin::script::read_scriptint;
 use bitcoin::Witness;
 use bitvm::signatures::utils::bitcoin_representation;
@@ -74,7 +77,7 @@ impl Wots for Wots96 {
             .as_ref()
             .iter()
             .map(|digit_sig| digit_sig[20])
-            .take(((Self::MSG_BYTE_LEN * 8).div_ceil(WOTS96_LOG2_BASE)) as usize)
+            .take((Self::MSG_BYTE_LEN * 8).div_ceil(WOTS96_LOG2_BASE) as usize)
             .rev()
             .collect::<Vec<_>>();
 
