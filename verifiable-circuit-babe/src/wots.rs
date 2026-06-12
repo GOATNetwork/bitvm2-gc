@@ -77,7 +77,7 @@ impl Wots for Wots96 {
             .as_ref()
             .iter()
             .map(|digit_sig| digit_sig[20])
-            .take(((Self::MSG_BYTE_LEN * 8).div_ceil(WOTS96_LOG2_BASE)) as usize)
+            .take((Self::MSG_BYTE_LEN * 8).div_ceil(WOTS96_LOG2_BASE) as usize)
             .rev()
             .collect::<Vec<_>>();
 

@@ -32,7 +32,7 @@ pub const N_CC: usize = 4;
 pub const M_CC: usize = 2;
 
 /// Number of real GC input wires: pi1.x + pi1.y + x_d, each `dre::N` bits.
-pub const GC_INPUT_WIRES: usize = 3 * crate::dre::N;
+pub const GC_INPUT_WIRES: usize = 3 * N;
 
 /// `GC_INPUT_WIRES` padded with 6 dummy wires (2 after each `dre::N`-bit group).
 pub const PADDED_INPUT_WIRES: usize = GC_INPUT_WIRES + 6;
@@ -279,8 +279,8 @@ pub fn build_challenge_assert_witness(
     // hardcoded for both Prover and Verifier.
     let dummy = S([0u8; 16]);
     let input_labels: Vec<[u8; 16]> = interleave_dummy_positions(
-        &pi1_labels[..crate::dre::N],
-        &pi1_labels[crate::dre::N..],
+        &pi1_labels[..N],
+        &pi1_labels[N..],
         &x_d_labels,
         dummy,
     )
