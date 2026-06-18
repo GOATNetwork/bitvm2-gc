@@ -44,7 +44,7 @@ impl BABEProver {
         }
     }
 
-    /// Verify that the guest output's commitments match the `CACSetupPackage`.
+    /// Verify that the soldering guest output's commitments match the `CACSetupPackage`.
     pub fn verify_soldering_output_match_commitment(
         output: &SolderedLabelsData,
         package: &CACSetupPackage,

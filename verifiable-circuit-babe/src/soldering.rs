@@ -10,7 +10,7 @@ pub type Sha256Commit = [u8; 32];
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct SolderedWiresInput(pub Vec<InstancesWires>);
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SolderedLabelsData {
     pub deltas: Vec<Vec<([u8; 16], [u8; 16])>>,
     pub base_commitment: Vec<(Sha256Commit, Sha256Commit)>,
@@ -84,9 +84,9 @@ pub fn build_soldered_wires_input(
         finalized_indices
             .iter()
             .map(|&idx| {
-                let ls = &verifier.light_secrets[idx];
-                let delta = &ls.delta;
-                let encoding_keys = &ls.encoding_keys;
+                let ls = verifier.light_secrets_for(idx);
+                let delta = ls.delta;
+                let encoding_keys = ls.input_0labels;
 
                 (0..2)
                     .flat_map(|i| {

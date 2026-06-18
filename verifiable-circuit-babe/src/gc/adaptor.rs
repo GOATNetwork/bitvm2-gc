@@ -13,14 +13,14 @@ pub type Ct = [u8; 32];
 
 /// Ciphertexts for ubar=0.
 /// `offset` = Σ_k s_k = Σ_k (prf_fq(label_1_k) - D_k).
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SparseAdaptorRow {
     pub cts: Vec<Ct>,
     #[serde(serialize_with = "serialize_fq", deserialize_with = "deserialize_fq")]
     pub offset: Fq,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SparseAdaptorEntry {
     pub x: SparseAdaptorRow,
     pub y: SparseAdaptorRow,
@@ -28,7 +28,7 @@ pub struct SparseAdaptorEntry {
 }
 
 /// Adaptor table storing ciphertexts only for structurally nonzero D entries.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SparseAdaptorTable {
     pub entries: Vec<SparseAdaptorEntry>,
 }

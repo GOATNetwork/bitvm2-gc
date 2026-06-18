@@ -184,7 +184,6 @@ impl BabeBundleBuilder {
         };
         let verifier_state = VerifierSetupState {
             verifier,
-            package,
             finalized_indices,
             wots_pk_p,
             presigs_p: prover_presigs,

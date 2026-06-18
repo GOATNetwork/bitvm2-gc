@@ -20,6 +20,7 @@ resolver = "2"
 
 [workspace.dependencies]
 garbled-snark-verifier = { path = "./garbled-snark-verifier" }
+verifiable-circuit-babe = { path = "./verifiable-circuit-babe" }
 bristol = { path = "./bristol" }
 zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
 zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }

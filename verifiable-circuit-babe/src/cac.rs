@@ -12,7 +12,7 @@ use crate::utils::{deserialize_g1affine, h_256, serialize_g1affine};
 use crate::verifier::BATCH_SIZE;
 
 /// What the Verifier sends to the Prover during the C&C commit phase.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CACSetupPackage {
     pub commits: Vec<CACInstanceCommit>,
 }
@@ -34,7 +34,7 @@ pub fn cac_finalize_indices(n_cc: usize, m_cc: usize) -> Vec<usize> {
 }
 
 /// GC data the Verifier reveals for each finalized (kept) instance.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FinalizedInstanceData {
     pub index: usize,
     pub ciphertext_sets: [Vec<Option<S>>; 3],
@@ -77,15 +77,15 @@ pub fn verify_opened_instances(
             batch
                 .par_iter()
                 .map(|&(idx, seed)| {
-                    let (recomputed, _secrets) =
+                    let recomputed =
                         CACInstance::commit_from_seed(seed, vk, static_public_inputs)?;
                     let committed = &package.commits[idx];
 
                     if recomputed.epk != committed.epk {
                         return Err(format!("instance {idx}: input_commits mismatch"));
                     }
-                    if recomputed.constant_commits_0 != committed.constant_commits_0
-                        || recomputed.constant_commits_1 != committed.constant_commits_1
+                    if recomputed.constant_commits_fgc != committed.constant_commits_fgc
+                        || recomputed.constant_commits_sgc != committed.constant_commits_sgc
                     {
                         return Err(format!("instance {idx}: constant_commits mismatch"));
                     }
@@ -125,7 +125,7 @@ pub fn verify_finalized_instances(
         let committed = &package.commits[idx];
 
         if data.constant_labels_1.len() != SGC_PART1_CONSTANT_SIZE
-            || committed.constant_commits_1.len() != SGC_PART1_CONSTANT_SIZE {
+            || committed.constant_commits_sgc.len() != SGC_PART1_CONSTANT_SIZE {
             return Err(format!(
                 "instance {idx}: constant_labels_1/constant_commits_1 must have length {SGC_PART1_CONSTANT_SIZE}"
             ));
@@ -143,21 +143,21 @@ pub fn verify_finalized_instances(
         }
 
         // verify constant labels
-        if h_256(&data.constant_labels_0[0].0) != committed.constant_commits_0[0][0] ||
-            h_256(&data.constant_labels_0[1].0) != committed.constant_commits_0[1][1] ||
-            h_256(&data.constant_labels_1[0].0) != committed.constant_commits_1[0][0] ||
-            h_256(&data.constant_labels_1[1].0) != committed.constant_commits_1[1][1] {
+        if h_256(&data.constant_labels_0[0].0) != committed.constant_commits_fgc[0][0] ||
+            h_256(&data.constant_labels_0[1].0) != committed.constant_commits_fgc[1][1] ||
+            h_256(&data.constant_labels_1[0].0) != committed.constant_commits_sgc[0][0] ||
+            h_256(&data.constant_labels_1[1].0) != committed.constant_commits_sgc[1][1] {
             return Err(format!("instance {idx}: constant_commits do not match"));
         }
         let x_bits = Fq::to_bits(Fq::as_montgomery(data.b.x));
         let y_bits = Fq::to_bits(Fq::as_montgomery(data.b.y));
         for (i, bit) in x_bits.iter().enumerate() {
-            if h_256(&data.constant_labels_1[i + 2].0) != committed.constant_commits_1[i + 2][*bit as usize] {
+            if h_256(&data.constant_labels_1[i + 2].0) != committed.constant_commits_sgc[i + 2][*bit as usize] {
                 return Err(format!("instance {idx}: constant_commits do not match"));
             }
         }
         for (i, bit) in y_bits.iter().enumerate() {
-            if h_256(&data.constant_labels_1[i + 2 + 254].0) != committed.constant_commits_1[i + 2 + 254][*bit as usize] {
+            if h_256(&data.constant_labels_1[i + 2 + 254].0) != committed.constant_commits_sgc[i + 2 + 254][*bit as usize] {
                 return Err(format!("instance {idx}: constant_commits do not match"));
             }
         }

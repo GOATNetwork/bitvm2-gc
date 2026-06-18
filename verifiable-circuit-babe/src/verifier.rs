@@ -13,21 +13,49 @@ use crate::instance::commit::CACInstanceCommit;
 /// Override via CAC_BATCH_SIZE env var at runtime.
 pub const BATCH_SIZE: usize = 8;
 
-/// Minimal per-instance secrets retained after commitment phase.
-/// Only encoding keys and deltas are kept — all heavy GC data is dropped.
+/// Per-instance encoding secrets needed for label computation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstanceLightSecrets {
     pub delta: [S; 2],
-    pub encoding_keys: [Vec<S>; 2],
+    pub input_0labels: [Vec<S>; 2],
+}
+
+impl InstanceLightSecrets {
+    pub fn from_seed(seed: u64) -> Self {
+        let (delta, input_0labels) = crate::instance::secret::derive_light_from_seed(seed);
+        Self { delta, input_0labels }
+    }
+
+    pub fn compute_pi1_labels(&self, pi1: G1Affine) -> Vec<S> {
+        let delta = self.delta[0];
+        DvFq::to_bits(pi1.x)
+            .into_iter()
+            .chain(DvFq::to_bits(pi1.y))
+            .enumerate()
+            .map(|(i, b)| {
+                let key = self.input_0labels[0][i];
+                if b { key ^ delta } else { key }
+            })
+            .collect()
+    }
+
+    pub fn compute_x_d_labels(&self, x_d: Fr) -> Vec<S> {
+        let delta = self.delta[1];
+        DvFr::to_bits(x_d)
+            .into_iter()
+            .enumerate()
+            .map(|(i, b)| {
+                let key = self.input_0labels[1][i];
+                if b { key ^ delta } else { key }
+            })
+            .collect()
+    }
 }
 
 /// The C&C Verifier: manages N_CC garbled-circuit instances for Cut-and-Choose.
 pub struct BABEVerifier {
     seeds: Vec<u64>,
     commits: CACSetupPackage,
-    /// Encoding keys and deltas for every instance — needed for label computation
-    /// without re-deriving the full garbled circuit.
-    pub light_secrets: Vec<InstanceLightSecrets>,
     vk: Groth16VerifyingKey<ark_bn254::Bn254>,
     static_public_inputs: Fr,
 }
@@ -57,38 +85,30 @@ impl BABEVerifier {
             .map_err(|e| e.to_string())?;
 
         let mut commits = Vec::with_capacity(n_cc);
-        let mut light_secrets = Vec::with_capacity(n_cc);
 
         for batch_seeds in seeds.chunks(batch_size) {
             // Generate up to BATCH_SIZE instances in parallel. For each instance,
             // stream-hash the ciphertexts and adaptor table without materializing them.
-            let batch_results: Vec<Result<(CACInstanceCommit, InstanceLightSecrets), String>> =
+            let batch_results: Vec<Result<CACInstanceCommit, String>> =
                 pool.install(|| {
                     batch_seeds
                         .par_iter()
                         .map(|&seed| {
-                            let (commit, secrets) =
+                            let commit =
                                 CACInstance::commit_from_seed(seed, vk, static_public_inputs)?;
-                            let ls = InstanceLightSecrets {
-                                delta: secrets.delta,
-                                encoding_keys: secrets.input_0labels,
-                            };
-                            Ok((commit, ls))
+                            Ok(commit)
                         })
                         .collect()
                 });
 
             for result in batch_results {
-                let (commit, ls) = result?;
-                commits.push(commit);
-                light_secrets.push(ls);
+                commits.push(result?);
             }
         }
         let commits = CACSetupPackage { commits };
         Ok(Self {
             seeds,
             commits,
-            light_secrets,
             vk: vk.clone(),
             static_public_inputs,
         })
@@ -96,13 +116,21 @@ impl BABEVerifier {
 
     /// Restore a `BABEVerifier` from previously persisted state.
     pub fn from_state(
-        seeds: Vec<u64>,
-        commits: CACSetupPackage,
-        light_secrets: Vec<InstanceLightSecrets>,
+        seeds: &[u64],
+        commits: &CACSetupPackage,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
         static_public_inputs: Fr,
-    ) -> Self {
-        Self { seeds, commits, light_secrets, vk: vk.clone(), static_public_inputs }
+    ) -> Option<Self> {
+        if seeds.len() != commits.commits.len() {
+            return None;
+        }
+        Some(Self {
+            seeds: seeds.clone().to_vec(),
+            commits: commits.clone(),
+            vk: vk.clone(),
+            static_public_inputs
+        })
+
     }
 
     /// Return the C&C commit package from pre-computed commitments.
@@ -166,30 +194,21 @@ impl BABEVerifier {
 
     /// Compute the active π₁ input labels for instance `idx` given a concrete π₁.
     pub fn compute_pi1_labels(&self, idx: usize, pi1: G1Affine) -> Vec<S> {
-        let ls = &self.light_secrets[idx];
-        let delta = ls.delta[0];
-        DvFq::to_bits(pi1.x)
-            .into_iter()
-            .chain(DvFq::to_bits(pi1.y))
-            .enumerate()
-            .map(|(i, b)| {
-                let key = ls.encoding_keys[0][i];
-                if b { key ^ delta } else { key }
-            })
-            .collect()
+        let ls = InstanceLightSecrets::from_seed(self.seeds[idx]);
+        ls.compute_pi1_labels(pi1)
     }
 
     /// Compute the active x_d input labels for instance `idx` given a concrete x_d.
     pub fn compute_x_d_labels(&self, idx: usize, x_d: Fr) -> Vec<S> {
-        let ls = &self.light_secrets[idx];
-        let delta = ls.delta[1];
-        DvFr::to_bits(x_d)
-            .into_iter()
-            .enumerate()
-            .map(|(i, b)| {
-                let key = ls.encoding_keys[1][i];
-                if b { key ^ delta } else { key }
-            })
-            .collect()
+        let ls = InstanceLightSecrets::from_seed(self.seeds[idx]);
+        ls.compute_x_d_labels(x_d)
+    }
+
+    pub fn get_seeds(&self) -> Vec<u64> {
+        self.seeds.clone()
+    }
+
+    pub fn light_secrets_for(&self, idx: usize) -> InstanceLightSecrets {
+        InstanceLightSecrets::from_seed(self.seeds[idx])
     }
 }

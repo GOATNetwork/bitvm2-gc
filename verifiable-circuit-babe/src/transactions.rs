@@ -27,12 +27,10 @@ pub struct TxChallengeAssertOutputLock {
 
 /// tx_Assert — witness for input 0.
 /// Input spends a UTXO with: CheckWotsSig(wots_pk_P)
-/// Script verifies the Wots96 signature over the 96-byte message (π₁.x ∥ π₁.y ∥ x_d).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TxAssertWitness {
     /// Wots96 signature over the 96-byte message (π₁.x LE-32 ∥ π₁.y LE-32 ∥ x_d LE-32).
-    /// π₁ and x_d are recoverable from the digit values embedded in this signature.
-    pub wots_sig: Wots96Sig,
+    pub wots_sig: Vec<[u8; 21]>,
 }
 
 impl TxAssertWitness {
@@ -40,7 +38,9 @@ impl TxAssertWitness {
     /// The 96-byte message layout is: π₁.x (LE-32) ∥ π₁.y (LE-32) ∥ x_d (LE-32).
     /// Does NOT verify the signature — caller must call wots96_verify separately.
     pub fn recover_pi1_xd_without_verify(&self) -> Option<(G1Affine, Fr)> {
-        let msg = Wots96::signature_to_message(&self.wots_sig);
+        assert_eq!(self.wots_sig.len(), Wots96::TOTAL_DIGIT_LEN as usize);
+        let arr_sig: [[u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize] = self.wots_sig.clone().try_into().unwrap();
+        let msg = Wots96::signature_to_message(&arr_sig);
         let x = Fq::deserialize_uncompressed(&msg[0..32]).ok()?;
         let y = Fq::deserialize_uncompressed(&msg[32..64]).ok()?;
         let pi1 = G1Affine::new(x, y);
@@ -55,14 +55,18 @@ impl TxAssertWitness {
 ///   (a) Wots96 sig is valid for some 96-byte message m — binds π₁ and x_d to the prover
 ///   (b) SHA256(L[i]) == epk_V[i][bit_i(m)]  — L[i] is the correct GC label for bit_i under epk
 ///   (c) Wots96 sig and epk labels are consistent over the same message m — both sign/encode the same bits
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TxChallengeAssertWitness {
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChallengeAssertWitnessRaw {
     /// L₁…L_M — one GC input label per bit of π₁ and x_d, LAMPORT_N × 16 bytes.
     pub input_labels: Vec<[u8; 16]>,
     /// Wots96 sig re-posted from TxAssertWitness to bind the labels to π₁ and x_d.
-    /// The script checks that the bit sequence recovered from this sig matches the
-    /// bit indices used to select each label in input_labels.
-    pub wots_sig: Wots96Sig,
+    pub wots_sig: Vec<[u8; 21]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TxChallengeAssertWitness {
+    pub witness: ChallengeAssertWitnessRaw,
     /// VerifierLiveSig
     pub sig_v: BabeBtcSig,
     /// ProverPresigChallengeAssert
@@ -123,7 +127,7 @@ impl OnchainSize for TxAssertWitness {
 
 impl OnchainSize for TxChallengeAssertWitness {
     fn size_bytes(&self) -> usize {
-        self.input_labels.len() * 16                 // LAMPORT_N × 16 bytes
+        self.witness.input_labels.len() * 16                 // LAMPORT_N × 16 bytes
             + Wots96::TOTAL_DIGIT_LEN as usize * 20  // wots_sig preimages
             + BTC_SIG_BYTES                          // sig_v: 32 bytes
             + BTC_SIG_BYTES                          // sig_p: 32 bytes
