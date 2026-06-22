@@ -110,7 +110,7 @@ impl CACInstance {
         seed: u64,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
         static_inputs: Fr,
-    ) -> Result<(CACInstanceCommit, InstanceSecrets), String> {
+    ) -> Result<CACInstanceCommit, String> {
         if vk.gamma_abc_g1.len() != 3 {
             return Err("static/dynamic split does not match vk".to_string());
         }
@@ -195,8 +195,8 @@ impl CACInstance {
 
         let commit = CACInstanceCommit {
             epk,
-            constant_commits_0,
-            constant_commits_1,
+            constant_commits_fgc: constant_commits_0,
+            constant_commits_sgc: constant_commits_1,
             b_blind_commit: h_256(&b_blind_bytes),
             h_msg: derive_hashlock(&secrets.msg),
             h_ct_setup: h_256(&ct_setup_bytes),
@@ -204,7 +204,7 @@ impl CACInstance {
             com_gc: [com_fgc, com_sgc_1, com_sgc_2],
         };
 
-        Ok((commit, secrets))
+        Ok(commit)
     }
 
     /// Enc*(crs, x_S, |D|, msg; r, B):

@@ -24,6 +24,16 @@ pub struct InstanceSecrets {
     pub b: G1Affine,
 }
 
+/// Cheaply derive only the two fields needed for label encoding
+pub fn derive_light_from_seed(seed: u64) -> ([S; 2], [Vec<S>; 2]) {
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+    let delta = [gen_s(&mut rng, 1)[0], gen_s(&mut rng, 1)[0]];
+    let _ = Fr::rand(&mut rng);          // advance past r
+    rng.fill_bytes(&mut [0u8; 32]);      // advance past msg
+    let input_0labels = [gen_s(&mut rng, 2 * N), gen_s(&mut rng, N)];
+    (delta, input_0labels)
+}
+
 impl InstanceSecrets {
     pub fn new_from_seed(seed: u64) -> Self {
         let mut rng = ChaCha20Rng::seed_from_u64(seed);

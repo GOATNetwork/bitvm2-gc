@@ -8,12 +8,11 @@ use crate::utils::{derive_hashlock, h_256};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CACInstanceCommit {
     /// RIPEMD(SHA256)(label0) and RIPEMD(SHA256)(label1) for each input wire.
-    /// We need to use RIPEMD(SHA256) to put this on skeleton Txn.
     pub epk: Vec<[[u8; 20]; 2]>,
     /// SHA256(label0) and SHA256(label1) for each of the 2 constant wires in fgc.
-    pub constant_commits_0: [[[u8; 32]; 2]; 2],
+    pub constant_commits_fgc: [[[u8; 32]; 2]; 2],
     /// constant commit for sgc. Length must be `SGC_PART1_CONSTANT_SIZE` (510, = 2 + 2*N).
-    pub constant_commits_1: Vec<[[u8; 32]; 2]>,
+    pub constant_commits_sgc: Vec<[[u8; 32]; 2]>,
     /// commitment of b_blind in this instance.
     pub b_blind_commit: [u8; 32],
     pub h_msg: [u8; 20],
@@ -63,8 +62,8 @@ impl CACInstanceCommit {
 
         CACInstanceCommit {
             epk: input_commits,
-            constant_commits_0,
-            constant_commits_1,
+            constant_commits_fgc: constant_commits_0,
+            constant_commits_sgc: constant_commits_1,
             b_blind_commit,
             h_msg: derive_hashlock(&instance.secrets.msg),
             h_ct_setup: h_256(&ct_setup_bytes),
