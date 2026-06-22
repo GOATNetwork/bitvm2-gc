@@ -125,7 +125,7 @@ impl BABEVerifier {
             return None;
         }
         Some(Self {
-            seeds: seeds.clone().to_vec(),
+            seeds: seeds.to_vec(),
             commits: commits.clone(),
             vk: vk.clone(),
             static_public_inputs

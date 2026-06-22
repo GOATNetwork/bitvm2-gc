@@ -4,7 +4,7 @@ use ark_bn254::{Fq, Fr, G1Affine};
 use ark_serialize::CanonicalDeserialize;
 use serde::{Deserialize, Serialize};
 use crate::babe::{BabeBtcSig, BtcPk, BTC_SIG_BYTES, MSG_BYTES};
-use crate::wots::{Wots96, Wots96Sig};
+use crate::wots::Wots96;
 use bitvm::signatures::Wots;
 
 /// Constants embedded in the locking script of tx_Deposit output 0.
