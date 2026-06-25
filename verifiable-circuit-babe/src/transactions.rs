@@ -38,12 +38,21 @@ impl TxAssertWitness {
     /// The 96-byte message layout is: π₁.x (LE-32) ∥ π₁.y (LE-32) ∥ x_d (LE-32).
     /// Does NOT verify the signature — caller must call wots96_verify separately.
     pub fn recover_pi1_xd_without_verify(&self) -> Option<(G1Affine, Fr)> {
-        assert_eq!(self.wots_sig.len(), Wots96::TOTAL_DIGIT_LEN as usize);
-        let arr_sig: [[u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize] = self.wots_sig.clone().try_into().unwrap();
+        // wrong length
+        if self.wots_sig.len() != Wots96::TOTAL_DIGIT_LEN as usize {
+            return None;
+        }
+
+        let arr_sig: [[u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize] =
+            self.wots_sig.clone().try_into().ok()?;
         let msg = Wots96::signature_to_message(&arr_sig);
         let x = Fq::deserialize_uncompressed(&msg[0..32]).ok()?;
         let y = Fq::deserialize_uncompressed(&msg[32..64]).ok()?;
-        let pi1 = G1Affine::new(x, y);
+        // return None if pi1 is not a valid point.
+        let pi1 = G1Affine::new_unchecked(x, y);
+        if !pi1.is_on_curve() {
+            return None;
+        }
         let x_d = Fr::deserialize_uncompressed(&msg[64..96]).ok()?;
         Some((pi1, x_d))
     }
@@ -150,5 +159,93 @@ impl OnchainSize for TxNoWithdrawWitness {
 impl OnchainSize for TxWithdrawWitness {
     fn size_bytes(&self) -> usize {
         BTC_SIG_BYTES * 4 // 4 sigs × 32 bytes = 128 bytes
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_bn254::{Fq, Fr, G1Affine};
+    use ark_ec::AffineRepr;
+    use ark_serialize::CanonicalSerialize;
+    use bitvm::signatures::Wots;
+    use crate::utils::pi1_xd_to_wots96_msg;
+    use crate::wots::Wots96;
+
+    // Signs an arbitrary 96-byte message to produce a TxAssertWitness.
+    fn make_witness_from_raw_msg(msg: &[u8; 96]) -> TxAssertWitness {
+        let sk = Wots96::generate_secret_key();
+        TxAssertWitness { wots_sig: Wots96::sign(&sk, msg).to_vec() }
+    }
+
+    #[test]
+    fn test_recover_valid_generator_and_fr() {
+        let pi1 = G1Affine::generator();
+        let x_d = Fr::from(42u64);
+        let msg = pi1_xd_to_wots96_msg(&pi1, x_d);
+        let witness = make_witness_from_raw_msg(&msg);
+
+        let (recovered_pi1, recovered_xd) = witness.recover_pi1_xd_without_verify().unwrap();
+        assert_eq!(recovered_pi1, pi1);
+        assert_eq!(recovered_xd, x_d);
+    }
+
+    #[test]
+    fn test_recover_wrong_length() {
+        let witness = TxAssertWitness { wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize - 1] };
+        assert!(witness.recover_pi1_xd_without_verify().is_none());
+
+        let witness = TxAssertWitness { wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize + 1] };
+        assert!(witness.recover_pi1_xd_without_verify().is_none());
+    }
+
+    #[test]
+    fn test_recover_empty_sig() {
+        let witness = TxAssertWitness { wots_sig: vec![] };
+        assert!(witness.recover_pi1_xd_without_verify().is_none());
+    }
+
+    #[test]
+    fn test_recover_off_curve_point() {
+        // (1, 1) is not on BN254 G1
+        let mut msg = [0u8; 96];
+        let mut buf = Vec::new();
+        Fq::from(1u64).serialize_uncompressed(&mut buf).unwrap();
+        msg[0..32].copy_from_slice(&buf);
+        buf.clear();
+        Fq::from(1u64).serialize_uncompressed(&mut buf).unwrap();
+        msg[32..64].copy_from_slice(&buf);
+        let witness = make_witness_from_raw_msg(&msg);
+        assert!(witness.recover_pi1_xd_without_verify().is_none());
+    }
+
+    #[test]
+    fn test_recover_x_coordinate_out_of_field() {
+        // 0xFF..FF > Fq modulus → Fq::deserialize_uncompressed returns Err
+        let mut msg = [0u8; 96];
+        msg[0..32].fill(0xFF);
+        let witness = make_witness_from_raw_msg(&msg);
+        assert!(witness.recover_pi1_xd_without_verify().is_none());
+    }
+
+    #[test]
+    fn test_recover_y_coordinate_out_of_field() {
+        let pi1 = G1Affine::generator();
+        let mut buf = Vec::new();
+        pi1.x.serialize_uncompressed(&mut buf).unwrap();
+        let mut msg = [0u8; 96];
+        msg[0..32].copy_from_slice(&buf);
+        msg[32..64].fill(0xFF); // y > Fq modulus
+        let witness = make_witness_from_raw_msg(&msg);
+        assert!(witness.recover_pi1_xd_without_verify().is_none());
+    }
+
+    #[test]
+    fn test_recover_xd_out_of_field() {
+        let pi1 = G1Affine::generator();
+        let mut msg = pi1_xd_to_wots96_msg(&pi1, Fr::from(0u64));
+        msg[64..96].fill(0xFF); // x_d > Fr modulus
+        let witness = make_witness_from_raw_msg(&msg);
+        assert!(witness.recover_pi1_xd_without_verify().is_none());
     }
 }
