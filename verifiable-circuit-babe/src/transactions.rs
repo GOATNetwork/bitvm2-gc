@@ -1,9 +1,12 @@
 // ─── Transaction skeletons. This will be replaced by real Txn in Bitvm2-node ─────────
 
-use ark_bn254::{Fq, Fr, G1Affine};
+use ark_bn254::{Bn254, Fq, Fr, G1Affine, G2Affine};
+use ark_ec::CurveGroup;
+use ark_groth16::{Proof as Groth16Proof, VerifyingKey as Groth16VerifyingKey};
 use ark_serialize::CanonicalDeserialize;
 use serde::{Deserialize, Serialize};
 use crate::babe::{BabeBtcSig, BtcPk, BTC_SIG_BYTES, MSG_BYTES};
+use crate::utils::{g1_from_ser_checked, g2_from_ser_checked};
 use crate::wots::Wots96;
 use bitvm::signatures::Wots;
 
@@ -31,12 +34,16 @@ pub struct TxChallengeAssertOutputLock {
 pub struct TxAssertWitness {
     /// Wots96 signature over the 96-byte message (π₁.x LE-32 ∥ π₁.y LE-32 ∥ x_d LE-32).
     pub wots_sig: Vec<[u8; 21]>,
+    /// π₂ (G2Affine) from the Groth16 proof, compressed-serialized.
+    pub pi2: Vec<u8>,
+    /// π₃ (G1Affine) from the Groth16 proof, compressed-serialized.
+    pub pi3: Vec<u8>,
 }
 
 impl TxAssertWitness {
     /// Extract π₁ and x_d from the digit values embedded in the Wots96 signature.
     /// The 96-byte message layout is: π₁.x (LE-32) ∥ π₁.y (LE-32) ∥ x_d (LE-32).
-    /// Does NOT verify the signature — caller must call wots96_verify separately.
+    /// Return None if the wots_sig is wrong format, which not signature over (G1Affine, Fr)
     pub fn recover_pi1_xd_without_verify(&self) -> Option<(G1Affine, Fr)> {
         // wrong length
         if self.wots_sig.len() != Wots96::TOTAL_DIGIT_LEN as usize {
@@ -48,7 +55,6 @@ impl TxAssertWitness {
         let msg = Wots96::signature_to_message(&arr_sig);
         let x = Fq::deserialize_uncompressed(&msg[0..32]).ok()?;
         let y = Fq::deserialize_uncompressed(&msg[32..64]).ok()?;
-        // return None if pi1 is not a valid point.
         let pi1 = G1Affine::new_unchecked(x, y);
         if !pi1.is_on_curve() {
             return None;
@@ -56,6 +62,50 @@ impl TxAssertWitness {
         let x_d = Fr::deserialize_uncompressed(&msg[64..96]).ok()?;
         Some((pi1, x_d))
     }
+
+    /// Recover (π₂: G2Affine, π₃: G1Affine) from the compressed-serialized bytes.
+    /// Returns None if either is malformed, at infinity, off-curve, or in the wrong subgroup.
+    pub fn recover_pi2_pi3(&self) -> Option<(G2Affine, G1Affine)> {
+        let pi2 = g2_from_ser_checked(&self.pi2)?.into_affine();
+        let pi3 = g1_from_ser_checked(&self.pi3)?.into_affine();
+        Some((pi2, pi3))
+    }
+
+    /// Reconstruct the full Groth16 proof (π₁, π₂, π₃) and verify it.
+    /// π₁ and x_d are recovered from `wots_sig`; π₂ and π₃ from `pi2`/`pi3`.
+    /// `static_public_inputs` are prepended to `[x_d]` to form the complete public input vector.
+    /// Returns false if any field is malformed or the proof does not verify.
+    pub fn verify_groth16_proof(
+        &self,
+        vk: &Groth16VerifyingKey<Bn254>,
+        static_public_inputs: &[Fr],
+    ) -> bool {
+        let (pi1, x_d) = match self.recover_pi1_xd_without_verify() {
+            Some(v) => v,
+            None => return false,
+        };
+        let (pi2, pi3) = match self.recover_pi2_pi3() {
+            Some(v) => v,
+            None => return false,
+        };
+        let mut public_inputs = static_public_inputs.to_vec();
+        public_inputs.push(x_d);
+        verify_groth16_proof_components(pi1, pi2, pi3, &public_inputs, vk)
+    }
+}
+
+/// Reconstruct a Groth16 proof from its components and verify it against `vk`.
+/// `public_inputs` must be the complete ordered vector expected by the circuit.
+fn verify_groth16_proof_components(
+    pi1: G1Affine,
+    pi2: G2Affine,
+    pi3: G1Affine,
+    public_inputs: &[Fr],
+    vk: &Groth16VerifyingKey<Bn254>,
+) -> bool {
+    let proof = Groth16Proof { a: pi1, b: pi2, c: pi3 };
+    let pvk = ark_groth16::prepare_verifying_key(vk);
+    ark_groth16::Groth16::<Bn254>::verify_proof(&pvk, &proof, public_inputs).unwrap_or(false)
 }
 
 /// tx_ChallengeAssert — witness for input 0.
@@ -129,8 +179,9 @@ pub trait OnchainSize {
 
 impl OnchainSize for TxAssertWitness {
     fn size_bytes(&self) -> usize {
-        // Signature size
         Wots96::TOTAL_DIGIT_LEN as usize * 21
+            + 64  // π₂: G2Affine compressed
+            + 32  // π₃: G1Affine compressed
     }
 }
 
@@ -165,18 +216,21 @@ impl OnchainSize for TxWithdrawWitness {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bn254::{Fq, Fr, G1Affine};
-    use ark_ec::AffineRepr;
+    use ark_bn254::{Fq, Fr, G1Affine, G2Affine};
+    use ark_ec::{AffineRepr, CurveGroup};
+    use ark_ff::UniformRand;
     use ark_serialize::CanonicalSerialize;
     use bitvm::signatures::Wots;
+    use crate::babe::DummyMulCircuit;
     use crate::utils::pi1_xd_to_wots96_msg;
     use crate::wots::Wots96;
 
-    // Signs an arbitrary 96-byte message to produce a TxAssertWitness.
     fn make_witness_from_raw_msg(msg: &[u8; 96]) -> TxAssertWitness {
         let sk = Wots96::generate_secret_key();
-        TxAssertWitness { wots_sig: Wots96::sign(&sk, msg).to_vec() }
+        TxAssertWitness { wots_sig: Wots96::sign(&sk, msg).to_vec(), pi2: vec![], pi3: vec![] }
     }
+
+    // ── recover_pi1_xd_without_verify ─────────────────────────────────────────
 
     #[test]
     fn test_recover_valid_generator_and_fr() {
@@ -192,16 +246,22 @@ mod tests {
 
     #[test]
     fn test_recover_wrong_length() {
-        let witness = TxAssertWitness { wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize - 1] };
+        let witness = TxAssertWitness {
+            wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize - 1],
+            pi2: vec![], pi3: vec![],
+        };
         assert!(witness.recover_pi1_xd_without_verify().is_none());
 
-        let witness = TxAssertWitness { wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize + 1] };
+        let witness = TxAssertWitness {
+            wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize + 1],
+            pi2: vec![], pi3: vec![],
+        };
         assert!(witness.recover_pi1_xd_without_verify().is_none());
     }
 
     #[test]
     fn test_recover_empty_sig() {
-        let witness = TxAssertWitness { wots_sig: vec![] };
+        let witness = TxAssertWitness { wots_sig: vec![], pi2: vec![], pi3: vec![] };
         assert!(witness.recover_pi1_xd_without_verify().is_none());
     }
 
@@ -247,5 +307,105 @@ mod tests {
         msg[64..96].fill(0xFF); // x_d > Fr modulus
         let witness = make_witness_from_raw_msg(&msg);
         assert!(witness.recover_pi1_xd_without_verify().is_none());
+    }
+
+    // ── recover_pi2_pi3 ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_recover_pi2_pi3_valid() {
+        let mut rng = rand::thread_rng();
+        let pi2 = ark_bn254::G2Projective::rand(&mut rng).into_affine();
+        let pi3 = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+
+        let mut pi2_bytes = Vec::new();
+        pi2.serialize_compressed(&mut pi2_bytes).unwrap();
+        let mut pi3_bytes = Vec::new();
+        pi3.serialize_compressed(&mut pi3_bytes).unwrap();
+
+        let witness = TxAssertWitness {
+            wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize],
+            pi2: pi2_bytes,
+            pi3: pi3_bytes,
+        };
+        let (r2, r3) = witness.recover_pi2_pi3().unwrap();
+        assert_eq!(r2, pi2);
+        assert_eq!(r3, pi3);
+    }
+
+    #[test]
+    fn test_recover_pi2_pi3_invalid_pi2() {
+        let mut rng = rand::thread_rng();
+        let pi3 = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+        let mut pi3_bytes = Vec::new();
+        pi3.serialize_compressed(&mut pi3_bytes).unwrap();
+
+        let witness = TxAssertWitness {
+            wots_sig: vec![],
+            pi2: vec![0u8; 64], // invalid G2 bytes
+            pi3: pi3_bytes,
+        };
+        assert!(witness.recover_pi2_pi3().is_none());
+    }
+
+    // ── verify_groth16_proof ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_verify_groth16_proof_valid() {
+        use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
+        use ark_groth16::Groth16;
+        use rand::SeedableRng;
+
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(42);
+        let a = Fr::from(3u64);
+        let b = Fr::from(4u64);
+
+        let circuit = DummyMulCircuit { a: Some(a), b: Some(b) };
+        let (pk, vk) = Groth16::<Bn254>::setup(circuit, &mut rng).unwrap();
+
+        let circuit = DummyMulCircuit { a: Some(a), b: Some(b) };
+        let proof = Groth16::<Bn254>::prove(&pk, circuit, &mut rng).unwrap();
+
+        let static_pi = a * b;
+        let x_d = a * a;
+
+        let msg = pi1_xd_to_wots96_msg(&proof.a, x_d);
+        let sk = Wots96::generate_secret_key();
+        let mut pi2_bytes = Vec::new();
+        proof.b.serialize_compressed(&mut pi2_bytes).unwrap();
+        let mut pi3_bytes = Vec::new();
+        proof.c.serialize_compressed(&mut pi3_bytes).unwrap();
+
+        let witness = TxAssertWitness {
+            wots_sig: Wots96::sign(&sk, &msg).to_vec(),
+            pi2: pi2_bytes,
+            pi3: pi3_bytes,
+        };
+
+        assert!(witness.verify_groth16_proof(&vk, &[static_pi]));
+    }
+
+    #[test]
+    fn test_verify_groth16_proof_bad_pi2_pi3() {
+        use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
+        use ark_groth16::Groth16;
+        use rand::SeedableRng;
+
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(99);
+        let a = Fr::from(3u64);
+        let b = Fr::from(4u64);
+        let circuit = DummyMulCircuit { a: Some(a), b: Some(b) };
+        let (_, vk) = Groth16::<Bn254>::setup(circuit, &mut rng).unwrap();
+
+        let x_d = a * a;
+        let msg = pi1_xd_to_wots96_msg(&G1Affine::generator(), x_d);
+        let sk = Wots96::generate_secret_key();
+
+        // Zero bytes → recover_pi2_pi3 returns None → verify returns false
+        let witness = TxAssertWitness {
+            wots_sig: Wots96::sign(&sk, &msg).to_vec(),
+            pi2: vec![0u8; 64],
+            pi3: vec![0u8; 32],
+        };
+        assert!(!witness.verify_groth16_proof(&vk, &[a * b]));
     }
 }
