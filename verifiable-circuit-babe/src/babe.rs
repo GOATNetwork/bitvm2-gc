@@ -203,11 +203,16 @@ pub fn babe_build_deposit_lock(pk_p: BtcPk, pk_v: BtcPk, amount: u64) -> TxDepos
 // ─── Assert phase (Prover posts π₁ and x_d) ─────────────────────────────────────────
 
 /// Prover: sign π₁ and x_d with wots_sk_P and build the assert witness.
+/// π₂ and π₃ are serialized (compressed) into the witness for the Verifier to recover.
 pub fn babe_prover_assert(proof: &Groth16Proof<Bn254>, wots_sk: &Wots96Secret, x_d: ark_bn254::Fr) -> TxAssertWitness {
     let pi1 = proof.a;
     let msg = pi1_xd_to_wots96_msg(&pi1, x_d);
     let wots_sig = Wots96::sign(wots_sk, &msg);
-    TxAssertWitness { wots_sig: wots_sig.to_vec() }
+    let mut pi2 = Vec::new();
+    proof.b.serialize_compressed(&mut pi2).expect("serialize π₂");
+    let mut pi3 = Vec::new();
+    proof.c.serialize_compressed(&mut pi3).expect("serialize π₃");
+    TxAssertWitness { wots_sig: wots_sig.to_vec(), pi2, pi3 }
 }
 
 // ─── ChallengeAssert phase (Verifier reveals base-instance labels) ────────────

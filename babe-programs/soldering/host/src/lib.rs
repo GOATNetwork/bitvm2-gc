@@ -196,6 +196,21 @@ impl BabeBundleBuilder {
         println!("Prover: posting tx_Assert...");
         println!("tx_Assert witness:            {} bytes", assert_witness.size_bytes());
 
+        // Verifier: reconstruct the Groth16 proof from tx_Assert and verify it.
+        // If valid, no challenge is necessary — the Prover wins the honest path directly.
+        // This E2E continues to the challenge path to exercise it end-to-end regardless.
+        println!("Verifier: recovering and verifying Groth16 proof from tx_Assert...");
+        match assert_witness.recover_pi1_xd_without_verify() {
+            None => return Err("tx_Assert: witness is not in correct format (π₁ or x_d malformed)".to_string()),
+            Some(_) => {
+                if assert_witness.verify_groth16_proof(&vk, &[static_public_inputs]) {
+                    println!("Verifier: Groth16 proof is valid — no challenge needed in production.");
+                } else {
+                    return Err("tx_Assert: Groth16 proof failed to verify".to_string());
+                }
+            }
+        }
+
         // ChallengeAssert: Verifier verifies Wots sig and reveals base-instance labels.
         let challenge_assert_witness = babe_verifier_challenge_assert_cac(
             &assert_witness,
