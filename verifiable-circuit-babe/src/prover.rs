@@ -256,9 +256,8 @@ impl BABEProver {
         for (i, &lbl) in p1_labels.iter().enumerate() {
             fgc.0[i + 2].borrow_mut().label = Some(lbl);
         }
-        let fgc_witness: Vec<bool> = DvFq::to_bits(pi1.x)
-            .into_iter()
-            .chain(DvFq::to_bits(pi1.y).into_iter())
+        let fgc_witness: Vec<bool> = DvFq::to_bits(pi1.x).into_iter().chain([false, false])
+            .chain(DvFq::to_bits(pi1.y)).chain([false, false])
             .collect();
         let fgc_output_labels = BABEProver::eval_circuit_with_ciphertext(
             fgc,
