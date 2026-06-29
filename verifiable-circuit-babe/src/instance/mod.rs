@@ -9,7 +9,7 @@ use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use ark_serialize::CanonicalSerialize;
 use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
 use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
-use crate::dre::{Q_SIZE, U_BAR_SIZE};
+use crate::dre::{N, Q_SIZE, U_BAR_SIZE};
 use crate::instance::commit::CACInstanceCommit;
 use crate::utils::{derive_hashlock, g2_project_to_ser, h_256, ro_from_pairing_bytes};
 
@@ -79,9 +79,7 @@ impl CACInstance {
             let mut buf = FlatEvalBuffer::new(fgc_flat.num_wires);
             buf.set_label(0, secrets.constant_0labels[1][0].0);
             buf.set_label(1, secrets.constant_0labels[1][1].0);
-            for (i, key) in sgc_output_labels_1.iter().step_by(2).enumerate() {
-                buf.set_label(2 + i, *key);
-            }
+            set_sgc2_rq_labels(&mut buf, &sgc_output_labels_1, secrets.constant_0labels[1][0].0);
             buf.garble_and_collect(fgc_flat, fgc_indices, secrets.delta[1].0)
         };
         assert_eq!(sgc_output_labels_2.len(), 2 * U_BAR_SIZE);
@@ -149,9 +147,7 @@ impl CACInstance {
             let mut buf = FlatEvalBuffer::new(fgc_flat.num_wires);
             buf.set_label(0, secrets.constant_0labels[1][0].0);
             buf.set_label(1, secrets.constant_0labels[1][1].0);
-            for (i, key) in sgc_output_labels_1.iter().step_by(2).enumerate() {
-                buf.set_label(2 + i, *key);
-            }
+            set_sgc2_rq_labels(&mut buf, &sgc_output_labels_1, secrets.constant_0labels[1][0].0);
             buf.garble_and_hash(fgc_flat, fgc_indices, secrets.delta[1].0)
         };
         assert_eq!(sgc_output_labels_2.len(), 2 * U_BAR_SIZE);
@@ -305,6 +301,23 @@ impl CACInstance {
     }
 }
 
+/// Set SGC Part 2 input 0-labels
+/// Wire layout: Q.x bits (0..N) | Q.x MSB slots | Q.y bits (0..N) | Q.y MSB slots.
+/// `q_pairs` is the interleaved [l0, l1, l0, l1, ...] output from SGC Part 1 (2*Q_SIZE entries).
+/// `msb_l0` is the 0-label for the 4 MSB-slot wires/
+fn set_sgc2_rq_labels(buf: &mut FlatEvalBuffer, q_pairs: &[[u8; 16]], msb_l0: [u8; 16]) {
+    for (i, key) in q_pairs[..2 * N].iter().step_by(2).enumerate() {
+        buf.set_label(2 + i, *key);
+    }
+    buf.set_label(2 + N, msb_l0);
+    buf.set_label(2 + N + 1, msb_l0);
+    for (i, key) in q_pairs[2 * N..].iter().step_by(2).enumerate() {
+        buf.set_label(2 + N + 2 + i, *key);
+    }
+    buf.set_label(2 + N + 2 + N, msb_l0);
+    buf.set_label(2 + N + 2 + N + 1, msb_l0);
+}
+
 pub fn set_gc_const_labels(
     circuit: &mut Circuit,
     constant_labels: &[S],
@@ -317,6 +330,21 @@ pub fn set_gc_const_labels(
     for i in 0..constant_labels.len() {
         circuit.0[i].borrow_mut().label = Some(constant_labels[i]);
     }
+}
+
+/// Set SGC Part 2 input labels on a Circuit for evaluation.
+/// same layout as set_sgc2_q_labels
+pub fn set_sgc2_rq_eval_labels(circuit: &mut Circuit, q_labels: &[[u8; 16]], msb_label: S) {
+    for (i, &key) in q_labels[..N].iter().enumerate() {
+        circuit.0[2 + i].borrow_mut().label = Some(S(key));
+    }
+    circuit.0[2 + N].borrow_mut().label = Some(msb_label);
+    circuit.0[2 + N + 1].borrow_mut().label = Some(msb_label);
+    for (i, &key) in q_labels[N..].iter().enumerate() {
+        circuit.0[2 + N + 2 + i].borrow_mut().label = Some(S(key));
+    }
+    circuit.0[2 + N + 2 + N].borrow_mut().label = Some(msb_label);
+    circuit.0[2 + N + 2 + N + 1].borrow_mut().label = Some(msb_label);
 }
 
 
@@ -419,11 +447,8 @@ mod tests {
 
         // evaluate the sgc part2 to get the r * Q
         fgc.reset_circuit_except_01_constants();
-        // set label of part2 as output of part1 (evaluator has one active label per wire)
-        for (i, &key) in sgc_output_labels_1.iter().enumerate()  {
-            fgc.0[2 + i].borrow_mut().label = Some(S(key));
-        }
         set_gc_const_labels(&mut fgc, &constant_labels[1][0..2]);
+        set_sgc2_rq_eval_labels(&mut fgc, &sgc_output_labels_1, constant_labels[1][0]);
         let sgc_witness: Vec<bool> = DvFq::to_bits(q_affine.x).into_iter().chain([false, false])
             .chain(DvFq::to_bits(q_affine.y)).chain([false, false])
             .collect();

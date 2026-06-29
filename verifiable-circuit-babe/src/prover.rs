@@ -11,9 +11,9 @@ use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
 use crate::babe::{WeKnownPi1ProveCt, WeKnownPi1SetupCt};
 use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
-use crate::dre::{N_PADDED};
+use crate::dre::{N, N_PADDED};
 use crate::gc::{SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
-use crate::instance::{b_value_bits, set_gc_const_labels};
+use crate::instance::{b_value_bits, set_gc_const_labels, set_sgc2_rq_eval_labels};
 use crate::soldering::{SolderedLabelsData, SolderingData};
 use crate::utils::{derive_hashlock, h_160, h_256, ro_from_pairing_bytes};
 
@@ -285,7 +285,7 @@ impl BABEProver {
         for (i, bit) in b_y_bits.iter().enumerate() {
             sgc.0[2 + 254 + i].borrow_mut().value = Some(*bit);
         }
-        let sgc_part1_witness: Vec<bool> = DvFr::to_bits(x_d);
+        let sgc_part1_witness: Vec<bool> = DvFr::to_bits(x_d).into_iter().chain([false, false]).collect();
         let sgc_output_labels_1 = BABEProver::eval_circuit_with_ciphertext(
             sgc,
             sgc_indices,
@@ -298,14 +298,10 @@ impl BABEProver {
         let q = self.vk.gamma_abc_g1[2] * self.dyn_pubin + b;
         let q_affine = q.into_affine();
         fgc.reset_circuit_except_01_constants();
-        // set label of part2 as output of part1 (evaluator has one active label per wire)
-        for (i, &key) in sgc_output_labels_1.iter().enumerate()  {
-            fgc.0[2 + i].borrow_mut().label = Some(S(key));
-        }
         set_gc_const_labels(fgc, &const_labels[1][0..2]);
-        let sgc_witness: Vec<bool> = DvFq::to_bits(q_affine.x)
-            .into_iter()
-            .chain(DvFq::to_bits(q_affine.y).into_iter())
+        set_sgc2_rq_eval_labels(fgc, &sgc_output_labels_1, const_labels[1][0]);
+        let sgc_witness: Vec<bool> = DvFq::to_bits(q_affine.x).into_iter().chain([false, false])
+            .chain(DvFq::to_bits(q_affine.y)).chain([false, false])
             .collect();
         let sgc_output_labels_2 = BABEProver::eval_circuit_with_ciphertext(
             fgc,
