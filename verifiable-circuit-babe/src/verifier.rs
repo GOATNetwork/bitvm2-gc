@@ -5,6 +5,7 @@ use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
 use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
 use serde::{Deserialize, Serialize};
 use crate::cac::CACSetupPackage;
+use crate::dre::N_PADDED;
 use crate::gc::SGC_PART1_CONSTANT_SIZE;
 use crate::instance::CACInstance;
 use crate::instance::commit::CACInstanceCommit;
@@ -49,6 +50,26 @@ impl InstanceLightSecrets {
                 if b { key ^ delta } else { key }
             })
             .collect()
+    }
+
+    /// Build labels for all 3*N_PADDED input bits from the raw 96-byte Wots message.
+    /// Layout: pi1.x | pi1.y | x_d (each contains N_PADDED bits).
+    /// Same as serialize_uncompressed byte
+    pub fn compute_labels_from_bytes(&self, raw: &[u8; 96]) -> Vec<S> {
+        let delta_fgc = self.delta[0];
+        let delta_sgc = self.delta[1];
+        let mut labels = Vec::with_capacity(3 * N_PADDED);
+        for i in 0..2 * N_PADDED {
+            let bit = (raw[i / 8] >> (i % 8)) & 1;
+            let key = self.input_0labels[0][i];
+            labels.push(if bit == 1 { key ^ delta_fgc } else { key });
+        }
+        for i in 0..N_PADDED {
+            let bit = (raw[64 + i / 8] >> (i % 8)) & 1;
+            let key = self.input_0labels[1][i];
+            labels.push(if bit == 1 { key ^ delta_sgc } else { key });
+        }
+        labels
     }
 }
 
@@ -202,6 +223,12 @@ impl BABEVerifier {
     pub fn compute_x_d_labels(&self, idx: usize, x_d: Fr) -> Vec<S> {
         let ls = InstanceLightSecrets::from_seed(self.seeds[idx]);
         ls.compute_x_d_labels(x_d)
+    }
+
+    /// Compute all input labels for instance `idx` from the raw 96-byte Wots message.
+    pub fn compute_labels_from_bytes(&self, idx: usize, raw: &[u8; 96]) -> Vec<S> {
+        let ls = InstanceLightSecrets::from_seed(self.seeds[idx]);
+        ls.compute_labels_from_bytes(raw)
     }
 
     pub fn get_seeds(&self) -> Vec<u64> {

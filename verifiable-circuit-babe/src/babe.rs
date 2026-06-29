@@ -231,12 +231,20 @@ pub fn babe_verifier_challenge_assert_cac(
     assert_witness: &TxAssertWitness,
     verifier_state: &VerifierSetupState,
 ) -> Option<TxChallengeAssertWitness> {
-    build_challenge_assert_witness(
+    // Simulate Bitcoin script: validate Wots96 sig length and verify against the operator pubkey.
+    let arr_sig: [[u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize] =
+        assert_witness.wots_sig.clone().try_into().ok()?;
+    let msg = Wots96::signature_to_message(&arr_sig);
+    tracing::info!("Verifier: Checking Wots96 signature in tx_Assert...");
+    if !wots96_verify(&verifier_state.wots_pk_p, &msg, &arr_sig) {
+        return None;
+    }
+
+    Some(build_challenge_assert_witness(
         &verifier_state.verifier,
         assert_witness,
-        &verifier_state.wots_pk_p,
-        verifier_state.finalized_indices[0]
-    )
+        verifier_state.finalized_indices[0],
+    ))
 }
 
 /// Interleave 6 dummy entries into the [`GC_INPUT_WIRES`]-sized
@@ -264,60 +272,24 @@ pub fn deinterleave_dummy_positions<T: Clone>(padded: &[T]) -> (Vec<T>, Vec<T>, 
     (pi1_x, pi1_y, x_d)
 }
 
+/// Build the ChallengeAssert witness from a pre-validated Assert witness.
+/// Caller is responsible for verifying the Wots96 signature before invoking this.
 pub fn build_challenge_assert_witness(
     verifier: &BABEVerifier,
     assert_witness: &TxAssertWitness,
-    operator_wots_pubkey: &Wots96PublicKey,
     base_idx: usize,
-) -> Option<TxChallengeAssertWitness> {
-    let witness = build_challenge_assert_witness_raw(
-        verifier, assert_witness, operator_wots_pubkey, base_idx,
-    );
-    if witness.is_none() {
-        None
-    } else {
-        Some(TxChallengeAssertWitness {
-            witness: witness.unwrap(),
-            sig_v: BabeBtcSig::VerifierLiveSig,
-            sig_p: BabeBtcSig::ProverPresigChallengeAssert,
-        })
+) -> TxChallengeAssertWitness {
+    let arr_sig: [[u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize] =
+        assert_witness.wots_sig.clone().try_into()
+            .expect("caller must ensure wots_sig has the correct length");
+    let msg = Wots96::signature_to_message(&arr_sig);
+    let labels = verifier.compute_labels_from_bytes(base_idx, &msg);
+    let input_labels: Vec<[u8; 16]> = labels.into_iter().map(|s| s.0).collect();
+    TxChallengeAssertWitness {
+        witness: ChallengeAssertWitnessRaw { input_labels, wots_sig: arr_sig.to_vec() },
+        sig_v: BabeBtcSig::VerifierLiveSig,
+        sig_p: BabeBtcSig::ProverPresigChallengeAssert,
     }
-}
-
-pub fn build_challenge_assert_witness_raw(
-    verifier: &BABEVerifier,
-    assert_witness: &TxAssertWitness,
-    operator_wots_pubkey: &Wots96PublicKey,
-    base_idx: usize,
-) -> Option<ChallengeAssertWitnessRaw> {
-    let (pi1, x_d) = assert_witness.recover_pi1_xd_without_verify()?;
-
-    let msg = pi1_xd_to_wots96_msg(&pi1, x_d);
-    tracing::info!("Verifier: Checking Wots96 signature in tx_Assert against pi1, x_d and wots_pk_p...");
-    assert_eq!(assert_witness.wots_sig.len(), Wots96::TOTAL_DIGIT_LEN as usize);
-    let arr_sig: [[u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize] = assert_witness.wots_sig.clone().try_into().unwrap();
-    if !wots96_verify(operator_wots_pubkey, &msg, &arr_sig) {
-        return None;
-    }
-
-    let pi1_labels = verifier.compute_pi1_labels(base_idx, pi1);
-    let x_d_labels = verifier.compute_x_d_labels(base_idx, x_d);
-    // hardcoded for both Prover and Verifier.
-    let dummy = S([0u8; 16]);
-    let input_labels: Vec<[u8; 16]> = interleave_dummy_positions(
-        &pi1_labels[..N],
-        &pi1_labels[N..],
-        &x_d_labels,
-        dummy,
-    )
-    .into_iter()
-    .map(|s| s.0)
-    .collect();
-
-    Some(ChallengeAssertWitnessRaw {
-        input_labels,
-        wots_sig: arr_sig.to_vec(),
-    })
 }
 
 // ─── WronglyChallenged phase (Prover decrypts msg via C&C) ───────────────────
@@ -332,7 +304,8 @@ pub fn babe_prover_wrongly_challenged_cac(
     prover_state: &ProverSetupState,
 ) -> Option<(TxWronglyChallengedWitness, usize)> {
     let base_input_labels: Vec<S> = challenge_witness.witness.input_labels.iter().map(|&b| S(b)).collect();
-    // Strip the 6 dummy labels before passing to the GC (which has GC_INPUT_WIRES real wires).
+    // Drop the MSB-slot labels at positions 254-255, 510-511, 766-767 (always 0 for valid fields).
+    // The GC currently takes only the 254 real bits per coordinate; Step 2 removes this strip.
     let (pi1_x_labels, pi1_y_labels, x_d_labels) = deinterleave_dummy_positions(&base_input_labels);
     let pi1_labels: Vec<S> = pi1_x_labels.into_iter().chain(pi1_y_labels).collect();
     let mut prover = BABEProver::new(vk.clone(), proof.clone(), dyn_pubin);
