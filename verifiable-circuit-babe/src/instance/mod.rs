@@ -242,29 +242,25 @@ impl CACInstance {
     /// Returns the input labels given the bits of pi1.
     /// Use for testing.
     pub fn compute_pi1_labels_based_on_value(&self, pi1: ark_bn254::G1Affine) -> Vec<S> {
-        let x_bits = DvFq::to_bits(pi1.x);
-        let y_bits = DvFq::to_bits(pi1.y);
-        let witness: Vec<bool> = x_bits.into_iter().chain(y_bits).collect();
+        let witness: Vec<bool> = DvFq::to_bits(pi1.x).into_iter().chain([false, false])
+            .chain(DvFq::to_bits(pi1.y)).chain([false, false])
+            .collect();
         let delta = self.secrets.delta[0];
-
-        let labels: Vec<S> = witness.iter().enumerate().map(|(i, &b)| {
+        witness.iter().enumerate().map(|(i, &b)| {
             let key = self.secrets.input_0labels[0][i];
             if b { key ^ delta } else { key }
-        }).collect();
-        labels
+        }).collect()
     }
 
     /// Returns the input labels given the bits of pi1.
     /// Use for testing.
     pub fn compute_x_d_labels_based_on_value(&self, x_d: Fr) -> Vec<S> {
-        let witness = DvFr::to_bits(x_d);
+        let witness: Vec<bool> = DvFr::to_bits(x_d).into_iter().chain([false, false]).collect();
         let delta = self.secrets.delta[1];
-
-        let labels: Vec<S> = witness.iter().enumerate().map(|(i, &b)| {
+        witness.iter().enumerate().map(|(i, &b)| {
             let key = self.secrets.input_0labels[1][i];
             if b { key ^ delta } else { key }
-        }).collect();
-        labels
+        }).collect()
     }
 
     pub fn get_b_value_labels(&self) -> Vec<S> {
@@ -372,9 +368,8 @@ mod tests {
         for (i, &lbl) in pi1_labels.iter().enumerate() {
             fgc.0[i + 2].borrow_mut().label = Some(lbl);
         }
-        let fgc_witness: Vec<bool> = DvFq::to_bits(pi1.x)
-            .into_iter()
-            .chain(DvFq::to_bits(pi1.y).into_iter())
+        let fgc_witness: Vec<bool> = DvFq::to_bits(pi1.x).into_iter().chain([false, false])
+            .chain(DvFq::to_bits(pi1.y)).chain([false, false])
             .collect();
         let fgc_output_labels = BABEProver::eval_circuit_with_ciphertext(
             &mut fgc,
@@ -403,7 +398,7 @@ mod tests {
         for (i, bit) in b_y_bits.iter().enumerate() {
             sgc.0[2 + 254 + i].borrow_mut().value = Some(*bit);
         }
-        let sgc_part1_witness: Vec<bool> = DvFr::to_bits(dynamic_inputs);
+        let sgc_part1_witness: Vec<bool> = DvFr::to_bits(dynamic_inputs).into_iter().chain([false, false]).collect();
         let sgc_output_labels_1 = BABEProver::eval_circuit_with_ciphertext(
             &mut sgc,
             &sgc_indices,
@@ -429,9 +424,8 @@ mod tests {
             fgc.0[2 + i].borrow_mut().label = Some(S(key));
         }
         set_gc_const_labels(&mut fgc, &constant_labels[1][0..2]);
-        let sgc_witness: Vec<bool> = DvFq::to_bits(q_affine.x)
-            .into_iter()
-            .chain(DvFq::to_bits(q_affine.y).into_iter())
+        let sgc_witness: Vec<bool> = DvFq::to_bits(q_affine.x).into_iter().chain([false, false])
+            .chain(DvFq::to_bits(q_affine.y)).chain([false, false])
             .collect();
         let sgc_output_labels_2 = BABEProver::eval_circuit_with_ciphertext(
             &mut fgc,

@@ -29,9 +29,8 @@ impl InstanceLightSecrets {
 
     pub fn compute_pi1_labels(&self, pi1: G1Affine) -> Vec<S> {
         let delta = self.delta[0];
-        DvFq::to_bits(pi1.x)
-            .into_iter()
-            .chain(DvFq::to_bits(pi1.y))
+        DvFq::to_bits(pi1.x).into_iter().chain([false, false])
+            .chain(DvFq::to_bits(pi1.y)).chain([false, false])
             .enumerate()
             .map(|(i, b)| {
                 let key = self.input_0labels[0][i];
@@ -42,8 +41,7 @@ impl InstanceLightSecrets {
 
     pub fn compute_x_d_labels(&self, x_d: Fr) -> Vec<S> {
         let delta = self.delta[1];
-        DvFr::to_bits(x_d)
-            .into_iter()
+        DvFr::to_bits(x_d).into_iter().chain([false, false])
             .enumerate()
             .map(|(i, b)| {
                 let key = self.input_0labels[1][i];

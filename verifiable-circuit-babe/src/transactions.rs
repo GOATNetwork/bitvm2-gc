@@ -215,7 +215,7 @@ impl OnchainSize for TxWithdrawWitness {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bn254::{Fq, Fr, G1Affine, G2Affine};
+    use ark_bn254::{Fq, Fr, G1Affine};
     use ark_ec::{AffineRepr, CurveGroup};
     use ark_ff::UniformRand;
     use ark_serialize::CanonicalSerialize;

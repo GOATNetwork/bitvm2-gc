@@ -11,7 +11,7 @@ use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
 use crate::babe::{WeKnownPi1ProveCt, WeKnownPi1SetupCt};
 use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
-use crate::dre::N;
+use crate::dre::{N_PADDED};
 use crate::gc::{SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
 use crate::instance::{b_value_bits, set_gc_const_labels};
 use crate::soldering::{SolderedLabelsData, SolderingData};
@@ -170,7 +170,7 @@ impl BABEProver {
                 .iter()
                 .enumerate()
                 .map(|(j, &lbl)| {
-                    let idx = 2 * N + j;
+                    let idx = 2 * N_PADDED + j;
                     let (d0, d1) = deltas_i[idx];
                     if h_256(&lbl.0) == sld.base_commitment[idx].0 {
                         lbl ^ S(d0)

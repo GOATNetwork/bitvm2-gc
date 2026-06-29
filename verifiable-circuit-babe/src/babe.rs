@@ -15,7 +15,7 @@ use crate::cac::{
 use crate::wots::{wots96_verify, Wots96, Wots96PublicKey, Wots96Secret};
 use crate::utils::pi1_xd_to_wots96_msg;
 use bitvm::signatures::Wots;
-use crate::dre::N;
+use crate::dre::N_PADDED;
 use crate::prover::BABEProver;
 use crate::soldering::SolderingData;
 use crate::transactions::{ChallengeAssertWitnessRaw, TxAssertWitness, TxChallengeAssertOutputLock, TxChallengeAssertWitness, TxDepositLock, TxWronglyChallengedWitness};
@@ -31,11 +31,8 @@ pub const N_CC: usize = 4;
 /// In practice, M_CC = 7.
 pub const M_CC: usize = 2;
 
-/// Number of real GC input wires: pi1.x + pi1.y + x_d, each `dre::N` bits.
-pub const GC_INPUT_WIRES: usize = 3 * N;
-
-/// `GC_INPUT_WIRES` padded with 6 dummy wires (2 after each `dre::N`-bit group).
-pub const PADDED_INPUT_WIRES: usize = GC_INPUT_WIRES + 6;
+/// Total GC input wires: π₁.x (N_PADDED) + π₁.y (N_PADDED) + x_d (N_PADDED).
+pub const GC_INPUT_WIRES: usize = 3 * N_PADDED;
 
 /// Byte size of a Bitcoin signature placeholder (64 bytes in production).
 pub const BTC_SIG_BYTES: usize = 32;
@@ -247,31 +244,6 @@ pub fn babe_verifier_challenge_assert_cac(
     ))
 }
 
-/// Interleave 6 dummy entries into the [`GC_INPUT_WIRES`]-sized
-/// `pi1_x | pi1_y | x_d` layout to produce the [`PADDED_INPUT_WIRES`]-sized
-/// padded layout: `pi1_x | dummy x2 | pi1_y | dummy x2 | x_d | dummy x2`.
-pub fn interleave_dummy_positions<T: Clone>(pi1_x: &[T], pi1_y: &[T], x_d: &[T], dummy: T) -> Vec<T> {
-    assert_eq!(pi1_x.len(), N);
-    assert_eq!(pi1_y.len(), N);
-    assert_eq!(x_d.len(), N);
-    pi1_x.iter().cloned()
-        .chain([dummy.clone(), dummy.clone()])
-        .chain(pi1_y.iter().cloned())
-        .chain([dummy.clone(), dummy.clone()])
-        .chain(x_d.iter().cloned())
-        .chain([dummy.clone(), dummy.clone()])
-        .collect()
-}
-
-/// Inverse of [`interleave_dummy_positions`]
-pub fn deinterleave_dummy_positions<T: Clone>(padded: &[T]) -> (Vec<T>, Vec<T>, Vec<T>) {
-    assert_eq!(padded.len(), PADDED_INPUT_WIRES);
-    let pi1_x = padded[..N].to_vec();
-    let pi1_y = padded[N + 2..2 * N + 2].to_vec();
-    let x_d = padded[2 * N + 4..3 * N + 4].to_vec();
-    (pi1_x, pi1_y, x_d)
-}
-
 /// Build the ChallengeAssert witness from a pre-validated Assert witness.
 /// Caller is responsible for verifying the Wots96 signature before invoking this.
 pub fn build_challenge_assert_witness(
@@ -304,10 +276,8 @@ pub fn babe_prover_wrongly_challenged_cac(
     prover_state: &ProverSetupState,
 ) -> Option<(TxWronglyChallengedWitness, usize)> {
     let base_input_labels: Vec<S> = challenge_witness.witness.input_labels.iter().map(|&b| S(b)).collect();
-    // Drop the MSB-slot labels at positions 254-255, 510-511, 766-767 (always 0 for valid fields).
-    // The GC currently takes only the 254 real bits per coordinate; Step 2 removes this strip.
-    let (pi1_x_labels, pi1_y_labels, x_d_labels) = deinterleave_dummy_positions(&base_input_labels);
-    let pi1_labels: Vec<S> = pi1_x_labels.into_iter().chain(pi1_y_labels).collect();
+    let pi1_labels = base_input_labels[..2 * N_PADDED].to_vec();
+    let x_d_labels = base_input_labels[2 * N_PADDED..].to_vec();
     let mut prover = BABEProver::new(vk.clone(), proof.clone(), dyn_pubin);
     let found = prover.check_compute_msg(
         &prover_state.finalized,
