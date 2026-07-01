@@ -196,11 +196,24 @@ impl BabeBundleBuilder {
         println!("Prover: posting tx_Assert...");
         println!("tx_Assert witness:            {} bytes", assert_witness.size_bytes());
 
+        // Script: validate tx_Assert (simulates Bitcoin script checks).
+        // 1. Check Wots96 sig length.
+        let arr_sig: [[u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize] = assert_witness
+            .wots_sig
+            .clone()
+            .try_into()
+            .map_err(|_| "tx_Assert: wrong Wots96 signature length".to_string())?;
+        // 2. Verify Wots96 sig against the operator public key.
+        let msg = Wots96::signature_to_message(&arr_sig);
+        if !verifiable_circuit_babe::wots::wots96_verify(&verifier_state.wots_pk_p, &msg, &arr_sig) {
+            return Err("tx_Assert: Wots96 signature verification failed".to_string());
+        }
+
         // Verifier: reconstruct the Groth16 proof from tx_Assert and verify it.
         // If valid, no challenge is necessary — the Prover wins the honest path directly.
         // This E2E continues to the challenge path to exercise it end-to-end regardless.
         println!("Verifier: recovering and verifying Groth16 proof from tx_Assert...");
-        match assert_witness.recover_pi1_xd_without_verify() {
+        match assert_witness.try_recover_pi1_xd() {
             None => return Err("tx_Assert: witness is not in correct format (π₁ or x_d malformed)".to_string()),
             Some(_) => {
                 if assert_witness.verify_groth16_proof(&vk, &[static_public_inputs]) {

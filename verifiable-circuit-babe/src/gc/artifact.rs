@@ -1,6 +1,5 @@
 use std::fs;
 use ark_bn254::G1Affine;
-use ark_ec::AffineRepr;
 use garbled_snark_verifier::core::utils::{reset_gid, SerializableGate};
 
 use super::circuit::{compile_fgc, compile_sgc_part1, FGC_NUM_PRE_INITIALIZED, SGC_NUM_PRE_INITIALIZED};
@@ -158,11 +157,10 @@ fn print_report(stats: &[CircuitStats; 2]) {
 /// Generate, compact, and write all circuit artifacts from scratch.
 pub fn generate_compact_artifacts(l2_point: G1Affine) -> [CircuitStats; 2] {
     reset_gid();
-    let g = G1Affine::generator();
 
     // ── FGC ──────────────────────────────────────────────────────────────────
     println!("[1/6] Compiling FGC...");
-    let (bld, fgc_out_idx) = compile_fgc(g);
+    let (bld, fgc_out_idx) = compile_fgc();
     let (mut fgc_num_wires, mut fgc_gates, mut fgc_out_idx) =
         compile_to_flat(bld.build(&[]), fgc_out_idx);
     let fgc_wires_orig = fgc_num_wires as usize;
@@ -232,6 +230,7 @@ pub fn generate_compact_artifacts(l2_point: G1Affine) -> [CircuitStats; 2] {
 
 #[cfg(test)]
 mod tests {
+    use ark_ec::AffineRepr;
     use super::*;
 
     #[test]

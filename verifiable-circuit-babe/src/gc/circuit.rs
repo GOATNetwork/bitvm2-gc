@@ -1,14 +1,14 @@
 use ark_bn254::G1Affine;
-use ark_ec::CurveGroup;
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{AdditiveGroup, Zero};
 use sha2::{Digest, Sha256};
 use garbled_snark_verifier::circuits::sect233k1::builder::{CircuitAdapter, CircuitTrait};
-use garbled_snark_verifier::dv_bn254::basic::selector;
+use garbled_snark_verifier::dv_bn254::basic::{not, selector};
 use garbled_snark_verifier::dv_bn254::fp254impl::Fp254Impl;
 use garbled_snark_verifier::dv_bn254::{fq::Fq, fr::Fr};
 use garbled_snark_verifier::dv_bn254::g1::{projective_to_affine_montgomery, G1Projective as GcG1Projective, G1Projective};
 
-use crate::dre::{N, Q_SIZE, U_BAR_SIZE};
+use crate::dre::{N, N_PADDED, Q_SIZE, U_BAR_SIZE};
 
 // Unsigned 8-bit windowed scalar-mul parameters. Must match the `SCALAR_WINDOW_*`
 // constants in garbled-snark-verifier's dv_bn254::g1. With w=8 we do 32 mixed-adds
@@ -22,8 +22,8 @@ pub const SGC_PART1_CONSTANT_SIZE: usize = 2 + 2 * N; // 0/1 + B.
 /// Number of wires initialized before the garbling loop in each circuit.
 /// These are assigned slots 0..N-1 by the liveness allocator and must match
 /// the `set_label` indices used in `CACInstance::new_from_seed` / `commit_from_seed`.
-pub const FGC_NUM_PRE_INITIALIZED: usize = 2 + 2 * N;          // wire0, wire1, π_x(N), π_y(N)
-pub const SGC_NUM_PRE_INITIALIZED: usize = SGC_PART1_CONSTANT_SIZE + Fr::N_BITS; // wire0,1 + B + x_d
+pub const FGC_NUM_PRE_INITIALIZED: usize = 2 + 2 * N_PADDED;   // wire0, wire1, π_x(N_PADDED), π_y(N_PADDED)
+pub const SGC_NUM_PRE_INITIALIZED: usize = SGC_PART1_CONSTANT_SIZE + N_PADDED; // wire0,1 + B + x_d
 
 
 // ── Circuit 1 / FGC ────────────────────────────────────────────────────────
@@ -37,22 +37,24 @@ pub const SGC_NUM_PRE_INITIALIZED: usize = SGC_PART1_CONSTANT_SIZE + Fr::N_BITS;
 /// `g` is the fallback point, embedded as constant wires.
 ///
 /// Output: U_BAR_SIZE bits — ū(π) when π is on the curve, ū(g) otherwise.
-pub fn compile_fgc(g: G1Affine) -> (CircuitAdapter, Vec<usize>) {
+pub fn compile_fgc() -> (CircuitAdapter, Vec<usize>) {
     let mut bld = CircuitAdapter::default();
 
-    let pi_x = Fq::wires(&mut bld);
-    let pi_y = Fq::wires(&mut bld);
+    let pi_x_all: Vec<usize> = (0..N_PADDED).map(|_| bld.fresh_one()).collect();
+    let pi_y_all: Vec<usize> = (0..N_PADDED).map(|_| bld.fresh_one()).collect();
 
-    let output_indices = emit_fgc(&mut bld, &pi_x.0, &pi_y.0, g);
+    let output_indices = emit_fgc(&mut bld, &pi_x_all, &pi_y_all);
     (bld, output_indices)
 }
 
 fn emit_fgc(
     bld: &mut CircuitAdapter,
-    pi_x: &[usize],
-    pi_y: &[usize],
-    g: G1Affine,
+    pi_x_all: &[usize],
+    pi_y_all: &[usize],
 ) -> Vec<usize> {
+    let pi_x = &pi_x_all[..N];
+    let pi_y = &pi_y_all[..N];
+
     // R² mod p — converts normal → Montgomery form
     let r_sq = Fq::as_montgomery(Fq::as_montgomery(ark_bn254::Fq::from(1u64)));
 
@@ -68,6 +70,13 @@ fn emit_fgc(
     let rhs_m    = Fq::add_constant(bld, &x_cu_m, three_mont);
     let on_curve = Fq::equal(bld, &y_sq_m, &rhs_m);
 
+    // MSB slots (bits N and N+1 of each coordinate) must be zero for a valid field element.
+    let any_msb_x = bld.or_wire(pi_x_all[N], pi_x_all[N + 1]);
+    let any_msb_y = bld.or_wire(pi_y_all[N], pi_y_all[N + 1]);
+    let any_msb   = bld.or_wire(any_msb_x, any_msb_y);
+    let msb_ok    = not(bld, any_msb);
+    let valid     = bld.and_wire(on_curve, msb_ok);
+
     // montgomery_reduce(A·R ‖ 0) = A — converts back to standard form
     let x_sq = Fq::mul_by_constant_montgomery(bld, &x_sq_m, ark_bn254::Fq::from(1u64));
     let y_sq = Fq::mul_by_constant_montgomery(bld, &y_sq_m, ark_bn254::Fq::from(1u64));
@@ -82,10 +91,10 @@ fn emit_fgc(
     pi_u_bar.extend(xy);
     assert_eq!(pi_u_bar.len(), U_BAR_SIZE);
 
-    let g_u_bar = g_u_bar_indices(bld, g);
+    let g_u_bar = g_u_bar_indices(bld);
 
     (0..U_BAR_SIZE)
-        .map(|k| selector(bld, pi_u_bar[k], g_u_bar[k], on_curve))
+        .map(|k| selector(bld, pi_u_bar[k], g_u_bar[k], valid))
         .collect()
 }
 
@@ -93,15 +102,16 @@ fn emit_fgc(
 
 /// Compile SGC Part 1: computes Q = x_d · L_2 + B.
 ///
-/// `l2` is fixed (like `g` in FGC) and is embedded as constant wires.
+/// `l2` is fixed and is embedded as constant wires.
 /// B is garbler-private and supplied as input wires.
 ///
 /// Input wire layout:
-///   [0..Fr::N_BITS)           B_x — x-coordinate of B, Montgomery form (garbler-private)
-///   [Fr::N_BITS..Fr::N_BITS+N)     B_y — y-coordinate of B, Montgomery form (garbler-private)
-///   [Fr::N_BITS+N..Fr::N_BITS+2·N)  x_d — scalar bits, LSB-first (evaluator input)
+///   [0..N)            B_x — x-coordinate of B, Montgomery form (garbler-private)
+///   [N..2·N)          B_y — y-coordinate of B, Montgomery form (garbler-private)
+///   [2·N..2·N+N_PADDED) x_d — scalar bits LSB-first + 2 MSB slots (evaluator input)
 ///
-/// Output: Q_SIZE = 2·N bits — (x, y) of Q in standard affine form.
+/// Output: Q_SIZE = 2·N bits — (x, y) of Q in standard affine form,
+///         or G1 generator if any MSB slot is non-zero.
 pub fn compile_sgc_part1(l2: G1Affine) -> (CircuitAdapter, Vec<usize>) {
     let mut bld = CircuitAdapter::default();
 
@@ -109,17 +119,32 @@ pub fn compile_sgc_part1(l2: G1Affine) -> (CircuitAdapter, Vec<usize>) {
     let b_x = Fq::wires(&mut bld);
     let b_y = Fq::wires(&mut bld);
 
-    // x_d — evaluator input
-    let x_d: Vec<usize> = (0..Fr::N_BITS).map(|_| bld.fresh_one()).collect();
+    let x_d: Vec<usize> = (0..N_PADDED).map(|_| bld.fresh_one()).collect();
 
-    // L_2 table — embedded as constant wires, same pattern as g in compile_fgc
+    // MSB slots must be zero for a valid Fr scalar.
+    let any_msb = bld.or_wire(x_d[N], x_d[N + 1]);
+    let msb_ok  = not(&mut bld, any_msb);
+
+    // L_2 table — embedded as constant wires
     let table_wires: Vec<usize> = build_l2_table_bits(&l2)
         .into_iter()
         .map(|bit| if bit { bld.one() } else { bld.zero() })
         .collect();
     assert_eq!(table_wires.len(), PRECOMP_TABLE_BITS);
 
-    let output_indices = emit_scalar_mul_then_add(&mut bld, &x_d, &b_x.0, &b_y.0, &table_wires);
+    let q_output = emit_scalar_mul_then_add(&mut bld, &x_d[..N], &b_x.0, &b_y.0, &table_wires);
+
+    // Fallback to G1 generator when MSBs are non-zero.
+    let generator = G1Affine::generator();
+    let gen_output: Vec<usize> = Fq::to_bits(generator.x).into_iter()
+        .chain(Fq::to_bits(generator.y))
+        .map(|b| if b { bld.one() } else { bld.zero() })
+        .collect();
+    assert_eq!(gen_output.len(), Q_SIZE);
+
+    let output_indices: Vec<usize> = q_output.iter().zip(gen_output.iter())
+        .map(|(&real, &fallback)| selector(&mut bld, real, fallback, msb_ok))
+        .collect();
     (bld, output_indices)
 }
 
@@ -166,8 +191,9 @@ fn emit_scalar_mul_then_add(
     output
 }
 
-/// Build constant wire indices for ū(g).
-fn g_u_bar_indices(bld: &mut CircuitAdapter, g: G1Affine) -> Vec<usize> {
+/// Build constant wire indices for ū(G1 generator) — the fallback output.
+fn g_u_bar_indices(bld: &mut CircuitAdapter) -> Vec<usize> {
+    let g    = G1Affine::generator();
     let x    = g.x;
     let y    = g.y;
     let x_sq = x * x;
@@ -239,18 +265,19 @@ mod tests {
 
     // ── FGC witness / tests ─────────────────────────────────────────────────
 
-    /// Witness for compile_fgc: only π_x and π_y.
+    /// Witness for compile_fgc: π_x (N bits) + 2 MSB zeros, π_y (N bits) + 2 MSB zeros.
     fn fgc_witness(pi: &G1Affine) -> Vec<bool> {
-        Fq::to_bits(pi.x)
-            .into_iter()
+        Fq::to_bits(pi.x).into_iter()
+            .chain([false, false])
             .chain(Fq::to_bits(pi.y))
+            .chain([false, false])
             .collect()
     }
 
-    fn eval_fgc(pi: &G1Affine, g: G1Affine) -> Vec<bool> {
+    fn eval_fgc(pi: &G1Affine) -> Vec<bool> {
         let witness = fgc_witness(pi);
         reset_gid();
-        let (bld, output_indices) = compile_fgc(g);
+        let (bld, output_indices) = compile_fgc();
         assert_eq!(output_indices.len(), U_BAR_SIZE);
         let mut circuit = bld.build(&witness);
         for gate in &mut circuit.1 { gate.evaluate(); }
@@ -260,8 +287,7 @@ mod tests {
     #[test]
     fn test_fgc_on_curve() {
         let pi = random_g1_affine();
-        let g  = random_g1_affine();
-        let output = eval_fgc(&pi, g);
+        let output = eval_fgc(&pi);
 
         assert_eq!(output.len(), U_BAR_SIZE);
         assert!(output[0], "u₀ must be 1");
@@ -282,34 +308,61 @@ mod tests {
     #[test]
     fn test_fgc_off_curve_falls_back_to_g() {
         let pi = random_g1_affine();
-        let g  = random_g1_affine();
 
         let mut off_pi = pi;
         off_pi.y += ark_bn254::Fq::from(1u64);
-        let output = eval_fgc(&off_pi, g);
+        let output = eval_fgc(&off_pi);
 
         assert_eq!(output.len(), U_BAR_SIZE);
         assert!(output[0], "u₀ must be 1");
 
+        let g = G1Affine::generator();
         let gx_bits = Fq::to_bits(g.x);
         for k in 0..N {
-            assert_eq!(output[1 + k], gx_bits[k], "g.x bit {k} mismatch");
+            assert_eq!(output[1 + k], gx_bits[k], "generator.x bit {k} mismatch");
         }
         let gy_bits = Fq::to_bits(g.y);
         for k in 0..N {
-            assert_eq!(output[1 + N + k], gy_bits[k], "g.y bit {k} mismatch");
+            assert_eq!(output[1 + N + k], gy_bits[k], "generator.y bit {k} mismatch");
+        }
+    }
+
+    #[test]
+    fn test_fgc_msb_nonzero_falls_back_to_generator() {
+        let pi = random_g1_affine(); // valid on-curve point
+        let mut witness = fgc_witness(&pi);
+        witness[N] = true; // pi_x MSB slot 0 = 1
+
+        reset_gid();
+        let (bld, output_indices) = compile_fgc();
+        let mut circuit = bld.build(&witness);
+        for gate in &mut circuit.1 { gate.evaluate(); }
+        let output: Vec<bool> = output_indices.iter()
+            .map(|&i| circuit.0[i].borrow().get_value()).collect();
+
+        assert_eq!(output.len(), U_BAR_SIZE);
+        assert!(output[0], "u₀ must be 1");
+        let g = G1Affine::generator();
+        let gx_bits = Fq::to_bits(g.x);
+        for k in 0..N {
+            assert_eq!(output[1 + k], gx_bits[k], "generator.x bit {k} mismatch");
+        }
+        let gy_bits = Fq::to_bits(g.y);
+        for k in 0..N {
+            assert_eq!(output[1 + N + k], gy_bits[k], "generator.y bit {k} mismatch");
         }
     }
 
     // ── SGC Part 1 witness / tests ──────────────────────────────────────────
 
-    /// Witness for compile_sgc_part1: x_d | B_x (Montgomery) | B_y (Montgomery).
+    /// Witness for compile_sgc_part1: B_x (Montgomery) | B_y (Montgomery) | x_d (N bits) + 2 MSB zeros.
     /// L_2 table is baked into the circuit as constants, so it is not part of the witness.
     fn sgc_part1_witness(x_d: ark_bn254::Fr, b: &G1Affine) -> Vec<bool> {
         Fq::to_bits(Fq::as_montgomery(b.x))
             .into_iter()
             .chain(Fq::to_bits(Fq::as_montgomery(b.y)))
             .chain(Fr::to_bits(x_d))
+            .chain([false, false])
             .collect()
     }
 
@@ -359,5 +412,32 @@ mod tests {
             .into_affine();
 
         assert_eq!(got, expected, "Q = 1·L₂ + B should equal L₂ + B");
+    }
+
+    #[test]
+    fn test_sgc_part1_xd_msb_nonzero_falls_back_to_generator() {
+        let mut rng = rand::thread_rng();
+        let l2 = random_g1_affine();
+        let b  = random_g1_affine();
+        let x_d = ark_bn254::Fr::rand(&mut rng);
+
+        let mut witness = sgc_part1_witness(x_d, &b);
+        // sgc_part1_witness layout: B_x (N) | B_y (N) | x_d (N) | false, false
+        // x_d MSB slot 0 is at index 2*N + N = 762
+        witness[2 * N + N] = true;
+
+        reset_gid();
+        let (bld, output_indices) = compile_sgc_part1(l2);
+        let mut circuit = bld.build(&witness);
+        for gate in &mut circuit.1 { gate.evaluate(); }
+
+        let bits: Vec<bool> = output_indices.iter()
+            .map(|&i| circuit.0[i].borrow().get_value()).collect();
+        let x = Fq::from_bits(bits[..N].to_vec());
+        let y = Fq::from_bits(bits[N..2 * N].to_vec());
+        let result = ark_bn254::G1Affine::new_unchecked(x, y);
+
+        assert_eq!(result, ark_bn254::G1Affine::generator(),
+                   "SGC Part 1 should fall back to G1 generator when x_d MSB is set");
     }
 }

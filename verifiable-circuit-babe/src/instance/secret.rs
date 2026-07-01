@@ -4,7 +4,7 @@ use garbled_snark_verifier::bag::S;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rand_chacha::rand_core::RngCore;
-use crate::dre::{N, utils::sample_rhos};
+use crate::dre::{N, N_PADDED, utils::sample_rhos};
 
 pub struct InstanceSecrets {
     /// 2 deltas for 2 garbled circuits
@@ -12,8 +12,8 @@ pub struct InstanceSecrets {
     pub r:             Fr,
     pub msg:           [u8; 32],
     /// label0 per input wire, for 2 circuits
-    /// fgc input size = 2 * N // pi_1
-    /// sgc input size = N // x_d
+    /// fgc input size = 2 * N_PADDED // pi_1
+    /// sgc input size = N_PADDED // x_d
     pub input_0labels: [Vec<S>; 2],
     /// Constant 0labels.
     /// fgc size = 2 (0/1)
@@ -30,7 +30,7 @@ pub fn derive_light_from_seed(seed: u64) -> ([S; 2], [Vec<S>; 2]) {
     let delta = [gen_s(&mut rng, 1)[0], gen_s(&mut rng, 1)[0]];
     let _ = Fr::rand(&mut rng);          // advance past r
     rng.fill_bytes(&mut [0u8; 32]);      // advance past msg
-    let input_0labels = [gen_s(&mut rng, 2 * N), gen_s(&mut rng, N)];
+    let input_0labels = [gen_s(&mut rng, 2 * N_PADDED), gen_s(&mut rng, N_PADDED)];
     (delta, input_0labels)
 }
 
@@ -45,7 +45,7 @@ impl InstanceSecrets {
         let mut msg = [0u8; 32];
         rng.fill_bytes(&mut msg);
 
-        let input_0labels = [gen_s(&mut rng, 2 * N), gen_s(&mut rng, N)];
+        let input_0labels = [gen_s(&mut rng, 2 * N_PADDED), gen_s(&mut rng, N_PADDED)];
 
         let constant_val_labels = [gen_s(&mut rng, 2), gen_s(&mut rng, 2 + 2 * N)];
 

@@ -41,10 +41,9 @@ pub struct TxAssertWitness {
 }
 
 impl TxAssertWitness {
-    /// Extract π₁ and x_d from the digit values embedded in the Wots96 signature.
-    /// The 96-byte message layout is: π₁.x (LE-32) ∥ π₁.y (LE-32) ∥ x_d (LE-32).
-    /// Return None if the wots_sig is wrong format, which not signature over (G1Affine, Fr)
-    pub fn recover_pi1_xd_without_verify(&self) -> Option<(G1Affine, Fr)> {
+    /// Check that the Assert witness is in the correct format and recover (π₁, x_d).
+    /// Returns None if the 96-byte message does not decode to a valid (G1Affine, Fr) pair
+    pub fn try_recover_pi1_xd(&self) -> Option<(G1Affine, Fr)> {
         // wrong length
         if self.wots_sig.len() != Wots96::TOTAL_DIGIT_LEN as usize {
             return None;
@@ -80,7 +79,7 @@ impl TxAssertWitness {
         vk: &Groth16VerifyingKey<Bn254>,
         static_public_inputs: &[Fr],
     ) -> bool {
-        let (pi1, x_d) = match self.recover_pi1_xd_without_verify() {
+        let (pi1, x_d) = match self.try_recover_pi1_xd() {
             Some(v) => v,
             None => return false,
         };
@@ -216,7 +215,7 @@ impl OnchainSize for TxWithdrawWitness {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bn254::{Fq, Fr, G1Affine, G2Affine};
+    use ark_bn254::{Fq, Fr, G1Affine};
     use ark_ec::{AffineRepr, CurveGroup};
     use ark_ff::UniformRand;
     use ark_serialize::CanonicalSerialize;
@@ -230,7 +229,7 @@ mod tests {
         TxAssertWitness { wots_sig: Wots96::sign(&sk, msg).to_vec(), pi2: vec![], pi3: vec![] }
     }
 
-    // ── recover_pi1_xd_without_verify ─────────────────────────────────────────
+    // ── try_recover_pi1_xd ─────────────────────────────────────────
 
     #[test]
     fn test_recover_valid_generator_and_fr() {
@@ -239,7 +238,7 @@ mod tests {
         let msg = pi1_xd_to_wots96_msg(&pi1, x_d);
         let witness = make_witness_from_raw_msg(&msg);
 
-        let (recovered_pi1, recovered_xd) = witness.recover_pi1_xd_without_verify().unwrap();
+        let (recovered_pi1, recovered_xd) = witness.try_recover_pi1_xd().unwrap();
         assert_eq!(recovered_pi1, pi1);
         assert_eq!(recovered_xd, x_d);
     }
@@ -250,19 +249,19 @@ mod tests {
             wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize - 1],
             pi2: vec![], pi3: vec![],
         };
-        assert!(witness.recover_pi1_xd_without_verify().is_none());
+        assert!(witness.try_recover_pi1_xd().is_none());
 
         let witness = TxAssertWitness {
             wots_sig: vec![[0u8; 21]; Wots96::TOTAL_DIGIT_LEN as usize + 1],
             pi2: vec![], pi3: vec![],
         };
-        assert!(witness.recover_pi1_xd_without_verify().is_none());
+        assert!(witness.try_recover_pi1_xd().is_none());
     }
 
     #[test]
     fn test_recover_empty_sig() {
         let witness = TxAssertWitness { wots_sig: vec![], pi2: vec![], pi3: vec![] };
-        assert!(witness.recover_pi1_xd_without_verify().is_none());
+        assert!(witness.try_recover_pi1_xd().is_none());
     }
 
     #[test]
@@ -276,7 +275,7 @@ mod tests {
         Fq::from(1u64).serialize_uncompressed(&mut buf).unwrap();
         msg[32..64].copy_from_slice(&buf);
         let witness = make_witness_from_raw_msg(&msg);
-        assert!(witness.recover_pi1_xd_without_verify().is_none());
+        assert!(witness.try_recover_pi1_xd().is_none());
     }
 
     #[test]
@@ -285,7 +284,7 @@ mod tests {
         let mut msg = [0u8; 96];
         msg[0..32].fill(0xFF);
         let witness = make_witness_from_raw_msg(&msg);
-        assert!(witness.recover_pi1_xd_without_verify().is_none());
+        assert!(witness.try_recover_pi1_xd().is_none());
     }
 
     #[test]
@@ -297,7 +296,7 @@ mod tests {
         msg[0..32].copy_from_slice(&buf);
         msg[32..64].fill(0xFF); // y > Fq modulus
         let witness = make_witness_from_raw_msg(&msg);
-        assert!(witness.recover_pi1_xd_without_verify().is_none());
+        assert!(witness.try_recover_pi1_xd().is_none());
     }
 
     #[test]
@@ -306,7 +305,7 @@ mod tests {
         let mut msg = pi1_xd_to_wots96_msg(&pi1, Fr::from(0u64));
         msg[64..96].fill(0xFF); // x_d > Fr modulus
         let witness = make_witness_from_raw_msg(&msg);
-        assert!(witness.recover_pi1_xd_without_verify().is_none());
+        assert!(witness.try_recover_pi1_xd().is_none());
     }
 
     // ── recover_pi2_pi3 ───────────────────────────────────────────────────────
