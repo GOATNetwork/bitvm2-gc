@@ -2,7 +2,7 @@ use ark_bn254::Fr;
 use ark_ec::AffineRepr;
 use ark_ec::pairing::Pairing;
 use garbled_snark_verifier::bag::{Circuit, S};
-use crate::babe::WeKnownPi1SetupCt;
+use crate::babe::WitnessEncSetupCt;
 use crate::gc::{FlatEvalBuffer, read_compact_gc, SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
 use crate::instance::secret::InstanceSecrets;
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
@@ -27,7 +27,7 @@ pub fn b_value_bits(b: &ark_bn254::G1Affine) -> (Vec<bool>, Vec<bool>) {
 pub struct CACInstance {
     pub seed: u64,
     pub secrets: InstanceSecrets,
-    pub ct_setup: WeKnownPi1SetupCt,
+    pub ct_setup: WitnessEncSetupCt,
     pub adaptor_tables: [SparseAdaptorTable; 2],
     /// for fgc, sgc part 1, sgc part 2
     pub ciphertexts_sets: [Vec<Option<S>>; 3]
@@ -210,7 +210,7 @@ impl CACInstance {
         secrets: &InstanceSecrets,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
         static_inputs: Fr,
-    ) -> Result<WeKnownPi1SetupCt, String> {
+    ) -> Result<WitnessEncSetupCt, String> {
         let r = secrets.r;
         let p_s = vk.gamma_abc_g1[0].into_group() + vk.gamma_abc_g1[1].into_group() * static_inputs;
 
@@ -229,7 +229,7 @@ impl CACInstance {
         let mask = ro_from_pairing_bytes(&mask_bytes, secrets.msg.len());
         let ct3 = secrets.msg.iter().zip(mask.iter()).map(|(a, b)| a ^ b).collect::<Vec<_>>();
 
-        Ok(WeKnownPi1SetupCt {
+        Ok(WitnessEncSetupCt {
             ct2_r_delta_g2: g2_project_to_ser(r_delta),
             ct3_masked_msg: ct3,
         })
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn enc_setup_prove_dec_roundtrip() {
-        use crate::babe::{we_known_pi1_dec, WeKnownPi1ProveCt};
+        use crate::babe::{witness_enc_decrypt, WitnessEncProveCt};
 
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(GROTH_16_SEED);
 
@@ -468,11 +468,11 @@ mod tests {
         assert_eq!(ct1_prime, expected_ct1_prime_bytes, "sgc part2 is wrong");
         println!("sgc part 2 test done");
 
-        let ctprove = WeKnownPi1ProveCt {
+        let ctprove = WitnessEncProveCt {
             ct1_r_pi1: ct1_bytes,
             ct1_prime,
         };
-        let decrypted = we_known_pi1_dec(
+        let decrypted = witness_enc_decrypt(
             &vk, &instance.ct_setup, &ctprove,
             proof.b.into_group(), proof.c.into_group(),
         ).unwrap();

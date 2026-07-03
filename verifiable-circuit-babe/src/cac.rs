@@ -1,7 +1,7 @@
 use ark_bn254::{Fr, G1Affine};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use serde::{Deserialize, Serialize};
-use crate::babe::WeKnownPi1SetupCt;
+use crate::babe::WitnessEncSetupCt;
 use crate::instance::commit::CACInstanceCommit;
 use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
 use garbled_snark_verifier::bag::S;
@@ -39,7 +39,7 @@ pub struct FinalizedInstanceData {
     pub index: usize,
     pub ciphertext_sets: [Vec<Option<S>>; 3],
     pub adaptor_tables: [SparseAdaptorTable; 2],
-    pub ct_setup: WeKnownPi1SetupCt,
+    pub ct_setup: WitnessEncSetupCt,
     /// [0-label of wire-0 (constant false), 1-label of wire-1 (constant true)].
     pub constant_labels_0: [S; 2],
     /// value-based labels. Length must be `SGC_PART1_CONSTANT_SIZE` (510).
@@ -48,6 +48,51 @@ pub struct FinalizedInstanceData {
     pub b: G1Affine,
 }
 
+
+/// C&C binding check: `opened`, `finalized`, and `soldering_finalized_indices` (all as sent
+/// by the Verifier) must exactly match the partition implied by the Prover's own
+/// `finalized_indices`.
+pub fn verify_finalized_indices_in_bundle(
+    package: &CACSetupPackage,
+    opened: &[(usize, u64)],
+    finalized: &[FinalizedInstanceData],
+    finalized_indices: &[usize],
+    soldering_finalized_indices: &[usize],
+) -> Result<(), String> {
+    let claimed_finalized: Vec<usize> = finalized.iter().map(|d| d.index).collect();
+    if claimed_finalized != finalized_indices {
+        return Err(format!(
+            "finalized instances do not match the expected finalized indices: verifier sent {claimed_finalized:?}, expected {finalized_indices:?}"
+        ));
+    }
+
+    if soldering_finalized_indices != finalized_indices {
+        return Err(format!(
+            "soldering finalized_indices do not match the expected finalized indices: verifier sent {soldering_finalized_indices:?}, expected {finalized_indices:?}"
+        ));
+    }
+
+    if opened.len() + finalized_indices.len() != package.commits.len() {
+        return Err(format!(
+            "opened ({}) + finalized ({}) does not cover all {} instances",
+            opened.len(),
+            finalized_indices.len(),
+            package.commits.len()
+        ));
+    }
+    let finalized_set: std::collections::HashSet<usize> =
+        finalized_indices.iter().copied().collect();
+    let mut seen = std::collections::HashSet::with_capacity(opened.len());
+    for &(idx, _) in opened {
+        if finalized_set.contains(&idx) {
+            return Err(format!("instance {idx}: opened but also claimed as finalized"));
+        }
+        if !seen.insert(idx) {
+            return Err(format!("instance {idx}: duplicate index in opened"));
+        }
+    }
+    Ok(())
+}
 
 pub fn verify_opened_instances(
     package: &CACSetupPackage,
@@ -79,7 +124,12 @@ pub fn verify_opened_instances(
                 .map(|&(idx, seed)| {
                     let recomputed =
                         CACInstance::commit_from_seed(seed, vk, static_public_inputs)?;
-                    let committed = &package.commits[idx];
+                    let committed = package.commits.get(idx).ok_or_else(|| {
+                        format!(
+                            "instance {idx}: index out of range (package has {} commits)",
+                            package.commits.len()
+                        )
+                    })?;
 
                     if recomputed.epk != committed.epk {
                         return Err(format!("instance {idx}: input_commits mismatch"));
@@ -122,7 +172,12 @@ pub fn verify_finalized_instances(
 ) -> Result<(), String> {
     for data in finalized {
         let idx = data.index;
-        let committed = &package.commits[idx];
+        let committed = package.commits.get(idx).ok_or_else(|| {
+            format!(
+                "instance {idx}: index out of range (package has {} commits)",
+                package.commits.len()
+            )
+        })?;
 
         if data.constant_labels_1.len() != SGC_PART1_CONSTANT_SIZE
             || committed.constant_commits_sgc.len() != SGC_PART1_CONSTANT_SIZE {
@@ -234,5 +289,134 @@ mod tests {
             .expect("finalized instance verification failed");
         let elapsed = now.elapsed();
         println!("Prover verification of finalized instances took {elapsed:.2?}");
+    }
+
+    // ── verify_finalized_indices_in_bundle ──────────────────────────────────────
+    //
+    // These tests exercise the C&C binding check in isolation: it only reads
+    // `.index` fields, `Vec` lengths, and `usize` values, so the `CACInstanceCommit`/
+    // `FinalizedInstanceData` payloads below are placeholders with no cryptographic
+    // meaning — no Groth16 setup or generated GC artifacts needed.
+
+    fn dummy_commit() -> CACInstanceCommit {
+        CACInstanceCommit {
+            epk: vec![],
+            constant_commits_fgc: [[[0u8; 32]; 2]; 2],
+            constant_commits_sgc: vec![],
+            b_blind_commit: [0u8; 32],
+            h_msg: [0u8; 20],
+            h_ct_setup: [0u8; 32],
+            com_adaptor: [[0u8; 32]; 2],
+            com_gc: [[0u8; 32]; 3],
+        }
+    }
+
+    fn dummy_package(n: usize) -> CACSetupPackage {
+        CACSetupPackage { commits: (0..n).map(|_| dummy_commit()).collect() }
+    }
+
+    fn dummy_finalized(index: usize) -> FinalizedInstanceData {
+        FinalizedInstanceData {
+            index,
+            ciphertext_sets: [vec![], vec![], vec![]],
+            adaptor_tables: [
+                SparseAdaptorTable { entries: vec![] },
+                SparseAdaptorTable { entries: vec![] },
+            ],
+            ct_setup: WitnessEncSetupCt { ct2_r_delta_g2: vec![], ct3_masked_msg: vec![] },
+            constant_labels_0: [S([0u8; 16]), S([0u8; 16])],
+            constant_labels_1: vec![],
+            b: G1Affine::identity(),
+        }
+    }
+
+    const PARTITION_N_CC: usize = 5;
+
+    #[test]
+    fn test_verify_finalized_indices_in_bundle_ok() {
+        let package = dummy_package(PARTITION_N_CC);
+        let finalized_indices = vec![1usize, 3];
+        let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
+        let opened: Vec<(usize, u64)> = vec![0, 2, 4].into_iter().map(|i| (i, 0u64)).collect();
+
+        verify_finalized_indices_in_bundle(
+            &package, &opened, &finalized, &finalized_indices, &finalized_indices,
+        )
+        .expect("well-formed partition should pass");
+    }
+
+    #[test]
+    fn test_verify_finalized_indices_in_bundle_rejects_reordered_finalized() {
+        let package = dummy_package(PARTITION_N_CC);
+        let finalized_indices = vec![1usize, 3];
+        // Verifier sends the finalized data in a different order than the Prover chose.
+        let finalized: Vec<_> = vec![3usize, 1].into_iter().map(dummy_finalized).collect();
+        let opened: Vec<(usize, u64)> = vec![0, 2, 4].into_iter().map(|i| (i, 0u64)).collect();
+
+        let err = verify_finalized_indices_in_bundle(
+            &package, &opened, &finalized, &finalized_indices, &finalized_indices,
+        )
+        .unwrap_err();
+        assert!(err.contains("finalized instances do not match"), "{err}");
+    }
+
+    #[test]
+    fn test_verify_finalized_indices_in_bundle_rejects_wrong_soldering_indices() {
+        let package = dummy_package(PARTITION_N_CC);
+        let finalized_indices = vec![1usize, 3];
+        let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
+        let opened: Vec<(usize, u64)> = vec![0, 2, 4].into_iter().map(|i| (i, 0u64)).collect();
+        let soldering_finalized_indices = vec![1usize, 4]; // disagrees with finalized_indices
+
+        let err = verify_finalized_indices_in_bundle(
+            &package, &opened, &finalized, &finalized_indices, &soldering_finalized_indices,
+        )
+        .unwrap_err();
+        assert!(err.contains("soldering finalized_indices do not match"), "{err}");
+    }
+
+    #[test]
+    fn test_verify_finalized_indices_in_bundle_rejects_incomplete_partition() {
+        let package = dummy_package(PARTITION_N_CC);
+        let finalized_indices = vec![1usize, 3];
+        let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
+        // Missing index 4 — opened + finalized doesn't cover all PARTITION_N_CC instances.
+        let opened: Vec<(usize, u64)> = vec![0, 2].into_iter().map(|i| (i, 0u64)).collect();
+
+        let err = verify_finalized_indices_in_bundle(
+            &package, &opened, &finalized, &finalized_indices, &finalized_indices,
+        )
+        .unwrap_err();
+        assert!(err.contains("does not cover all"), "{err}");
+    }
+
+    #[test]
+    fn test_verify_finalized_indices_in_bundle_rejects_opened_overlaps_finalized() {
+        let package = dummy_package(PARTITION_N_CC);
+        let finalized_indices = vec![1usize, 3];
+        let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
+        // Index 1 is claimed as both opened and finalized.
+        let opened: Vec<(usize, u64)> = vec![0, 1, 4].into_iter().map(|i| (i, 0u64)).collect();
+
+        let err = verify_finalized_indices_in_bundle(
+            &package, &opened, &finalized, &finalized_indices, &finalized_indices,
+        )
+        .unwrap_err();
+        assert!(err.contains("opened but also claimed as finalized"), "{err}");
+    }
+
+    #[test]
+    fn test_verify_finalized_indices_in_bundle_rejects_duplicate_opened() {
+        let package = dummy_package(PARTITION_N_CC);
+        let finalized_indices = vec![1usize, 3];
+        let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
+        // Index 0 is duplicated; still "covers" the right count so the length check passes.
+        let opened: Vec<(usize, u64)> = vec![0, 0, 4].into_iter().map(|i| (i, 0u64)).collect();
+
+        let err = verify_finalized_indices_in_bundle(
+            &package, &opened, &finalized, &finalized_indices, &finalized_indices,
+        )
+        .unwrap_err();
+        assert!(err.contains("duplicate index in opened"), "{err}");
     }
 }

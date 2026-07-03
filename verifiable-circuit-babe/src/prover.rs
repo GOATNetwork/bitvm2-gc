@@ -8,10 +8,10 @@ use garbled_snark_verifier::bag::{Circuit, S};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
 use garbled_snark_verifier::dv_bn254::fr::Fr as DvFr;
-use crate::babe::{WeKnownPi1ProveCt, WeKnownPi1SetupCt};
+use crate::babe::{WitnessEncProveCt, WitnessEncSetupCt};
 use crate::cac::{CACSetupPackage, FinalizedInstanceData};
 use crate::dre::matrices::u_bar_vec;
-use crate::dre::{N, N_PADDED};
+use crate::dre::N_PADDED;
 use crate::gc::{SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
 use crate::instance::{b_value_bits, set_gc_const_labels, set_sgc2_rq_eval_labels};
 use crate::soldering::{SolderedLabelsData, SolderingData};
@@ -24,7 +24,7 @@ pub struct BABEProver {
     dyn_pubin: ark_bn254::Fr,
     pub vk: Groth16VerifyingKey<ark_bn254::Bn254>,
     pub valid_msg: Option<[u8; 32]>,
-    pub valid_ct_prove: Option<WeKnownPi1ProveCt>,
+    pub valid_ct_prove: Option<WitnessEncProveCt>,
     pub valid_finalized_id: Option<usize>,
 }
 
@@ -237,12 +237,12 @@ impl BABEProver {
         sgc: &mut Circuit,
         sgc_indices: &[usize],
         const_labels: &[Vec<S>; 2],
-        p1_labels: &[S],
+        pi1_labels: &[S],
         x_d_labels: &[S],
         ciphertext_sets: &[Vec<Option<S>>; 3],
         adaptor_tables: &[SparseAdaptorTable; 2],
         b: &ark_bn254::G1Affine,
-    ) -> WeKnownPi1ProveCt {
+    ) -> WitnessEncProveCt {
         assert_eq!(
             const_labels[1].len(), SGC_PART1_CONSTANT_SIZE,
             "const_labels[1] (SGC constant labels) must have length SGC_PART1_CONSTANT_SIZE"
@@ -253,7 +253,7 @@ impl BABEProver {
 
         // --------Compute ct1--------------
         set_gc_const_labels(fgc, &const_labels[0]);
-        for (i, &lbl) in p1_labels.iter().enumerate() {
+        for (i, &lbl) in pi1_labels.iter().enumerate() {
             fgc.0[i + 2].borrow_mut().label = Some(lbl);
         }
         let fgc_witness: Vec<bool> = DvFq::to_bits(pi1.x).into_iter().chain([false, false])
@@ -313,7 +313,7 @@ impl BABEProver {
             &sgc_output_labels_2, q_affine, &adaptor_tables[1]
         );
 
-        WeKnownPi1ProveCt { ct1_r_pi1: ct1, ct1_prime }
+        WitnessEncProveCt { ct1_r_pi1: ct1, ct1_prime }
     }
 
     pub fn compute_ct_prove_for_instance(
@@ -325,7 +325,7 @@ impl BABEProver {
         data: &FinalizedInstanceData,
         pi1_labels: &[S],
         x_d_labels: &[S],
-    ) -> WeKnownPi1ProveCt {
+    ) -> WitnessEncProveCt {
         self.compute_ct_prove(
             fgc,
             fgc_indices,
@@ -390,8 +390,8 @@ impl BABEProver {
     /// Decrypt the message from `ct_prove` and `ct_setup` using the Groth16 proof.
     pub fn compute_msg(
         proof: &Groth16Proof<Bn254>,
-        ct_prove: &WeKnownPi1ProveCt,
-        ct_setup: &WeKnownPi1SetupCt,
+        ct_prove: &WitnessEncProveCt,
+        ct_setup: &WitnessEncSetupCt,
         vk: &ark_groth16::VerifyingKey<Bn254>,
     ) -> Result<[u8; 32], String> {
         let ct1 = G1Affine::deserialize_compressed(ct_prove.ct1_r_pi1.as_slice())
