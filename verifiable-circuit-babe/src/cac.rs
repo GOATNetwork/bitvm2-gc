@@ -1,7 +1,7 @@
 use ark_bn254::{Fr, G1Affine};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use serde::{Deserialize, Serialize};
-use crate::babe::WeKnownPi1SetupCt;
+use crate::babe::WitnessEncSetupCt;
 use crate::instance::commit::CACInstanceCommit;
 use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
 use garbled_snark_verifier::bag::S;
@@ -39,7 +39,7 @@ pub struct FinalizedInstanceData {
     pub index: usize,
     pub ciphertext_sets: [Vec<Option<S>>; 3],
     pub adaptor_tables: [SparseAdaptorTable; 2],
-    pub ct_setup: WeKnownPi1SetupCt,
+    pub ct_setup: WitnessEncSetupCt,
     /// [0-label of wire-0 (constant false), 1-label of wire-1 (constant true)].
     pub constant_labels_0: [S; 2],
     /// value-based labels. Length must be `SGC_PART1_CONSTANT_SIZE` (510).

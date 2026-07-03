@@ -87,13 +87,13 @@ pub struct VerifierPresigs {
 // ─── WE ciphertext types ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WeKnownPi1SetupCt {
+pub struct WitnessEncSetupCt {
     pub ct2_r_delta_g2: Vec<u8>,
     pub ct3_masked_msg: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WeKnownPi1ProveCt {
+pub struct WitnessEncProveCt {
     pub ct1_r_pi1: Vec<u8>,
     pub ct1_prime: Vec<u8>, // r * Q
 }
@@ -303,10 +303,10 @@ pub fn babe_prover_wrongly_challenged_cac(
 /// Dec*(vk, ctsetup, ctprove, c1', π₂, π₃):
 ///   Q_blind = e(c1', γ)  where c1' = r·P_D + r·B (DSGC output)
 ///   mask = e(r·π₁, π₂) - e(π₃, r·δ) - Q_blind  =  Y_S^r - e(r·B, γ)
-pub fn we_known_pi1_dec(
+pub fn witness_enc_decrypt(
     vk: &Groth16VerifyingKey<Bn254>,
-    ct_setup: &WeKnownPi1SetupCt,
-    ct_prove: &WeKnownPi1ProveCt,
+    ct_setup: &WitnessEncSetupCt,
+    ct_prove: &WitnessEncProveCt,
     pi2: ark_bn254::G2Projective,
     pi3: ark_bn254::G1Projective,
 ) -> Option<Vec<u8>> {
