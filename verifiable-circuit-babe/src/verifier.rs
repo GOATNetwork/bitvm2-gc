@@ -177,8 +177,14 @@ impl BABEVerifier {
         let finalized: Vec<Result<crate::cac::FinalizedInstanceData, String>> = finalized_indices
             .par_iter()
             .map(|&i| {
+                let seed = self.seeds.get(i).ok_or_else(|| {
+                    format!(
+                        "instance {i}: index out of range ({} seeds)",
+                        self.seeds.len()
+                    )
+                })?;
                 let inst = CACInstance::new_from_seed(
-                    self.seeds[i],
+                    *seed,
                     &self.vk,
                     self.static_public_inputs,
                 )?;

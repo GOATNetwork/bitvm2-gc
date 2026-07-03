@@ -49,6 +49,51 @@ pub struct FinalizedInstanceData {
 }
 
 
+/// C&C binding check: `opened`, `finalized`, and `soldering_finalized_indices` (all as sent
+/// by the Verifier) must exactly match the partition implied by the Prover's own
+/// `finalized_indices`.
+pub fn verify_finalized_indices_in_bundle(
+    package: &CACSetupPackage,
+    opened: &[(usize, u64)],
+    finalized: &[FinalizedInstanceData],
+    finalized_indices: &[usize],
+    soldering_finalized_indices: &[usize],
+) -> Result<(), String> {
+    let claimed_finalized: Vec<usize> = finalized.iter().map(|d| d.index).collect();
+    if claimed_finalized != finalized_indices {
+        return Err(format!(
+            "finalized instances do not match the expected finalized indices: verifier sent {claimed_finalized:?}, expected {finalized_indices:?}"
+        ));
+    }
+
+    if soldering_finalized_indices != finalized_indices {
+        return Err(format!(
+            "soldering finalized_indices do not match the expected finalized indices: verifier sent {soldering_finalized_indices:?}, expected {finalized_indices:?}"
+        ));
+    }
+
+    if opened.len() + finalized_indices.len() != package.commits.len() {
+        return Err(format!(
+            "opened ({}) + finalized ({}) does not cover all {} instances",
+            opened.len(),
+            finalized_indices.len(),
+            package.commits.len()
+        ));
+    }
+    let finalized_set: std::collections::HashSet<usize> =
+        finalized_indices.iter().copied().collect();
+    let mut seen = std::collections::HashSet::with_capacity(opened.len());
+    for &(idx, _) in opened {
+        if finalized_set.contains(&idx) {
+            return Err(format!("instance {idx}: opened but also claimed as finalized"));
+        }
+        if !seen.insert(idx) {
+            return Err(format!("instance {idx}: duplicate index in opened"));
+        }
+    }
+    Ok(())
+}
+
 pub fn verify_opened_instances(
     package: &CACSetupPackage,
     opened: &[(usize, u64)],
@@ -79,7 +124,12 @@ pub fn verify_opened_instances(
                 .map(|&(idx, seed)| {
                     let recomputed =
                         CACInstance::commit_from_seed(seed, vk, static_public_inputs)?;
-                    let committed = &package.commits[idx];
+                    let committed = package.commits.get(idx).ok_or_else(|| {
+                        format!(
+                            "instance {idx}: index out of range (package has {} commits)",
+                            package.commits.len()
+                        )
+                    })?;
 
                     if recomputed.epk != committed.epk {
                         return Err(format!("instance {idx}: input_commits mismatch"));
@@ -122,7 +172,12 @@ pub fn verify_finalized_instances(
 ) -> Result<(), String> {
     for data in finalized {
         let idx = data.index;
-        let committed = &package.commits[idx];
+        let committed = package.commits.get(idx).ok_or_else(|| {
+            format!(
+                "instance {idx}: index out of range (package has {} commits)",
+                package.commits.len()
+            )
+        })?;
 
         if data.constant_labels_1.len() != SGC_PART1_CONSTANT_SIZE
             || committed.constant_commits_sgc.len() != SGC_PART1_CONSTANT_SIZE {

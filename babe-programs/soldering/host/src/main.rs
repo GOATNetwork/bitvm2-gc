@@ -53,7 +53,7 @@ fn main() {
         .babe_verifier_open_and_solder(&verifier, &finalized_indices)
         .expect("open and solder failed");
     builder
-        .babe_prover_verify_setup(&package, &bundle, &vk, static_public_inputs)
+        .babe_prover_verify_setup(&package, &bundle, &vk, static_public_inputs, &finalized_indices)
         .expect("setup verification failed");
     info!(elapsed = ?start.elapsed(), "soldering proof generated and verified");
 }

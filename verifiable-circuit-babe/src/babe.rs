@@ -186,7 +186,9 @@ pub fn babe_verify_prover_presigs(
             .h_msgs
             .iter()
             .zip(finalized_indices.iter())
-            .all(|(&h_msg, &idx)| h_msg == package.commits[idx].h_msg);
+            .all(|(&h_msg, &idx)| {
+                package.commits.get(idx).is_some_and(|c| c.h_msg == h_msg)
+            });
 
     presigs_valid && keys_valid && h_msgs_valid
 }

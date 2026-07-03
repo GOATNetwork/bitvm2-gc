@@ -5,8 +5,8 @@ use bitvm::signatures::Wots;
 use rand::SeedableRng;
 use verifiable_circuit_babe::babe::{babe_build_deposit_lock, babe_prover_assert, babe_prover_presign, babe_prover_wrongly_challenged_cac, babe_verifier_cac_setup, babe_verifier_challenge_assert_cac, babe_verifier_presign, babe_verify_prover_presigs, babe_verify_verifier_presigs, build_ca_outlock, BtcPk, DummyMulCircuit, ProverSetupState, VerifierSetupState, M_CC, N_CC};
 use verifiable_circuit_babe::cac::{
-    cac_finalize_indices, verify_finalized_instances, verify_opened_instances, CACSetupPackage,
-    FinalizedInstanceData,
+    cac_finalize_indices, verify_finalized_indices_in_bundle, verify_finalized_instances,
+    verify_opened_instances, CACSetupPackage, FinalizedInstanceData,
 };
 use verifiable_circuit_babe::prover::{BABEProver, GROTH_16_SEED};
 use verifiable_circuit_babe::soldering::{
@@ -82,7 +82,15 @@ impl BabeBundleBuilder {
         bundle: &BabeBundle,
         vk: &Groth16VerifyingKey<Bn254>,
         static_public_inputs: Fr,
+        finalized_indices: &[usize],
     ) -> Result<(), String> {
+        verify_finalized_indices_in_bundle(
+            package,
+            &bundle.opened,
+            &bundle.finalized,
+            finalized_indices,
+            &bundle.soldering.finalized_indices,
+        )?;
         verify_opened_instances(package, &bundle.opened, vk, static_public_inputs)?;
         verify_finalized_instances(package, &bundle.finalized)?;
 
@@ -136,7 +144,7 @@ impl BabeBundleBuilder {
 
         println!("Prover: verifying opening and soldering proof...");
         // Prover verifies everything.
-        self.babe_prover_verify_setup(&package, &bundle, &vk, static_public_inputs)?;
+        self.babe_prover_verify_setup(&package, &bundle, &vk, static_public_inputs, &finalized_indices)?;
 
         println!("Prover: generating Wots96 signing key...");
         let wots_sk_p = Wots96::generate_secret_key();
