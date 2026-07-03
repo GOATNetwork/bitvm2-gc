@@ -134,7 +134,8 @@ impl BabeBundleBuilder {
         // Verifier sends vk and package to Prover
         println!("Verifier: sending pk_v and {} instance commitment to Prover", N_CC);
 
-        // Prover samples M_CC finalized indices
+        // Prover check the size of package and samples M_CC finalized indices
+        assert_eq!(package.commits.len(), N_CC);
         let finalized_indices = cac_finalize_indices(N_CC, M_CC);
         println!("Prover: finalized indices = {:?}", &finalized_indices);
 
