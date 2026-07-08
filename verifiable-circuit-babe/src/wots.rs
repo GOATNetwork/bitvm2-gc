@@ -150,3 +150,27 @@ pub fn wots96_verify(pk: &Wots96PublicKey, msg: &[u8; 96], sig: &Wots96Sig) -> b
 
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wots_witness_and_message_roundtrip() {
+        let sk = Wots96::generate_secret_key();
+        let msg = [7u8; 96];
+        let sig = Wots96::sign(&sk, &msg);
+
+        assert_eq!(Wots96::signature_to_message(&sig), msg);
+
+        let witness = Wots96::signature_to_raw_witness(&sig);
+        let recovered = Wots96::raw_witness_to_signature(&witness);
+        assert_eq!(recovered, sig);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_raw_witness_to_signature_rejects_wrong_length() {
+        Wots96::raw_witness_to_signature(&Witness::new());
+    }
+}
