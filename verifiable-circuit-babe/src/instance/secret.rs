@@ -88,3 +88,32 @@ fn gen_fq_deltas<R: RngCore>(rng: &mut R, n: usize) -> Vec<Fq> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // `derive_light_from_seed` replays the same RNG draw sequence as the prefix of
+    // `InstanceSecrets::new_from_seed` (delta, then r, then msg, then input_0labels).
+    // If the two ever drift out of sync, `BABEVerifier` would silently compute wrong
+    // GC labels with nothing else catching it — so pin the equivalence directly.
+    #[test]
+    fn test_derive_light_matches_full_secrets() {
+        for seed in [0u64, 1, 42, u64::MAX] {
+            let (light_delta, light_labels) = derive_light_from_seed(seed);
+            let full = InstanceSecrets::new_from_seed(seed);
+
+            assert_eq!(light_delta, full.delta, "delta mismatch for seed {seed}");
+            assert_eq!(light_labels, full.input_0labels, "input_0labels mismatch for seed {seed}");
+        }
+    }
+
+    #[test]
+    fn test_derive_light_differs_across_seeds() {
+        let (delta_a, labels_a) = derive_light_from_seed(1);
+        let (delta_b, labels_b) = derive_light_from_seed(2);
+
+        assert_ne!(delta_a, delta_b);
+        assert_ne!(labels_a, labels_b);
+    }
+}

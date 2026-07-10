@@ -389,4 +389,105 @@ mod tests {
         let msg_xd_other = pi1_xd_to_wots96_msg(&pi1, x_d_other);
         assert!(!wots96_verify(&pk, &msg_xd_other, &arr_sig));
     }
+
+    fn s(b: u8) -> S {
+        S([b; 16])
+    }
+
+    #[test]
+    fn test_compute_epk_with_delta() {
+        let delta = s(0xFF);
+        let keys = vec![s(0x01), s(0x02)];
+        let epk = compute_epk_with_delta(&keys, delta);
+
+        assert_eq!(epk.0.len(), 2);
+        for (i, &key) in keys.iter().enumerate() {
+            assert_eq!(epk.0[i][0], derive_hashlock(&key.0));
+            assert_eq!(epk.0[i][1], derive_hashlock(&(key ^ delta).0));
+            // 0-label and 1-label commitments must differ.
+            assert_ne!(epk.0[i][0], epk.0[i][1]);
+        }
+    }
+
+    fn dummy_pk(b: u8) -> BtcPk {
+        BtcPk([b; 33])
+    }
+
+    #[test]
+    fn test_babe_verify_prover_presigs() {
+        let pk_p = dummy_pk(1);
+        let pk_v = dummy_pk(2);
+        let h_msg0 = [0xAAu8; 20];
+        let h_msg1 = [0xBBu8; 20];
+
+        let mut package = dummy_package(2);
+        package.commits[0].h_msg = h_msg0;
+        package.commits[1].h_msg = h_msg1;
+        let finalized_indices = vec![0usize, 1];
+
+        let presigs = ProverPresigs {
+            sig_challenge_assert: BabeBtcSig::ProverPresigChallengeAssert,
+            sig_no_withdraw: BabeBtcSig::ProverPresigNoWithdraw,
+        };
+        let outlock = TxChallengeAssertOutputLock {
+            pk_p: pk_p.clone(),
+            pk_v: pk_v.clone(),
+            h_msgs: vec![h_msg0, h_msg1],
+        };
+
+        assert!(babe_verify_prover_presigs(
+            &presigs, &outlock, &pk_p, &pk_v, &package, &finalized_indices,
+        ));
+
+        // Wrong presig kind must fail.
+        let bad_presigs = ProverPresigs {
+            sig_challenge_assert: BabeBtcSig::ProverLiveSig,
+            sig_no_withdraw: BabeBtcSig::ProverPresigNoWithdraw,
+        };
+        assert!(!babe_verify_prover_presigs(
+            &bad_presigs, &outlock, &pk_p, &pk_v, &package, &finalized_indices,
+        ));
+
+        // Pubkey mismatch must fail.
+        assert!(!babe_verify_prover_presigs(
+            &presigs, &outlock, &dummy_pk(9), &pk_v, &package, &finalized_indices,
+        ));
+
+        // Tampered h_msg (doesn't match package commit) must fail.
+        let bad_outlock = TxChallengeAssertOutputLock {
+            pk_p: pk_p.clone(),
+            pk_v: pk_v.clone(),
+            h_msgs: vec![h_msg0, [0xCCu8; 20]],
+        };
+        assert!(!babe_verify_prover_presigs(
+            &presigs, &bad_outlock, &pk_p, &pk_v, &package, &finalized_indices,
+        ));
+
+        // Wrong h_msgs length must fail.
+        let short_outlock = TxChallengeAssertOutputLock {
+            pk_p: pk_p.clone(),
+            pk_v: pk_v.clone(),
+            h_msgs: vec![h_msg0],
+        };
+        assert!(!babe_verify_prover_presigs(
+            &presigs, &short_outlock, &pk_p, &pk_v, &package, &finalized_indices,
+        ));
+    }
+
+    fn dummy_commit() -> crate::instance::commit::CACInstanceCommit {
+        crate::instance::commit::CACInstanceCommit {
+            epk: vec![],
+            constant_commits_fgc: [[[0u8; 32]; 2]; 2],
+            constant_commits_sgc: vec![],
+            b_blind_commit: [0u8; 32],
+            h_msg: [0u8; 20],
+            h_ct_setup: [0u8; 32],
+            com_adaptor: [[0u8; 32]; 2],
+            com_gc: [[0u8; 32]; 3],
+        }
+    }
+
+    fn dummy_package(n: usize) -> CACSetupPackage {
+        CACSetupPackage { commits: (0..n).map(|_| dummy_commit()).collect() }
+    }
 }

@@ -595,4 +595,45 @@ mod tests {
         assert!(prover.valid_finalized_id.is_some());
         assert_ne!(prover.valid_finalized_id.unwrap(), finalized_indices[0]);
     }
+
+    // Soundness: a Prover claiming an x_d that its proof does not actually attest to must not
+    // be able to decrypt, in any finalized instance (base or soldered).
+    #[test]
+    fn test_check_compute_msg_rejects_wrong_x_d() {
+        let (verifier, package, finalized_indices, finalized, soldered_output) =
+            setup_cac_soldering();
+
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(GROTH_16_SEED);
+        let a = Fr::from(3u64);
+        let b = Fr::from(7u64);
+        let (pk, vk) = ark_groth16::Groth16::<Bn254>::setup(
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        )
+        .unwrap();
+        // Proof genuinely attests d = a*a = 9; claim a different x_d.
+        let proof = ark_groth16::Groth16::<Bn254>::prove(
+            &pk,
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
+            &mut rng,
+        )
+        .unwrap();
+        let wrong_dynamic_public_inputs = a * a + Fr::from(1u64);
+
+        let base_idx = finalized_indices[0];
+        let pi1_labels = verifier.compute_pi1_labels(base_idx, proof.a);
+        let x_d_labels = verifier.compute_x_d_labels(base_idx, wrong_dynamic_public_inputs);
+        let mut prover = BABEProver::new(vk, proof, wrong_dynamic_public_inputs);
+
+        let h_msgs_onchain: Vec<[u8; 20]> =
+            finalized_indices.iter().map(|&idx| package.commits[idx].h_msg).collect();
+        let found = prover.check_compute_msg_with_soldered_output(
+            &finalized, &pi1_labels, &x_d_labels, &soldered_output, &h_msgs_onchain,
+        );
+
+        assert!(!found, "a mismatched x_d must not decrypt the message");
+        assert!(prover.valid_msg.is_none());
+        assert!(prover.valid_ct_prove.is_none());
+        assert!(prover.valid_finalized_id.is_none());
+    }
 }

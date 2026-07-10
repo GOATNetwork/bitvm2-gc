@@ -99,3 +99,49 @@ pub fn build_soldered_wires_input(
             .collect(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wire(l0: u8, l1: u8) -> SolderedWire {
+        ([l0; 16], [l1; 16])
+    }
+
+    #[test]
+    fn test_soldering_guest_compute() {
+        let base: InstancesWires = vec![wire(0x11, 0x22), wire(0x33, 0x44)];
+        let inst1: InstancesWires = vec![wire(0xAA, 0xBB), wire(0xCC, 0xDD)];
+        let inst2: InstancesWires = vec![wire(0x01, 0x02), wire(0x03, 0x04)];
+
+        let input = SolderedWiresInput(vec![base.clone(), inst1.clone(), inst2.clone()]);
+        let out = soldering_guest_compute(&input);
+
+        // base_commitment: SHA256 of each base label, in order.
+        let expected_base_commitment: Vec<_> = base
+            .iter()
+            .map(|(l0, l1)| (h_256(l0), h_256(l1)))
+            .collect();
+        assert_eq!(out.base_commitment, expected_base_commitment);
+
+        // deltas/commitments: one entry per non-base instance, in order.
+        assert_eq!(out.deltas.len(), 2);
+        assert_eq!(out.commitments.len(), 2);
+
+        // Hand-computed XOR: 0x11^0xAA=0xBB, 0x22^0xBB=0x99, 0x33^0xCC=0xFF, 0x44^0xDD=0x99.
+        assert_eq!(out.deltas[0], vec![([0xBB; 16], [0x99; 16]), ([0xFF; 16], [0x99; 16])]);
+        // 0x11^0x01=0x10, 0x22^0x02=0x20, 0x33^0x03=0x30, 0x44^0x04=0x40.
+        assert_eq!(out.deltas[1], vec![([0x10; 16], [0x20; 16]), ([0x30; 16], [0x40; 16])]);
+
+        let expected_commitments1: Vec<_> = inst1.iter().map(|(l0, l1)| (h_256(l0), h_256(l1))).collect();
+        let expected_commitments2: Vec<_> = inst2.iter().map(|(l0, l1)| (h_256(l0), h_256(l1))).collect();
+        assert_eq!(out.commitments[0], expected_commitments1);
+        assert_eq!(out.commitments[1], expected_commitments2);
+    }
+
+    #[test]
+    #[should_panic(expected = "at least one instance required")]
+    fn test_soldering_guest_compute_empty_panics() {
+        soldering_guest_compute(&SolderedWiresInput(vec![]));
+    }
+}

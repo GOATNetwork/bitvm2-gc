@@ -243,3 +243,81 @@ impl BABEVerifier {
         InstanceLightSecrets::from_seed(self.seeds[idx])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_ff::UniformRand;
+    use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
+    use rand::SeedableRng;
+    use crate::babe::DummyMulCircuit;
+    use crate::cac::CACSetupPackage;
+    use crate::instance::commit::CACInstanceCommit;
+    use crate::prover::GROTH_16_SEED;
+    use crate::utils::pi1_xd_to_wots96_msg;
+
+    fn dummy_vk() -> Groth16VerifyingKey<ark_bn254::Bn254> {
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(GROTH_16_SEED);
+        let a = Fr::from(3u64);
+        let b = Fr::from(7u64);
+        let (_, vk) = ark_groth16::Groth16::<ark_bn254::Bn254>::setup(
+            DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) }, &mut rng,
+        ).expect("groth16 setup");
+        vk
+    }
+
+    fn dummy_commit() -> CACInstanceCommit {
+        CACInstanceCommit {
+            epk: vec![],
+            constant_commits_fgc: [[[0u8; 32]; 2]; 2],
+            constant_commits_sgc: vec![],
+            b_blind_commit: [0u8; 32],
+            h_msg: [0u8; 20],
+            h_ct_setup: [0u8; 32],
+            com_adaptor: [[0u8; 32]; 2],
+            com_gc: [[0u8; 32]; 3],
+        }
+    }
+
+    // Two independent bit-extraction paths (raw bytes vs. DvFq/DvFr::to_bits) must agree.
+    #[test]
+    fn test_compute_labels_from_bytes_matches_split_computation() {
+        let ls = InstanceLightSecrets::from_seed(7);
+
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(1);
+        let pi1 = G1Affine::from(ark_bn254::G1Projective::rand(&mut rng));
+        let x_d = Fr::rand(&mut rng);
+
+        let pi1_labels = ls.compute_pi1_labels(pi1);
+        let xd_labels = ls.compute_x_d_labels(x_d);
+        assert_eq!(pi1_labels.len(), 2 * N_PADDED);
+        assert_eq!(xd_labels.len(), N_PADDED);
+
+        let split: Vec<S> = pi1_labels.into_iter().chain(xd_labels).collect();
+
+        let raw = pi1_xd_to_wots96_msg(&pi1, x_d);
+        let from_bytes = ls.compute_labels_from_bytes(&raw);
+        assert_eq!(from_bytes.len(), 3 * N_PADDED);
+
+        assert_eq!(from_bytes, split);
+    }
+
+    #[test]
+    fn test_from_state_rejects_length_mismatch() {
+        let vk = dummy_vk();
+        let commits = CACSetupPackage { commits: vec![dummy_commit(), dummy_commit()] };
+
+        assert!(BABEVerifier::from_state(&[1, 2, 3], &commits, &vk, Fr::from(0u64)).is_none());
+        assert!(BABEVerifier::from_state(&[1, 2], &commits, &vk, Fr::from(0u64)).is_some());
+    }
+
+    #[test]
+    fn test_open_rejects_out_of_range_index() {
+        let vk = dummy_vk();
+        let commits = CACSetupPackage { commits: vec![dummy_commit()] };
+        let verifier = BABEVerifier::from_state(&[1], &commits, &vk, Fr::from(0u64)).unwrap();
+
+        let err = verifier.open(&[5]).expect_err("index 5 is out of range for 1 seed");
+        assert!(err.contains('5'), "error should reference the bad index: {err}");
+    }
+}

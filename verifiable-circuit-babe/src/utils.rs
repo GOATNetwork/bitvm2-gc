@@ -138,3 +138,126 @@ pub fn deserialize_g1affine<'de, D: Deserializer<'de>>(deserializer: D) -> Resul
     let bytes = Vec::<u8>::deserialize(deserializer)?;
     G1Affine::deserialize_compressed(bytes.as_slice()).map_err(serde::de::Error::custom)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_ff::UniformRand;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha12Rng;
+
+    #[test]
+    fn test_groth16_vk_x() {
+        let mut rng = ChaCha12Rng::seed_from_u64(1);
+        let g0 = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+        let g1 = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+        let g2 = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+        let vk = Groth16VerifyingKey::<ark_bn254::Bn254> {
+            gamma_abc_g1: vec![g0, g1, g2],
+            ..Default::default()
+        };
+
+        let x1 = Fr::from(3u64);
+        let x2 = Fr::from(5u64);
+        let expected = (g0.into_group() + g1.into_group() * x1 + g2.into_group() * x2).into_affine();
+        let actual = groth16_vk_x(&vk, &[x1, x2]).unwrap().into_affine();
+        assert_eq!(actual, expected);
+
+        // length mismatch: public_inputs.len() + 1 != gamma_abc_g1.len()
+        assert!(groth16_vk_x(&vk, &[x1]).is_none());
+        assert!(groth16_vk_x(&vk, &[x1, x2, Fr::from(7u64)]).is_none());
+    }
+
+    #[test]
+    fn test_g1_from_ser_checked() {
+        let mut rng = ChaCha12Rng::seed_from_u64(2);
+        let p = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+        let mut valid_bytes = Vec::new();
+        p.serialize_compressed(&mut valid_bytes).unwrap();
+        assert_eq!(g1_from_ser_checked(&valid_bytes).unwrap().into_affine(), p);
+
+        let mut identity_bytes = Vec::new();
+        G1Affine::zero().serialize_compressed(&mut identity_bytes).unwrap();
+        assert!(g1_from_ser_checked(&identity_bytes).is_none());
+
+        assert!(g1_from_ser_checked(&[0xFFu8; 32]).is_none());
+    }
+
+    #[test]
+    fn test_g2_from_ser_checked() {
+        let mut rng = ChaCha12Rng::seed_from_u64(3);
+        let p = ark_bn254::G2Projective::rand(&mut rng).into_affine();
+        let mut valid_bytes = Vec::new();
+        p.serialize_compressed(&mut valid_bytes).unwrap();
+        assert_eq!(g2_from_ser_checked(&valid_bytes).unwrap().into_affine(), p);
+
+        let mut identity_bytes = Vec::new();
+        G2Affine::zero().serialize_compressed(&mut identity_bytes).unwrap();
+        assert!(g2_from_ser_checked(&identity_bytes).is_none());
+
+        assert!(g2_from_ser_checked(&[0xFFu8; 64]).is_none());
+    }
+
+    #[test]
+    fn test_pi1_xd_to_wots96_msg_byte_layout() {
+        let mut rng = ChaCha12Rng::seed_from_u64(4);
+        let pi1 = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+        let x_d = Fr::rand(&mut rng);
+        let msg = pi1_xd_to_wots96_msg(&pi1, x_d);
+
+        let mut x_bytes = Vec::new();
+        pi1.x.serialize_uncompressed(&mut x_bytes).unwrap();
+        let mut y_bytes = Vec::new();
+        pi1.y.serialize_uncompressed(&mut y_bytes).unwrap();
+        let mut xd_bytes = Vec::new();
+        x_d.serialize_uncompressed(&mut xd_bytes).unwrap();
+
+        assert_eq!(&msg[0..32], x_bytes.as_slice());
+        assert_eq!(&msg[32..64], y_bytes.as_slice());
+        assert_eq!(&msg[64..96], xd_bytes.as_slice());
+    }
+
+    #[test]
+    fn test_ro_from_pairing_bytes() {
+        let seed1 = b"seed-one".as_slice();
+        let seed2 = b"seed-two".as_slice();
+
+        let out1a = ro_from_pairing_bytes(seed1, 40);
+        let out1b = ro_from_pairing_bytes(seed1, 40);
+        let out2 = ro_from_pairing_bytes(seed2, 40);
+
+        assert_eq!(out1a.len(), 40);
+        assert_eq!(out1a, out1b, "same seed must be deterministic");
+        assert_ne!(out1a, out2, "different seeds must diverge");
+
+        // Stream is CTR-based over blocks derived from (key, nonce) alone, so a shorter
+        // request must be a prefix of a longer one for the same seed.
+        let out_short = ro_from_pairing_bytes(seed1, 5);
+        assert_eq!(out_short.as_slice(), &out1a[..5]);
+    }
+
+    #[test]
+    fn test_serde_shims_roundtrip() {
+        #[derive(Serialize, Deserialize)]
+        struct FqWrap(
+            #[serde(serialize_with = "serialize_fq", deserialize_with = "deserialize_fq")] Fq,
+        );
+        #[derive(Serialize, Deserialize)]
+        struct G1Wrap(
+            #[serde(serialize_with = "serialize_g1affine", deserialize_with = "deserialize_g1affine")]
+            G1Affine,
+        );
+
+        let mut rng = ChaCha12Rng::seed_from_u64(5);
+
+        let fq = Fq::rand(&mut rng);
+        let bytes = bincode::serialize(&FqWrap(fq)).unwrap();
+        let back: FqWrap = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(back.0, fq);
+
+        let g1 = ark_bn254::G1Projective::rand(&mut rng).into_affine();
+        let bytes = bincode::serialize(&G1Wrap(g1)).unwrap();
+        let back: G1Wrap = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(back.0, g1);
+    }
+}
