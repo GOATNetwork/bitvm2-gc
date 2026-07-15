@@ -16,9 +16,7 @@ use garbled_snark_verifier::core::utils::SerializableGate;
 pub use utils::*;
 
 /// Increment this whenever the circuit compilation or artifact serialization format changes.
-/// Both readers (`flat_from_bytes`, `deserialize_circuit`) assert this value matches what
-/// is stored on disk; a mismatch means stale artifacts — re-run `generate_artifacts`.
-pub const ARTIFACT_VERSION: u32 = 1;
+pub const ARTIFACT_VERSION: u32 = 2;
 
 /// Hard upper bound on `num_wires` read from an artifact file.
 /// Prevents a crafted or corrupted file from triggering a multi-GB allocation.
@@ -44,8 +42,6 @@ fn sgc_indices_path() -> String {
 }
 
 // ── Compact artifact paths (slot-reused wire IDs, used by read_compact_gc) ───
-// Wire IDs are remapped to minimise FlatEvalBuffer size. Each slot may be reused
-// across gate steps (safe for Vec<[u8;16]> reads-before-write, not for RefCell).
 fn fgc_compact_gates_path() -> String {
     std::env::var("FGC_COMPACT_GATES_PATH").unwrap_or_else(|_| "./fgc_compact_gates.bin".to_string())
 }
@@ -196,8 +192,12 @@ fn flat_from_bytes(gates_bytes: &[u8], output_indices_bytes: &[u8]) -> (FlatGate
         version == ARTIFACT_VERSION,
         "artifact version {version} != expected {ARTIFACT_VERSION} — re-run: cargo run -r --bin generate_artifacts"
     );
-    let output_indices: Vec<usize> =
+    let (idx_version, output_indices): (u32, Vec<usize>) =
         bincode::deserialize(output_indices_bytes).expect("deserialize indices");
+    assert!(
+        idx_version == ARTIFACT_VERSION,
+        "indices artifact version {idx_version} != expected {ARTIFACT_VERSION} — re-run: cargo run -r --bin generate_artifacts"
+    );
     let flat = FlatGates {
         num_wires: num_wires as usize,
         gates: gates_read
@@ -232,8 +232,12 @@ fn deserialize_circuit(gates_bytes: &[u8], output_indices_bytes: &[u8]) -> (Circ
         version == ARTIFACT_VERSION,
         "artifact version {version} != expected {ARTIFACT_VERSION} — re-run: cargo run -r --bin generate_artifacts"
     );
-    let output_indices: Vec<usize> =
+    let (idx_version, output_indices): (u32, Vec<usize>) =
         bincode::deserialize(output_indices_bytes).expect("deserialize indices");
+    assert!(
+        idx_version == ARTIFACT_VERSION,
+        "indices artifact version {idx_version} != expected {ARTIFACT_VERSION} — re-run: cargo run -r --bin generate_artifacts"
+    );
 
     let wires: Vec<_> = (0..num_wires)
         .map(|id| Rc::new(RefCell::new(Wire { label: None, value: None, id: Some(id) })))

@@ -128,7 +128,7 @@ fn write_circuit(
     }).collect();
     let gates_bytes = bincode::serialize(&(super::ARTIFACT_VERSION, num_wires, &serializable)).expect("serialize gates");
     fs::write(gates_path, &gates_bytes).expect("write gates");
-    let idx_bytes = bincode::serialize(&output_indices).expect("serialize indices");
+    let idx_bytes = bincode::serialize(&(super::ARTIFACT_VERSION, output_indices)).expect("serialize indices");
     fs::write(indices_path, &idx_bytes).expect("write indices");
 }
 
