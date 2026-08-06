@@ -4,5 +4,8 @@ version = "1.1.0"
 edition = "2021"
 
 [dependencies]
-zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren", features = ["embedded"] }
+zkm-zkvm = { git = "https://github.com/VanhGer/Ziren.git", branch = "blake3", features = ["embedded"] }
 verifiable-circuit-babe = { path = "../../../verifiable-circuit-babe" }
+
+[features]
+imm-wrap-vk = ["zkm-zkvm/imm-wrap-vk"]
