@@ -22,13 +22,9 @@ resolver = "2"
 garbled-snark-verifier = { path = "./garbled-snark-verifier" }
 verifiable-circuit-babe = { path = "./verifiable-circuit-babe" }
 bristol = { path = "./bristol" }
-zkm-build = { git = "https://github.com/ProjectZKM/Ziren" }
-zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren" }
-zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren" }
-
-#zkm-build = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
-#zkm-sdk = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
-#zkm-zkvm = { git = "https://github.com/VanhGer/Ziren.git", branch = "feat/aes128-precompile" }
+zkm-build = { git = "https://github.com/ProjectZKM/Ziren", branch = "v1.2.5-blake3" }
+zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren", branch = "v1.2.5-blake3" }
+zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren", branch = "v1.2.5-blake3" }
 
 poseidon2 = { git = "https://github.com/ProjectZKM/poseidon2" }
 p3-maybe-rayon = { git = "https://github.com/ProjectZKM/Plonky3" }
