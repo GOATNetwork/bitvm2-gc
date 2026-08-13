@@ -4,7 +4,7 @@ version = "1.1.0"
 edition = "2021"
 
 [dependencies]
-zkm-zkvm = { git = "https://github.com/VanhGer/Ziren.git", branch = "blake3", features = ["embedded"] }
+zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren", branch = "v1.2.5-blake3", features = ["embedded"] }
 verifiable-circuit-babe = { path = "../../../verifiable-circuit-babe" }
 
 [features]
