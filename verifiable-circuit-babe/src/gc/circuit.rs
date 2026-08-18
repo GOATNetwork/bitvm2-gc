@@ -235,8 +235,8 @@ pub fn count_non_free_gates(flat: &FlatGates) -> usize {
 }
 
 /// Non-free gate counts for the fixed circuit topology (FGC = SGC Part 2's topology too).
-pub const FGC_NON_FREE_GATES_COUNT: usize = 740_112;
-pub const SGC_NON_FREE_GATES_COUNT: usize = 57_850_911;
+pub const FGC_NON_FREE_GATES_COUNT: usize = 740116;
+pub const SGC_NON_FREE_GATES_COUNT: usize = 57855563;
 
 /// Build the unsigned w=8 Base table.
 ///
