@@ -84,14 +84,24 @@ impl Circuit {
         garbled_evaluations.last().unwrap().1
     }
 
-    pub fn garbled_evaluate_without_delta(&self, ciphertext: &[Option<S>]) {
-        for (i, gate) in self.1.iter().enumerate() {
+    /// `ciphertexts` holds only the entries produced by gates where
+    /// `GateType::needs_ciphertext()` is true, in gate order — free-XOR gates
+    pub fn garbled_evaluate_without_delta(&self, ciphertexts: &[S]) {
+        let mut ct_idx = 0usize;
+        for gate in self.1.iter() {
+            let ct = if gate.gate_type.needs_ciphertext() {
+                let c = ciphertexts[ct_idx];
+                ct_idx += 1;
+                Some(c)
+            } else {
+                None
+            };
             let (output, output_label) = gate.e()(
                 gate.wire_a.borrow().get_value(),
                 gate.wire_b.borrow().get_value(),
                 gate.wire_a.borrow().get_label(),
                 gate.wire_b.borrow().get_label(),
-                ciphertext[i],
+                ct,
                 gate.gid,
             );
             // check the output is correct

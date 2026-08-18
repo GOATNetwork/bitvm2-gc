@@ -37,7 +37,8 @@ pub fn cac_finalize_indices(n_cc: usize, m_cc: usize) -> Vec<usize> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FinalizedInstanceData {
     pub index: usize,
-    pub ciphertext_sets: [Vec<Option<S>>; 3],
+    /// dense, one entry per non-free gate only.
+    pub ciphertext_sets: [Vec<S>; 3],
     pub adaptor_tables: [SparseAdaptorTable; 2],
     pub ct_setup: WitnessEncSetupCt,
     /// [0-label of wire-0 (constant false), 1-label of wire-1 (constant true)].
@@ -166,10 +167,18 @@ pub fn verify_opened_instances(
     Ok(())
 }
 
+/// `fgc_non_free_gates_count`/`sgc_non_free_gates_count`: AND-gate counts for FGC and SGC Part 1 (SGC Part 2 reuses
+/// the FGC topology). Callers get these cheaply from whatever gate-typed topology they
+/// already have in memory — e.g. the Prover already loads the original `Circuit` via
+/// `read_flat_original_gc()` for evaluation, so no extra topology load is needed here.
 pub fn verify_finalized_instances(
     package: &CACSetupPackage,
     finalized: &[FinalizedInstanceData],
+    fgc_non_free_gates_count: usize,
+    sgc_non_free_gates_count: usize,
 ) -> Result<(), String> {
+    let counts = [fgc_non_free_gates_count, sgc_non_free_gates_count, fgc_non_free_gates_count];
+
     for data in finalized {
         let idx = data.index;
         let committed = package.commits.get(idx).ok_or_else(|| {
@@ -187,7 +196,7 @@ pub fn verify_finalized_instances(
         }
 
         for i in 0..3 {
-            if gc_ciphertexts_commit(&data.ciphertext_sets[i]) != committed.com_gc[i] {
+            if gc_ciphertexts_commit(&data.ciphertext_sets[i], counts[i]) != committed.com_gc[i] {
                 return Err(format!("instance {idx}: gc_ciphertexts do not match com_gc"));
             }
         }
@@ -284,8 +293,11 @@ mod tests {
         println!("Prover verification of opened instances took {elapsed:.2?}");
 
         // Prover verifies finalized instances via com_gc / com_adaptor.
+        let (fgc_flat, _, sgc_flat, _) = crate::gc::read_compact_gc();
+        let fgc_non_free_gates_count = crate::gc::count_non_free_gates(fgc_flat);
+        let sgc_non_free_gates_count = crate::gc::count_non_free_gates(sgc_flat);
         let now = std::time::Instant::now();
-        verify_finalized_instances(&package, &finalized)
+        verify_finalized_instances(&package, &finalized, fgc_non_free_gates_count, sgc_non_free_gates_count)
             .expect("finalized instance verification failed");
         let elapsed = now.elapsed();
         println!("Prover verification of finalized instances took {elapsed:.2?}");

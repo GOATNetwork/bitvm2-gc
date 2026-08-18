@@ -29,8 +29,8 @@ pub struct CACInstance {
     pub secrets: InstanceSecrets,
     pub ct_setup: WitnessEncSetupCt,
     pub adaptor_tables: [SparseAdaptorTable; 2],
-    /// for fgc, sgc part 1, sgc part 2
-    pub ciphertexts_sets: [Vec<Option<S>>; 3]
+    /// for fgc, sgc part 1, sgc part 2 — dense, one entry per non-free gate only.
+    pub ciphertexts_sets: [Vec<S>; 3]
 }
 
 impl CACInstance {

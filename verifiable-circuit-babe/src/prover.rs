@@ -239,7 +239,7 @@ impl BABEProver {
         const_labels: &[Vec<S>; 2],
         pi1_labels: &[S],
         x_d_labels: &[S],
-        ciphertext_sets: &[Vec<Option<S>>; 3],
+        ciphertext_sets: &[Vec<S>; 3],
         adaptor_tables: &[SparseAdaptorTable; 2],
         b: &ark_bn254::G1Affine,
     ) -> WitnessEncProveCt {
@@ -344,14 +344,14 @@ impl BABEProver {
         circuit: &mut Circuit,
         output_indices: &[usize],
         witness: &[bool],
-        ciphertext: &[Option<S>],
+        ciphertext: &[S],
         const_skip: usize,
     ) -> Vec<[u8; 16]> {
         circuit.set_witness_value(&witness, const_skip);
         for gate in &mut circuit.1 {
             gate.evaluate();
         }
-        circuit.garbled_evaluate_without_delta(&ciphertext);
+        circuit.garbled_evaluate_without_delta(ciphertext);
 
         let output_labels: Vec<[u8; 16]> = output_indices
             .iter()

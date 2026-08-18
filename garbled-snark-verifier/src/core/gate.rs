@@ -25,6 +25,15 @@ pub enum GateType {
     Not = 10,
 }
 
+impl GateType {
+    /// Free-XOR gates (Xor, Xnor, Not) are evaluated directly from labels and
+    /// never produce a garbled ciphertext; every other gate type does.
+    #[inline(always)]
+    pub fn needs_ciphertext(&self) -> bool {
+        !matches!(self, GateType::Xor | GateType::Xnor | GateType::Not)
+    }
+}
+
 impl fmt::Display for GateType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
