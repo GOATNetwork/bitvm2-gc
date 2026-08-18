@@ -1,12 +1,24 @@
 use std::fs;
 use ark_bn254::G1Affine;
+use garbled_snark_verifier::core::gate::GateType;
 use garbled_snark_verifier::core::utils::{reset_gid, SerializableGate};
 
-use super::circuit::{compile_fgc, compile_sgc_part1, FGC_NUM_PRE_INITIALIZED, SGC_NUM_PRE_INITIALIZED};
+use super::circuit::{
+    compile_fgc, compile_sgc_part1, FGC_NON_FREE_GATES_COUNT, FGC_NUM_PRE_INITIALIZED,
+    SGC_NON_FREE_GATES_COUNT, SGC_NUM_PRE_INITIALIZED,
+};
+
+/// Count gates needing a ciphertext
+fn count_non_free(gates: &[(u32, u32, u32, u8, u32)]) -> usize {
+    gates.iter()
+        .filter(|&&(_, _, _, gt, _)| GateType::try_from(gt).expect("unknown gate type").needs_ciphertext())
+        .count()
+}
 
 pub struct CircuitStats {
     pub name: &'static str,
     pub num_gates: usize,
+    pub non_free_gates: usize,
     pub num_wires_original: usize,
     pub num_pre_initialized: usize,
     pub max_live_wires: usize,
@@ -139,6 +151,7 @@ fn print_report(stats: &[CircuitStats; 2]) {
     for s in stats {
         println!("\n[{}]", s.name);
         println!("  Gates:              {:>15}", s.num_gates);
+        println!("  Non-free gates:     {:>15}", s.non_free_gates);
         println!("  Wires (original):   {:>15}", s.num_wires_original);
         println!("  Pre-initialized:    {:>15}", s.num_pre_initialized);
         println!("  Max live wires:     {:>15}", s.max_live_wires);
@@ -152,6 +165,15 @@ fn print_report(stats: &[CircuitStats; 2]) {
     println!("  Before: {:.2} MB", total_before);
     println!("  After:  {:.2} MB  ({:.1}× reduction)",
              total_after, total_before / total_after);
+
+    println!("\n[Non-free gate counts — paste into circuit.rs if they've drifted]");
+    println!("  pub const FGC_NON_FREE_GATES_COUNT: usize = {};", stats[0].non_free_gates);
+    println!("  pub const SGC_NON_FREE_GATES_COUNT: usize = {};", stats[1].non_free_gates);
+    if stats[0].non_free_gates != FGC_NON_FREE_GATES_COUNT
+        || stats[1].non_free_gates != SGC_NON_FREE_GATES_COUNT {
+        println!("  NOTICE: these differ from the hardcoded constants currently in circuit.rs \
+                   ({FGC_NON_FREE_GATES_COUNT} / {SGC_NON_FREE_GATES_COUNT}) — update them.");
+    }
 }
 
 /// Generate, compact, and write all circuit artifacts from scratch.
@@ -183,6 +205,7 @@ pub fn generate_compact_artifacts(l2_point: G1Affine) -> [CircuitStats; 2] {
     let fgc_stats = CircuitStats {
         name: "FGC",
         num_gates: fgc_gates.len(),
+        non_free_gates: count_non_free(&fgc_gates),
         num_wires_original: fgc_wires_orig,
         num_pre_initialized: FGC_NUM_PRE_INITIALIZED,
         max_live_wires: fgc_max_live,
@@ -215,6 +238,7 @@ pub fn generate_compact_artifacts(l2_point: G1Affine) -> [CircuitStats; 2] {
     let sgc_stats = CircuitStats {
         name: "SGC Part 1",
         num_gates: sgc_gates.len(),
+        non_free_gates: count_non_free(&sgc_gates),
         num_wires_original: sgc_wires_orig,
         num_pre_initialized: SGC_NUM_PRE_INITIALIZED,
         max_live_wires: sgc_max_live,

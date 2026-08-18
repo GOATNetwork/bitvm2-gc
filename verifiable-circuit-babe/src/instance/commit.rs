@@ -1,6 +1,6 @@
 use ark_serialize::CanonicalSerialize;
 use serde::{Deserialize, Serialize};
-use crate::gc::{gc_ciphertexts_commit, SGC_PART1_CONSTANT_SIZE};
+use crate::gc::{gc_ciphertexts_commit, FGC_NON_FREE_GATES_COUNT, SGC_NON_FREE_GATES_COUNT, SGC_PART1_CONSTANT_SIZE};
 use crate::instance::CACInstance;
 use crate::utils::{derive_hashlock, h_256};
 
@@ -60,10 +60,6 @@ impl CACInstanceCommit {
 
         let b_blind_commit = h_256(&b_blind_bytes);
 
-        let (fgc_flat, _, sgc_flat, _) = crate::gc::read_compact_gc();
-        let fgc_non_free_gates_count = crate::gc::count_non_free_gates(fgc_flat);
-        let sgc_non_free_gates_count = crate::gc::count_non_free_gates(sgc_flat);
-
         CACInstanceCommit {
             epk: input_commits,
             constant_commits_fgc: constant_commits_0,
@@ -73,9 +69,9 @@ impl CACInstanceCommit {
             h_ct_setup: h_256(&ct_setup_bytes),
             com_adaptor: [instance.adaptor_tables[0].commit(), instance.adaptor_tables[1].commit()],
             com_gc: [
-                gc_ciphertexts_commit(&instance.ciphertexts_sets[0], fgc_non_free_gates_count),
-                gc_ciphertexts_commit(&instance.ciphertexts_sets[1], sgc_non_free_gates_count),
-                gc_ciphertexts_commit(&instance.ciphertexts_sets[2], fgc_non_free_gates_count),
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[0], FGC_NON_FREE_GATES_COUNT),
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[1], SGC_NON_FREE_GATES_COUNT),
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[2], FGC_NON_FREE_GATES_COUNT),
             ]
         }
     }
