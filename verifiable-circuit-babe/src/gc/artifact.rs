@@ -166,11 +166,13 @@ fn print_report(stats: &[CircuitStats; 2]) {
     println!("  After:  {:.2} MB  ({:.1}× reduction)",
              total_after, total_before / total_after);
 
-    println!("\n[Non-free gate counts — paste into circuit.rs if they've drifted]");
+    println!("\n[Non-free gate counts]");
     println!("  pub const FGC_NON_FREE_GATES_COUNT: usize = {};", stats[0].non_free_gates);
     println!("  pub const SGC_NON_FREE_GATES_COUNT: usize = {};", stats[1].non_free_gates);
-    if stats[0].non_free_gates != FGC_NON_FREE_GATES_COUNT
-        || stats[1].non_free_gates != SGC_NON_FREE_GATES_COUNT {
+    if stats[0].non_free_gates == FGC_NON_FREE_GATES_COUNT
+        && stats[1].non_free_gates == SGC_NON_FREE_GATES_COUNT {
+        println!("  These match the constants in circuit.rs — up to date, no change needed.");
+    } else {
         println!("  NOTICE: these differ from the hardcoded constants currently in circuit.rs \
                    ({FGC_NON_FREE_GATES_COUNT} / {SGC_NON_FREE_GATES_COUNT}) — update them.");
     }
