@@ -242,6 +242,7 @@ impl BABEProver {
         ciphertext_sets: &[Vec<S>; 3],
         adaptor_tables: &[SparseAdaptorTable; 2],
         b: &ark_bn254::G1Affine,
+        aes_salt: S,
     ) -> WitnessEncProveCt {
         assert_eq!(
             const_labels[1].len(), SGC_PART1_CONSTANT_SIZE,
@@ -264,7 +265,8 @@ impl BABEProver {
             fgc_indices,
             &fgc_witness,
             &ciphertext_sets[0],
-            2
+            2,
+            Some(aes_salt)
         );
         let ct1 = BABEProver::eval_adaptor_table(
             &fgc_output_labels, pi1, &adaptor_tables[0]
@@ -290,7 +292,8 @@ impl BABEProver {
             sgc_indices,
             &sgc_part1_witness,
             &ciphertext_sets[1],
-            SGC_PART1_CONSTANT_SIZE
+            SGC_PART1_CONSTANT_SIZE,
+            Some(aes_salt)
         );
 
         // Part2: compute rQ
@@ -307,7 +310,8 @@ impl BABEProver {
             fgc_indices,
             &sgc_witness,
             &ciphertext_sets[2],
-            2
+            2,
+            Some(aes_salt)
         );
         let ct1_prime = BABEProver::eval_adaptor_table(
             &sgc_output_labels_2, q_affine, &adaptor_tables[1]
@@ -337,6 +341,7 @@ impl BABEProver {
             &data.ciphertext_sets,
             &data.adaptor_tables,
             &data.b,
+            data.aes_salt,
         )
     }
 
@@ -346,12 +351,13 @@ impl BABEProver {
         witness: &[bool],
         ciphertext: &[S],
         const_skip: usize,
+        salt: Option<S>,
     ) -> Vec<[u8; 16]> {
         circuit.set_witness_value(&witness, const_skip);
         for gate in &mut circuit.1 {
             gate.evaluate();
         }
-        circuit.garbled_evaluate_without_delta(ciphertext);
+        circuit.garbled_evaluate_without_delta(ciphertext, salt);
 
         let output_labels: Vec<[u8; 16]> = output_indices
             .iter()
@@ -491,6 +497,7 @@ mod tests {
             &verifier.ciphertexts_sets,
             &verifier.adaptor_tables,
             &verifier.secrets.b,
+            verifier.secrets.aes_salt,
         );
         drop(fgc);
         drop(sgc);

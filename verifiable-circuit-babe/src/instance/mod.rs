@@ -57,7 +57,7 @@ impl CACInstance {
             for (i, &key) in secrets.input_0labels[0].iter().enumerate() {
                 buf.set_label(2 + i, key.0);
             }
-            buf.garble_and_collect(fgc_flat, fgc_indices, secrets.delta[0].0)
+            buf.garble_and_collect(fgc_flat, fgc_indices, secrets.delta[0].0, Some(secrets.aes_salt))
         };
         assert_eq!(fgc_output_labels.len(), 2 * U_BAR_SIZE);
 
@@ -70,7 +70,7 @@ impl CACInstance {
             for (i, &key) in secrets.input_0labels[1].iter().enumerate() {
                 buf.set_label(SGC_PART1_CONSTANT_SIZE + i, key.0);
             }
-            buf.garble_and_collect(sgc_flat, sgc_indices, secrets.delta[1].0)
+            buf.garble_and_collect(sgc_flat, sgc_indices, secrets.delta[1].0, Some(secrets.aes_salt))
         };
         assert_eq!(sgc_output_labels_1.len(), 2 * Q_SIZE);
 
@@ -80,7 +80,7 @@ impl CACInstance {
             buf.set_label(0, secrets.constant_0labels[1][0].0);
             buf.set_label(1, secrets.constant_0labels[1][1].0);
             set_sgc2_rq_labels(&mut buf, &sgc_output_labels_1, secrets.constant_0labels[1][0].0);
-            buf.garble_and_collect(fgc_flat, fgc_indices, secrets.delta[1].0)
+            buf.garble_and_collect(fgc_flat, fgc_indices, secrets.delta[1].0, Some(secrets.aes_salt))
         };
         assert_eq!(sgc_output_labels_2.len(), 2 * U_BAR_SIZE);
 
@@ -125,7 +125,7 @@ impl CACInstance {
             for (i, &key) in secrets.input_0labels[0].iter().enumerate() {
                 buf.set_label(2 + i, key.0);
             }
-            buf.garble_and_hash(fgc_flat, fgc_indices, secrets.delta[0].0)
+            buf.garble_and_hash(fgc_flat, fgc_indices, secrets.delta[0].0, Some(secrets.aes_salt))
         };
         assert_eq!(fgc_output_labels.len(), 2 * U_BAR_SIZE);
 
@@ -138,7 +138,7 @@ impl CACInstance {
             for (i, &key) in secrets.input_0labels[1].iter().enumerate() {
                 buf.set_label(SGC_PART1_CONSTANT_SIZE + i, key.0);
             }
-            buf.garble_and_hash(sgc_flat, sgc_indices, secrets.delta[1].0)
+            buf.garble_and_hash(sgc_flat, sgc_indices, secrets.delta[1].0, Some(secrets.aes_salt))
         };
         assert_eq!(sgc_output_labels_1.len(), 2 * Q_SIZE);
 
@@ -148,7 +148,7 @@ impl CACInstance {
             buf.set_label(0, secrets.constant_0labels[1][0].0);
             buf.set_label(1, secrets.constant_0labels[1][1].0);
             set_sgc2_rq_labels(&mut buf, &sgc_output_labels_1, secrets.constant_0labels[1][0].0);
-            buf.garble_and_hash(fgc_flat, fgc_indices, secrets.delta[1].0)
+            buf.garble_and_hash(fgc_flat, fgc_indices, secrets.delta[1].0, Some(secrets.aes_salt))
         };
         assert_eq!(sgc_output_labels_2.len(), 2 * U_BAR_SIZE);
 
@@ -404,7 +404,8 @@ mod tests {
             &fgc_indices,
             &fgc_witness,
             &instance.ciphertexts_sets[0],
-            2
+            2,
+            Some(instance.secrets.aes_salt)
         );
         let ct1_bytes = BABEProver::eval_adaptor_table(
             &fgc_output_labels, pi1, &instance.adaptor_tables[0]
@@ -432,7 +433,8 @@ mod tests {
             &sgc_indices,
             &sgc_part1_witness,
             &instance.ciphertexts_sets[1],
-            SGC_PART1_CONSTANT_SIZE
+            SGC_PART1_CONSTANT_SIZE,
+            Some(instance.secrets.aes_salt)
         );
         // check that sgc computed correctly
         let q_proj = vk.gamma_abc_g1[2].into_group() * dynamic_inputs + b_blind;
@@ -457,7 +459,8 @@ mod tests {
             &fgc_indices,
             &sgc_witness,
             &instance.ciphertexts_sets[2],
-            2
+            2,
+            Some(instance.secrets.aes_salt)
         );
         let ct1_prime = BABEProver::eval_adaptor_table(
             &sgc_output_labels_2, q_affine, &instance.adaptor_tables[1]

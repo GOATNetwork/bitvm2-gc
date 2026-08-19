@@ -47,6 +47,9 @@ pub struct FinalizedInstanceData {
     pub constant_labels_1: Vec<S>,
     #[serde(serialize_with = "serialize_g1affine", deserialize_with = "deserialize_g1affine")]
     pub b: G1Affine,
+    /// Public per-instance salt for the `_aes` garbling-hash backend.
+    /// Unused by other hash backends.
+    pub aes_salt: S,
 }
 
 
@@ -331,6 +334,7 @@ mod tests {
             constant_labels_0: [S([0u8; 16]), S([0u8; 16])],
             constant_labels_1: vec![],
             b: G1Affine::identity(),
+            aes_salt: S([0u8; 16]),
         }
     }
 

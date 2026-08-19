@@ -208,6 +208,7 @@ impl BABEVerifier {
                     constant_labels_0,
                     constant_labels_1,
                     b: inst.secrets.b,
+                    aes_salt: inst.secrets.aes_salt,
                 })
                 // inst is dropped here
             })
