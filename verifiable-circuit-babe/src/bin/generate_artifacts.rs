@@ -18,27 +18,24 @@
 ///
 /// Run with:
 ///   cargo run --release --bin generate_artifacts
-use ark_bn254::Fr;
-use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
-use rand::SeedableRng;
-use verifiable_circuit_babe::babe::DummyMulCircuit;
+use ark_bn254::G1Affine;
 use verifiable_circuit_babe::gc::generate_compact_artifacts;
-use verifiable_circuit_babe::prover::GROTH_16_SEED;
+use zkm_verifier::{IMM_GROTH16_VK_BYTES, load_ark_groth16_verifying_key_from_bytes};
 
-// Todo: in practice, the vk should be generated differently / read from file.
+/// Load the dynamic-input coefficient from Ziren's bundled immutable Groth16 VK.
+fn load_immutable_l2_point() -> G1Affine {
+    let vk = load_ark_groth16_verifying_key_from_bytes(*IMM_GROTH16_VK_BYTES)
+        .expect("failed to parse Ziren immutable Groth16 VK");
+    assert_eq!(
+        vk.gamma_abc_g1.len(),
+        3,
+        "Ziren immutable Groth16 VK must contain coefficients for two public inputs",
+    );
+
+    vk.gamma_abc_g1[2]
+}
+
 fn main() {
-    // Use the same VK as all tests so the artifacts are compatible.
-    let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(GROTH_16_SEED);
-    let a = Fr::from(3u64);
-    let b = Fr::from(7u64);
-
-    println!("Setting up Groth16 VK (seed={GROTH_16_SEED})...");
-    let (_pk, vk) = ark_groth16::Groth16::<ark_bn254::Bn254>::setup(
-        DummyMulCircuit::<Fr> { a: Some(a), b: Some(b) },
-        &mut rng,
-    ).expect("groth16 setup");
-    
-    let l2_point = vk.gamma_abc_g1[2];
-
-    generate_compact_artifacts(l2_point);
+    println!("Loading Ziren immutable Groth16 VK...");
+    generate_compact_artifacts(load_immutable_l2_point());
 }

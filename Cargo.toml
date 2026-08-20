@@ -24,6 +24,7 @@ verifiable-circuit-babe = { path = "./verifiable-circuit-babe" }
 bristol = { path = "./bristol" }
 zkm-build = { git = "https://github.com/ProjectZKM/Ziren", tag = "v1.2.7" }
 zkm-sdk = { git = "https://github.com/ProjectZKM/Ziren", tag = "v1.2.7" }
+zkm-verifier = { git = "https://github.com/ProjectZKM/Ziren", tag = "v1.2.7", features = ["ark"] }
 zkm-zkvm = { git = "https://github.com/ProjectZKM/Ziren", tag = "v1.2.7" }
 
 poseidon2 = { git = "https://github.com/ProjectZKM/poseidon2" }
