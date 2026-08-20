@@ -1,6 +1,6 @@
 use ark_serialize::CanonicalSerialize;
 use serde::{Deserialize, Serialize};
-use crate::gc::{gc_ciphertexts_commit, SGC_PART1_CONSTANT_SIZE};
+use crate::gc::{gc_ciphertexts_commit, FGC_NON_FREE_GATES_COUNT, SGC_NON_FREE_GATES_COUNT, SGC_PART1_CONSTANT_SIZE};
 use crate::instance::CACInstance;
 use crate::utils::{derive_hashlock, h_256};
 
@@ -69,9 +69,9 @@ impl CACInstanceCommit {
             h_ct_setup: h_256(&ct_setup_bytes),
             com_adaptor: [instance.adaptor_tables[0].commit(), instance.adaptor_tables[1].commit()],
             com_gc: [
-                gc_ciphertexts_commit(&instance.ciphertexts_sets[0]),
-                gc_ciphertexts_commit(&instance.ciphertexts_sets[1]),
-                gc_ciphertexts_commit(&instance.ciphertexts_sets[2]),
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[0], FGC_NON_FREE_GATES_COUNT),
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[1], SGC_NON_FREE_GATES_COUNT),
+                gc_ciphertexts_commit(&instance.ciphertexts_sets[2], FGC_NON_FREE_GATES_COUNT),
             ]
         }
     }

@@ -37,7 +37,8 @@ pub fn cac_finalize_indices(n_cc: usize, m_cc: usize) -> Vec<usize> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FinalizedInstanceData {
     pub index: usize,
-    pub ciphertext_sets: [Vec<Option<S>>; 3],
+    /// dense, one entry per non-free gate only.
+    pub ciphertext_sets: [Vec<S>; 3],
     pub adaptor_tables: [SparseAdaptorTable; 2],
     pub ct_setup: WitnessEncSetupCt,
     /// [0-label of wire-0 (constant false), 1-label of wire-1 (constant true)].
@@ -46,6 +47,9 @@ pub struct FinalizedInstanceData {
     pub constant_labels_1: Vec<S>,
     #[serde(serialize_with = "serialize_g1affine", deserialize_with = "deserialize_g1affine")]
     pub b: G1Affine,
+    /// Public per-instance salt for the `_aes` garbling-hash backend.
+    /// Unused by other hash backends.
+    pub aes_salt: S,
 }
 
 
@@ -170,6 +174,9 @@ pub fn verify_finalized_instances(
     package: &CACSetupPackage,
     finalized: &[FinalizedInstanceData],
 ) -> Result<(), String> {
+    use crate::gc::{FGC_NON_FREE_GATES_COUNT, SGC_NON_FREE_GATES_COUNT};
+    let counts = [FGC_NON_FREE_GATES_COUNT, SGC_NON_FREE_GATES_COUNT, FGC_NON_FREE_GATES_COUNT];
+
     for data in finalized {
         let idx = data.index;
         let committed = package.commits.get(idx).ok_or_else(|| {
@@ -187,7 +194,7 @@ pub fn verify_finalized_instances(
         }
 
         for i in 0..3 {
-            if gc_ciphertexts_commit(&data.ciphertext_sets[i]) != committed.com_gc[i] {
+            if gc_ciphertexts_commit(&data.ciphertext_sets[i], counts[i]) != committed.com_gc[i] {
                 return Err(format!("instance {idx}: gc_ciphertexts do not match com_gc"));
             }
         }
@@ -327,6 +334,7 @@ mod tests {
             constant_labels_0: [S([0u8; 16]), S([0u8; 16])],
             constant_labels_1: vec![],
             b: G1Affine::identity(),
+            aes_salt: S([0u8; 16]),
         }
     }
 

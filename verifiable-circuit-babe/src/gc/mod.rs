@@ -99,6 +99,7 @@ impl FlatEvalBuffer {
         flat: &FlatGates,
         output_indices: &[usize],
         delta: [u8; 16],
+        salt: Option<S>,
     ) -> ([u8; 32], Vec<[u8; 16]>) {
         use sha2::{Digest, Sha256};
 
@@ -109,11 +110,10 @@ impl FlatEvalBuffer {
             let a0 = S(self.labels[a as usize]);
             let b0 = S(self.labels[b as usize]);
             let gate_type = GateType::try_from(gt).expect("unknown gate type");
-            let (c0, ct) = gate_garbled_with_delta(a0, b0, gid, gate_type, delta_s);
+            let (c0, ct) = gate_garbled_with_delta(a0, b0, gid, gate_type, delta_s, salt);
             self.labels[c as usize] = c0.0;
-            match ct {
-                None    => hasher.update([0u8]),
-                Some(s) => { hasher.update([1u8]); hasher.update(s.0); }
+            if let Some(s) = ct {
+                hasher.update(s.0);
             }
         }
 
@@ -129,22 +129,27 @@ impl FlatEvalBuffer {
     }
 
     /// Like `garble_and_hash` but materializes ciphertexts for the evaluator path.
+    /// Returns only the ciphertexts of gates that actually need one 
     pub fn garble_and_collect(
         &mut self,
         flat: &FlatGates,
         output_indices: &[usize],
         delta: [u8; 16],
-    ) -> (Vec<Option<S>>, Vec<[u8; 16]>) {
+        salt: Option<S>,
+    ) -> (Vec<S>, Vec<[u8; 16]>) {
         let delta_s = S(delta);
-        let mut ciphertexts = Vec::with_capacity(flat.gates.len());
+        let non_free_gates_count = count_non_free_gates(flat);
+        let mut ciphertexts = Vec::with_capacity(non_free_gates_count);
 
         for &(a, b, c, gt, gid) in &flat.gates {
             let a0 = S(self.labels[a as usize]);
             let b0 = S(self.labels[b as usize]);
             let gate_type = GateType::try_from(gt).expect("unknown gate type");
-            let (c0, ct) = gate_garbled_with_delta(a0, b0, gid, gate_type, delta_s);
+            let (c0, ct) = gate_garbled_with_delta(a0, b0, gid, gate_type, delta_s, salt);
             self.labels[c as usize] = c0.0;
-            ciphertexts.push(ct);
+            if let Some(s) = ct {
+                ciphertexts.push(s);
+            }
         }
 
         let output_labels: Vec<[u8; 16]> = output_indices
@@ -265,6 +270,8 @@ mod tests {
     #[ignore]
     fn test_compact_garbling_matches_original() {
         let delta = [0xAAu8; 16];
+        // Non-C&C default salt
+        let salt = Some(garbled_snark_verifier::core::utils::NON_CAC_SALT);
 
         // ── FGC ──────────────────────────────────────────────────────────────
         let (fgc_compact, fgc_compact_idx, sgc_compact, sgc_compact_idx) = read_compact_gc();
@@ -284,8 +291,8 @@ mod tests {
             buf_orig.set_label(i, label);
         }
 
-        let (ct_compact, out_compact) = buf_compact.garble_and_collect(fgc_compact, fgc_compact_idx, delta);
-        let (ct_orig,    out_orig)    = buf_orig.garble_and_collect(&fgc_orig, &fgc_orig_idx, delta);
+        let (ct_compact, out_compact) = buf_compact.garble_and_collect(fgc_compact, fgc_compact_idx, delta, salt);
+        let (ct_orig,    out_orig)    = buf_orig.garble_and_collect(&fgc_orig, &fgc_orig_idx, delta, salt);
 
         assert_eq!(ct_compact, ct_orig,    "FGC: ciphertexts differ (compact vs original)");
         assert_eq!(out_compact, out_orig,  "FGC: output labels differ");
@@ -306,8 +313,8 @@ mod tests {
             buf_orig.set_label(i, label);
         }
 
-        let (ct_compact, out_compact) = buf_compact.garble_and_collect(sgc_compact, sgc_compact_idx, delta);
-        let (ct_orig,    out_orig)    = buf_orig.garble_and_collect(&sgc_orig, &sgc_orig_idx, delta);
+        let (ct_compact, out_compact) = buf_compact.garble_and_collect(sgc_compact, sgc_compact_idx, delta, salt);
+        let (ct_orig,    out_orig)    = buf_orig.garble_and_collect(&sgc_orig, &sgc_orig_idx, delta, salt);
 
         assert_eq!(ct_compact, ct_orig,    "SGC: ciphertexts differ (compact vs original)");
         assert_eq!(out_compact, out_orig,  "SGC: output labels differ");

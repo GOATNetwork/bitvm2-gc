@@ -7,8 +7,10 @@ use garbled_snark_verifier::dv_bn254::basic::{not, selector};
 use garbled_snark_verifier::dv_bn254::fp254impl::Fp254Impl;
 use garbled_snark_verifier::dv_bn254::{fq::Fq, fr::Fr};
 use garbled_snark_verifier::dv_bn254::g1::{projective_to_affine_montgomery, G1Projective as GcG1Projective, G1Projective};
+use garbled_snark_verifier::core::gate::GateType;
 
 use crate::dre::{N, N_PADDED, Q_SIZE, U_BAR_SIZE};
+use crate::gc::FlatGates;
 
 // Unsigned 8-bit windowed scalar-mul parameters. Must match the `SCALAR_WINDOW_*`
 // constants in garbled-snark-verifier's dv_bn254::g1. With w=8 we do 32 mixed-adds
@@ -214,17 +216,27 @@ fn g_u_bar_indices(bld: &mut CircuitAdapter) -> Vec<usize> {
     indices
 }
 
-/// SHA256 commitment to a `Vec<Option<S>>` GC ciphertext list.
-pub fn gc_ciphertexts_commit(ciphertexts: &[Option<garbled_snark_verifier::bag::S>]) -> [u8; 32] {
+/// SHA256 commitment to a dense GC ciphertext list (only entries from gates where
+/// `GateType::needs_ciphertext()` is true — free-XOR gates don't get a slot).
+pub fn gc_ciphertexts_commit(ciphertexts: &[garbled_snark_verifier::bag::S], non_free_gates_count: usize) -> [u8; 32] {
+    assert_eq!(ciphertexts.len(), non_free_gates_count, "non-free gate count does not match circuit topology");
     let mut hasher = Sha256::new();
     for ct in ciphertexts {
-        match ct {
-            None    => hasher.update([0u8]),
-            Some(s) => { hasher.update([1u8]); hasher.update(s.0); }
-        }
+        hasher.update(ct.0);
     }
     hasher.finalize().into()
 }
+
+/// Count non-free gates in a compact `FlatGates` topology.
+pub fn count_non_free_gates(flat: &FlatGates) -> usize {
+    flat.gates.iter()
+        .filter(|&&(_, _, _, gt, _)| GateType::try_from(gt).expect("unknown gate type").needs_ciphertext())
+        .count()
+}
+
+/// Non-free gate counts for the fixed circuit topology (FGC = SGC Part 2's topology too).
+pub const FGC_NON_FREE_GATES_COUNT: usize = 740116;
+pub const SGC_NON_FREE_GATES_COUNT: usize = 57855563;
 
 /// Build the unsigned w=8 Base table.
 ///

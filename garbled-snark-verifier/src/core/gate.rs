@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::{
     bag::*,
-    core::utils::{NON_CAC_DELTA, inc_gid},
+    core::utils::{NON_CAC_DELTA, NON_CAC_SALT, inc_gid},
 };
 use core::ops::{Add, AddAssign};
 
@@ -23,6 +23,15 @@ pub enum GateType {
     Xor = 8,
     Xnor = 9,
     Not = 10,
+}
+
+impl GateType {
+    /// Free-XOR gates (Xor, Xnor, Not) are evaluated directly from labels and
+    /// never produce a garbled ciphertext; every other gate type does.
+    #[inline(always)]
+    pub fn needs_ciphertext(&self) -> bool {
+        !matches!(self, GateType::Xor | GateType::Xnor | GateType::Not)
+    }
 }
 
 impl fmt::Display for GateType {
@@ -184,30 +193,30 @@ impl Gate {
     //   ciphertext c
     //   gate id gid
     #[allow(clippy::type_complexity)]
-    pub fn e(&self) -> Box<dyn Fn(bool, bool, S, S, Option<S>, u32) -> (bool, S) + '_> {
+    pub fn e(&self) -> Box<dyn Fn(bool, bool, S, S, Option<S>, u32, Option<S>) -> (bool, S) + '_> {
         match self.gate_type {
             GateType::And | GateType::Nand | GateType::Nimp | GateType::Imp => {
-                Box::new(|x, y, a, b, c, gid| -> (bool, S) {
+                Box::new(|x, y, a, b, c, gid, salt| -> (bool, S) {
                     assert!(c.is_some());
-                    let o = if !x { a.hash_ext(gid) } else { a.hash_ext(gid) ^ c.unwrap() ^ b };
+                    let o = if !x { a.hash_ext(gid, salt) } else { a.hash_ext(gid, salt) ^ c.unwrap() ^ b };
                     (self.f()(x, y), o)
                 })
             }
 
             GateType::Ncimp | GateType::Cimp | GateType::Nor | GateType::Or => {
-                Box::new(|x, y, a, b, c, gid| -> (bool, S) {
+                Box::new(|x, y, a, b, c, gid, salt| -> (bool, S) {
                     assert!(c.is_some());
-                    let o = if x { a.hash_ext(gid) } else { a.hash_ext(gid) ^ c.unwrap() ^ b };
+                    let o = if x { a.hash_ext(gid, salt) } else { a.hash_ext(gid, salt) ^ c.unwrap() ^ b };
                     (self.f()(x, y), o)
                 })
             }
             GateType::Xor => {
-                Box::new(|x, y, a, b, _c, _gid| -> (bool, S) { (self.f()(x, y), a ^ b) })
+                Box::new(|x, y, a, b, _c, _gid, _salt| -> (bool, S) { (self.f()(x, y), a ^ b) })
             }
             GateType::Xnor => {
-                Box::new(|x, y, a, b, _c, _gid| -> (bool, S) { (self.f()(x, y), a ^ b) })
+                Box::new(|x, y, a, b, _c, _gid, _salt| -> (bool, S) { (self.f()(x, y), a ^ b) })
             }
-            GateType::Not => Box::new(|x, y, a, _b, _c, _gid| -> (bool, S) { (self.f()(x, y), a) }),
+            GateType::Not => Box::new(|x, y, a, _b, _c, _gid, _salt| -> (bool, S) { (self.f()(x, y), a) }),
         }
     }
 
@@ -218,13 +227,13 @@ impl Gate {
     }
 
     pub fn garbled(&self) -> Option<S> {
-        self.garbled_with_delta(NON_CAC_DELTA)
+        self.garbled_with_delta(NON_CAC_DELTA, Some(NON_CAC_SALT))
     }
 
-    pub fn garbled_with_delta(&self, delta: S) -> Option<S> {
+    pub fn garbled_with_delta(&self, delta: S, salt: Option<S>) -> Option<S> {
         let a0 = self.wire_a.borrow().select_with_delta(false, delta);
         let b0 = self.wire_b.borrow().select_with_delta(false, delta);
-        let (c0, ciphertext) = gate_garbled_with_delta(a0, b0, self.gid, self.gate_type, delta);
+        let (c0, ciphertext) = gate_garbled_with_delta(a0, b0, self.gid, self.gate_type, delta, salt);
         self.wire_c.borrow_mut().set_label(c0);
         ciphertext
     }
@@ -245,62 +254,62 @@ impl Gate {
 
 #[inline(always)]
 pub fn gate_garbled(label_a: S, label_b: S, gid: u32, gate_type: GateType) -> (S, Option<S>) {
-    gate_garbled_with_delta(label_a, label_b, gid, gate_type, NON_CAC_DELTA)
+    gate_garbled_with_delta(label_a, label_b, gid, gate_type, NON_CAC_DELTA, Some(NON_CAC_SALT))
 }
 
 #[inline(always)]
-pub fn gate_garbled_with_delta(label_a: S, label_b: S, gid: u32, gate_type: GateType, delta: S) -> (S, Option<S>) {
+pub fn gate_garbled_with_delta(label_a: S, label_b: S, gid: u32, gate_type: GateType, delta: S, salt: Option<S>) -> (S, Option<S>) {
     match gate_type {
         GateType::And => {
             let a1 = label_a ^ delta;
-            let h1 = a1.hash_ext(gid);
-            let h0 = label_a.hash_ext(gid);
+            let h1 = a1.hash_ext(gid, salt);
+            let h0 = label_a.hash_ext(gid, salt);
             (h0, Some(h1 ^ h0 ^ label_b))
         }
         GateType::Nand => {
             let a1 = label_a ^ delta;
-            let h1 = a1.hash_ext(gid);
-            let h0 = label_a.hash_ext(gid);
+            let h1 = a1.hash_ext(gid, salt);
+            let h0 = label_a.hash_ext(gid, salt);
             (h0 ^ delta, Some(h1 ^ h0 ^ label_b))
         }
         GateType::Nimp => {
             let a1 = label_a ^ delta;
-            let h1 = a1.hash_ext(gid);
-            let h0 = label_a.hash_ext(gid);
+            let h1 = a1.hash_ext(gid, salt);
+            let h0 = label_a.hash_ext(gid, salt);
             let b1 = label_b ^ delta;
             (h0, Some(h1 ^ h0 ^ b1))
         }
         GateType::Imp => {
             let a1 = label_a ^ delta;
-            let h1 = a1.hash_ext(gid);
-            let h0 = label_a.hash_ext(gid);
+            let h1 = a1.hash_ext(gid, salt);
+            let h0 = label_a.hash_ext(gid, salt);
             let b1 = label_b ^ delta;
             (h0 ^ delta, Some(h1 ^ h0 ^ b1))
         }
         GateType::Ncimp => {
             let a1 = label_a ^ delta;
-            let h1 = a1.hash_ext(gid);
-            let h0 = label_a.hash_ext(gid);
+            let h1 = a1.hash_ext(gid, salt);
+            let h0 = label_a.hash_ext(gid, salt);
             (h1, Some(h1 ^ h0 ^ label_b))
         }
         GateType::Cimp => {
             let a1 = label_a ^ delta;
-            let h1 = a1.hash_ext(gid);
-            let h0 = label_a.hash_ext(gid);
+            let h1 = a1.hash_ext(gid, salt);
+            let h0 = label_a.hash_ext(gid, salt);
             let b1 = label_b ^ delta;
             (h1 ^ delta, Some(h1 ^ h0 ^ b1))
         }
         GateType::Nor => {
             let a1 = label_a ^ delta;
-            let h1 = a1.hash_ext(gid);
-            let h0 = label_a.hash_ext(gid);
+            let h1 = a1.hash_ext(gid, salt);
+            let h0 = label_a.hash_ext(gid, salt);
             let b1 = label_b ^ delta;
             (h1, Some(h1 ^ h0 ^ b1))
         }
         GateType::Or => {
             let a1 = label_a ^ delta;
-            let h1 = a1.hash_ext(gid);
-            let h0 = label_a.hash_ext(gid);
+            let h1 = a1.hash_ext(gid, salt);
+            let h0 = label_a.hash_ext(gid, salt);
             let b1 = label_b ^ delta;
             (h1 ^ delta, Some(h1 ^ h0 ^ b1))
         }

@@ -22,6 +22,9 @@ pub struct InstanceSecrets {
     pub rhos:          [Vec<G1Affine>; 2],
     pub fq_deltas:     [Vec<Fq>; 2],
     pub b: G1Affine,
+    /// Public per-instance salt for the `_aes` garbling-hash backend (Guo-Katz-Wang-Yu,
+    /// ePrint 2019/074). Unused by other hash backends.
+    pub aes_salt: S,
 }
 
 /// Cheaply derive only the two fields needed for label encoding
@@ -55,6 +58,8 @@ impl InstanceSecrets {
 
         let b = G1Affine::rand(&mut rng);
 
+        let aes_salt = gen_s(&mut rng, 1)[0];
+
         Self {
             delta,
             r,
@@ -64,6 +69,7 @@ impl InstanceSecrets {
             rhos,
             fq_deltas,
             b,
+            aes_salt,
         }
     }
 }
