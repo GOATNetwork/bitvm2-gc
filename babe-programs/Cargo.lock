@@ -1100,6 +1100,20 @@ name = "bytemuck"
 version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8efb64bd706a16a1bdde310ae86b351e4d21550d98d056f22f8a7f7a2183fec"
+dependencies = [
+ "bytemuck_derive",
+]
+
+[[package]]
+name = "bytemuck_derive"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc0e56a716f1e132ff6bf4bdac1c944a3fcdc1cae65f70a4a2a1ac3b401d2d1f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
 
 [[package]]
 name = "byteorder"
@@ -6352,6 +6366,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "substrate-bn"
+version = "0.6.0"
+source = "git+https://github.com/ziren-patches/bn?branch=patch-0.6.0#0dfeeb1b7bfc21941b6e4964d678abd094a54a6f"
+dependencies = [
+ "bytemuck",
+ "byteorder",
+ "cfg-if",
+ "crunchy",
+ "lazy_static",
+ "num-bigint 0.4.6",
+ "rand 0.8.5",
+ "rustc-hex",
+ "zkm-lib 1.2.7 (git+https://github.com/ProjectZKM/Ziren?tag=v1.2.7)",
+]
+
+[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6406,6 +6436,17 @@ name = "syn"
 version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7270,6 +7311,7 @@ dependencies = [
  "sha2",
  "tracing",
  "zkm-sdk",
+ "zkm-verifier",
  "zkm-zkvm",
 ]
 
@@ -8540,6 +8582,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "zkm-verifier"
+version = "1.2.7"
+source = "git+https://github.com/ProjectZKM/Ziren?tag=v1.2.7#7dc2037c6ef99d5772c756556350698fad01c559"
+dependencies = [
+ "anyhow",
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff 0.5.0",
+ "ark-groth16",
+ "ark-serialize 0.5.0",
+ "bincode",
+ "hex",
+ "itertools 0.13.0",
+ "lazy_static",
+ "once_cell",
+ "p3-bn254-fr",
+ "p3-commit",
+ "p3-field",
+ "p3-koala-bear",
+ "p3-symmetric",
+ "p3-util",
+ "rayon",
+ "serde",
+ "sha2",
+ "strum_macros",
+ "substrate-bn",
+ "thiserror 2.0.18",
+ "zkm-core-executor",
+ "zkm-core-machine",
+ "zkm-primitives 1.2.7 (git+https://github.com/ProjectZKM/Ziren?tag=v1.2.7)",
+ "zkm-recursion-core",
+ "zkm-sdk",
+ "zkm-stark",
+]
+
+[[package]]
 name = "zkm-zkvm"
 version = "1.2.7"
 source = "git+https://github.com/ProjectZKM/Ziren?tag=v1.2.7#7dc2037c6ef99d5772c756556350698fad01c559"
@@ -8598,8 +8676,3 @@ dependencies = [
 name = "rsa"
 version = "0.9.6"
 source = "git+https://github.com/ziren-patches/RustCrypto-RSA.git?branch=patch-rsa-0.9.6#df285475f9800a8e20f72a7f93de07539df0ed25"
-
-[[patch.unused]]
-name = "substrate-bn"
-version = "0.6.0"
-source = "git+https://github.com/ziren-patches/bn?branch=patch-0.6.0#aba71380457d798039111e6cc0fdf2e0718c6766"
