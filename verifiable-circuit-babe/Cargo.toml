@@ -37,7 +37,7 @@ zkm-zkvm = { workspace = true }
 
 
 [features]
-default = ["poseidon2"]
+default = ["aes"]
 garbled = ["garbled-snark-verifier/garbled"]
 sha2 = ["garbled-snark-verifier/_sha2", "garbled-snark-verifier/_getrandom"]
 poseidon2 = ["garbled-snark-verifier/_poseidon2", "garbled-snark-verifier/_getrandom"]
