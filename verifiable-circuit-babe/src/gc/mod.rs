@@ -191,7 +191,19 @@ pub fn read_compact_gc() -> (
             .unwrap_or_else(|_| panic!("'{}' not found — run: cargo run -r --bin generate_artifacts", indices_path));
         flat_from_bytes(&gates_bytes, &idx_bytes)
     });
+    // derive and cache the non-free-gate counts
+    NON_FREE_GATES_COUNTS.get_or_init(|| [count_non_free_gates(fgc_flat), count_non_free_gates(sgc_flat)]);
     (fgc_flat, fgc_idx, sgc_flat, sgc_idx)
+}
+
+static NON_FREE_GATES_COUNTS: OnceLock<[usize; 2]> = OnceLock::new();
+
+pub fn non_free_gates_counts() -> [usize; 2] {
+    if let Some(counts) = NON_FREE_GATES_COUNTS.get() {
+        return *counts;
+    }
+    read_compact_gc();
+    *NON_FREE_GATES_COUNTS.get().expect("read_compact_gc() must populate NON_FREE_GATES_COUNTS")
 }
 
 fn flat_from_bytes(gates_bytes: &[u8], output_indices_bytes: &[u8]) -> (FlatGates, Vec<usize>) {

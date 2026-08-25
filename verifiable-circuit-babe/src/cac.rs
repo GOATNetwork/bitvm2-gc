@@ -3,7 +3,7 @@ use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use serde::{Deserialize, Serialize};
 use crate::babe::WitnessEncSetupCt;
 use crate::instance::commit::CACInstanceCommit;
-use crate::gc::{gc_ciphertexts_commit, SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
+use crate::gc::{gc_ciphertexts_commit, non_free_gates_counts, SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
 use garbled_snark_verifier::bag::S;
 use rand::Rng;
 use garbled_snark_verifier::dv_bn254::fq::Fq;
@@ -174,8 +174,10 @@ pub fn verify_finalized_instances(
     package: &CACSetupPackage,
     finalized: &[FinalizedInstanceData],
 ) -> Result<(), String> {
-    use crate::gc::{FGC_NON_FREE_GATES_COUNT, SGC_NON_FREE_GATES_COUNT};
-    let counts = [FGC_NON_FREE_GATES_COUNT, SGC_NON_FREE_GATES_COUNT, FGC_NON_FREE_GATES_COUNT];
+    // [FGC, SGC, FGC] — SGC Part 2 reuses FGC's topology. Derived from the Prover's
+    // own trusted circuit artifacts, not from the Verifier-supplied data being checked.
+    let [fgc_count, sgc_count] = non_free_gates_counts();
+    let counts = [fgc_count, sgc_count, fgc_count];
 
     for data in finalized {
         let idx = data.index;
