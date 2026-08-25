@@ -2,7 +2,7 @@ use soldering_host::BabeBundleBuilder;
 use verifiable_circuit_babe::transactions::OnchainSize;
 
 #[test]
-#[ignore = "requires GC_GATES_PATH and GC_INDICES_PATH runtime assets"]
+#[ignore = "requires artifacts match the dummy vk/program"]
 fn e2e_babe_cac() {
     let run = BabeBundleBuilder::new().run_babe_e2e_cac().expect("BABE/CAC e2e flow");
 

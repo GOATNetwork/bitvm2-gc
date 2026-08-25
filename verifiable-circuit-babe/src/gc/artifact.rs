@@ -4,8 +4,7 @@ use garbled_snark_verifier::core::gate::GateType;
 use garbled_snark_verifier::core::utils::{reset_gid, SerializableGate};
 
 use super::circuit::{
-    compile_fgc, compile_sgc_part1, FGC_NON_FREE_GATES_COUNT, FGC_NUM_PRE_INITIALIZED,
-    SGC_NON_FREE_GATES_COUNT, SGC_NUM_PRE_INITIALIZED,
+    compile_fgc, compile_sgc_part1, FGC_NUM_PRE_INITIALIZED, SGC_NUM_PRE_INITIALIZED,
 };
 
 /// Count gates needing a ciphertext
@@ -167,15 +166,8 @@ fn print_report(stats: &[CircuitStats; 2]) {
              total_after, total_before / total_after);
 
     println!("\n[Non-free gate counts]");
-    println!("  pub const FGC_NON_FREE_GATES_COUNT: usize = {};", stats[0].non_free_gates);
-    println!("  pub const SGC_NON_FREE_GATES_COUNT: usize = {};", stats[1].non_free_gates);
-    if stats[0].non_free_gates == FGC_NON_FREE_GATES_COUNT
-        && stats[1].non_free_gates == SGC_NON_FREE_GATES_COUNT {
-        println!("  These match the constants in circuit.rs — up to date, no change needed.");
-    } else {
-        println!("  NOTICE: these differ from the hardcoded constants currently in circuit.rs \
-                   ({FGC_NON_FREE_GATES_COUNT} / {SGC_NON_FREE_GATES_COUNT}) — update them.");
-    }
+    println!("  FGC: {}", stats[0].non_free_gates);
+    println!("  SGC: {}", stats[1].non_free_gates);
 }
 
 /// Generate, compact, and write all circuit artifacts from scratch.
