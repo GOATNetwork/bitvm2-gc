@@ -1,5 +1,6 @@
 use ark_bn254::{Fr, G1Affine};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
+use ark_serialize::CanonicalSerialize;
 use serde::{Deserialize, Serialize};
 use crate::babe::WitnessEncSetupCt;
 use crate::instance::commit::CACInstanceCommit;
@@ -8,7 +9,7 @@ use garbled_snark_verifier::bag::S;
 use rand::Rng;
 use garbled_snark_verifier::dv_bn254::fq::Fq;
 use crate::instance::CACInstance;
-use crate::utils::{deserialize_g1affine, h_256, serialize_g1affine};
+use crate::utils::{deserialize_g1affine, g1affine_is_valid, h_256, serialize_g1affine};
 use crate::verifier::BATCH_SIZE;
 
 /// What the Verifier sends to the Prover during the C&C commit phase.
@@ -213,6 +214,16 @@ pub fn verify_finalized_instances(
             h_256(&data.constant_labels_1[1].0) != committed.constant_commits_sgc[1][1] {
             return Err(format!("instance {idx}: constant_commits do not match"));
         }
+        if !g1affine_is_valid(&data.b) {
+            return Err(format!("instance {idx}: b is not a valid curve point"));
+        }
+        let mut b_bytes = Vec::new();
+        data.b.serialize_compressed(&mut b_bytes)
+            .map_err(|e| format!("instance {idx}: failed to serialize b: {e}"))?;
+        if h_256(&b_bytes) != committed.b_blind_commit {
+            return Err(format!("instance {idx}: b does not match b_blind_commit"));
+        }
+
         let x_bits = Fq::to_bits(Fq::as_montgomery(data.b.x));
         let y_bits = Fq::to_bits(Fq::as_montgomery(data.b.y));
         for (i, bit) in x_bits.iter().enumerate() {
