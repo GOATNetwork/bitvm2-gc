@@ -9,6 +9,7 @@ use garbled_snark_verifier::bag::S;
 use rand::Rng;
 use garbled_snark_verifier::dv_bn254::fq::Fq;
 use crate::instance::CACInstance;
+use crate::instance::secret::Seed;
 use crate::utils::{deserialize_g1affine, g1affine_is_valid, h_256, serialize_g1affine};
 use crate::verifier::BATCH_SIZE;
 
@@ -59,7 +60,7 @@ pub struct FinalizedInstanceData {
 /// `finalized_indices`.
 pub fn verify_finalized_indices_in_bundle(
     package: &CACSetupPackage,
-    opened: &[(usize, u64)],
+    opened: &[(usize, Seed)],
     finalized: &[FinalizedInstanceData],
     finalized_indices: &[usize],
     soldering_finalized_indices: &[usize],
@@ -101,7 +102,7 @@ pub fn verify_finalized_indices_in_bundle(
 
 pub fn verify_opened_instances(
     package: &CACSetupPackage,
-    opened: &[(usize, u64)],
+    opened: &[(usize, Seed)],
     vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
     static_public_inputs: Fr,
 ) -> Result<(), String> {
@@ -358,7 +359,7 @@ mod tests {
         let package = dummy_package(PARTITION_N_CC);
         let finalized_indices = vec![1usize, 3];
         let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
-        let opened: Vec<(usize, u64)> = vec![0, 2, 4].into_iter().map(|i| (i, 0u64)).collect();
+        let opened: Vec<(usize, Seed)> = vec![0, 2, 4].into_iter().map(|i| (i, [0u8; 32])).collect();
 
         verify_finalized_indices_in_bundle(
             &package, &opened, &finalized, &finalized_indices, &finalized_indices,
@@ -372,7 +373,7 @@ mod tests {
         let finalized_indices = vec![1usize, 3];
         // Verifier sends the finalized data in a different order than the Prover chose.
         let finalized: Vec<_> = vec![3usize, 1].into_iter().map(dummy_finalized).collect();
-        let opened: Vec<(usize, u64)> = vec![0, 2, 4].into_iter().map(|i| (i, 0u64)).collect();
+        let opened: Vec<(usize, Seed)> = vec![0, 2, 4].into_iter().map(|i| (i, [0u8; 32])).collect();
 
         let err = verify_finalized_indices_in_bundle(
             &package, &opened, &finalized, &finalized_indices, &finalized_indices,
@@ -386,7 +387,7 @@ mod tests {
         let package = dummy_package(PARTITION_N_CC);
         let finalized_indices = vec![1usize, 3];
         let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
-        let opened: Vec<(usize, u64)> = vec![0, 2, 4].into_iter().map(|i| (i, 0u64)).collect();
+        let opened: Vec<(usize, Seed)> = vec![0, 2, 4].into_iter().map(|i| (i, [0u8; 32])).collect();
         let soldering_finalized_indices = vec![1usize, 4]; // disagrees with finalized_indices
 
         let err = verify_finalized_indices_in_bundle(
@@ -402,7 +403,7 @@ mod tests {
         let finalized_indices = vec![1usize, 3];
         let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
         // Missing index 4 — opened + finalized doesn't cover all PARTITION_N_CC instances.
-        let opened: Vec<(usize, u64)> = vec![0, 2].into_iter().map(|i| (i, 0u64)).collect();
+        let opened: Vec<(usize, Seed)> = vec![0, 2].into_iter().map(|i| (i, [0u8; 32])).collect();
 
         let err = verify_finalized_indices_in_bundle(
             &package, &opened, &finalized, &finalized_indices, &finalized_indices,
@@ -417,7 +418,7 @@ mod tests {
         let finalized_indices = vec![1usize, 3];
         let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
         // Index 1 is claimed as both opened and finalized.
-        let opened: Vec<(usize, u64)> = vec![0, 1, 4].into_iter().map(|i| (i, 0u64)).collect();
+        let opened: Vec<(usize, Seed)> = vec![0, 1, 4].into_iter().map(|i| (i, [0u8; 32])).collect();
 
         let err = verify_finalized_indices_in_bundle(
             &package, &opened, &finalized, &finalized_indices, &finalized_indices,
@@ -432,7 +433,7 @@ mod tests {
         let finalized_indices = vec![1usize, 3];
         let finalized: Vec<_> = finalized_indices.iter().map(|&i| dummy_finalized(i)).collect();
         // Index 0 is duplicated; still "covers" the right count so the length check passes.
-        let opened: Vec<(usize, u64)> = vec![0, 0, 4].into_iter().map(|i| (i, 0u64)).collect();
+        let opened: Vec<(usize, Seed)> = vec![0, 0, 4].into_iter().map(|i| (i, [0u8; 32])).collect();
 
         let err = verify_finalized_indices_in_bundle(
             &package, &opened, &finalized, &finalized_indices, &finalized_indices,

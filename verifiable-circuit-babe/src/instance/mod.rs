@@ -4,7 +4,7 @@ use ark_ec::pairing::Pairing;
 use garbled_snark_verifier::bag::{Circuit, S};
 use crate::babe::WitnessEncSetupCt;
 use crate::gc::{FlatEvalBuffer, read_compact_gc, SparseAdaptorTable, SGC_PART1_CONSTANT_SIZE};
-use crate::instance::secret::InstanceSecrets;
+use crate::instance::secret::{InstanceSecrets, Seed};
 use ark_groth16::VerifyingKey as Groth16VerifyingKey;
 use ark_serialize::CanonicalSerialize;
 use garbled_snark_verifier::dv_bn254::fq::Fq as DvFq;
@@ -25,7 +25,7 @@ pub fn b_value_bits(b: &ark_bn254::G1Affine) -> (Vec<bool>, Vec<bool>) {
 }
 
 pub struct CACInstance {
-    pub seed: u64,
+    pub seed: Seed,
     pub secrets: InstanceSecrets,
     pub ct_setup: WitnessEncSetupCt,
     pub adaptor_tables: [SparseAdaptorTable; 2],
@@ -37,7 +37,7 @@ impl CACInstance {
     /// Construct a instance fully determined by `seed`.
     /// W/O ct_setup.
     pub fn new_from_seed(
-        seed: u64,
+        seed: Seed,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
         static_inputs: Fr,
     ) -> Result<Self, String> {
@@ -105,7 +105,7 @@ impl CACInstance {
     /// Commitment-only path: same circuit setup as `new_from_seed` but ciphertexts and
     /// adaptor tables are stream-hashed without being stored.
     pub fn commit_from_seed(
-        seed: u64,
+        seed: Seed,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
         static_inputs: Fr,
     ) -> Result<CACInstanceCommit, String> {
@@ -380,7 +380,7 @@ mod tests {
         let static_inputs = a * b;
         let dynamic_inputs = a * a;
 
-        let instance = CACInstance::new_from_seed(2, &vk, static_inputs)
+        let instance = CACInstance::new_from_seed([2u8; 32], &vk, static_inputs)
             .expect("new_from_seed");
         println!("generate instance done");
 

@@ -9,6 +9,7 @@ use crate::dre::N_PADDED;
 use crate::gc::SGC_PART1_CONSTANT_SIZE;
 use crate::instance::CACInstance;
 use crate::instance::commit::CACInstanceCommit;
+use crate::instance::secret::Seed;
 
 /// Instances processed in parallel per batch (RAM gate).
 /// Override via CAC_BATCH_SIZE env var at runtime.
@@ -22,7 +23,7 @@ pub struct InstanceLightSecrets {
 }
 
 impl InstanceLightSecrets {
-    pub fn from_seed(seed: u64) -> Self {
+    pub fn from_seed(seed: Seed) -> Self {
         let (delta, input_0labels) = crate::instance::secret::derive_light_from_seed(seed);
         Self { delta, input_0labels }
     }
@@ -73,7 +74,7 @@ impl InstanceLightSecrets {
 
 /// The C&C Verifier: manages N_CC garbled-circuit instances for Cut-and-Choose.
 pub struct BABEVerifier {
-    seeds: Vec<u64>,
+    seeds: Vec<Seed>,
     commits: CACSetupPackage,
     vk: Groth16VerifyingKey<ark_bn254::Bn254>,
     static_public_inputs: Fr,
@@ -88,7 +89,7 @@ impl BABEVerifier {
     ) -> Result<Self, String> {
         use p3_maybe_rayon::prelude::*;
 
-        let seeds: Vec<u64> = (0..n_cc).map(|_| rand::random()).collect();
+        let seeds: Vec<Seed> = (0..n_cc).map(|_| rand::random()).collect();
 
         let n_cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8);
         let batch_size = std::env::var("CAC_BATCH_SIZE")
@@ -135,7 +136,7 @@ impl BABEVerifier {
 
     /// Restore a `BABEVerifier` from previously persisted state.
     pub fn from_state(
-        seeds: &[u64],
+        seeds: &[Seed],
         commits: &CACSetupPackage,
         vk: &Groth16VerifyingKey<ark_bn254::Bn254>,
         static_public_inputs: Fr,
@@ -163,11 +164,11 @@ impl BABEVerifier {
     pub fn open(
         &self,
         finalized_indices: &[usize],
-    ) -> Result<(Vec<(usize, u64)>, Vec<crate::cac::FinalizedInstanceData>), String> {
+    ) -> Result<(Vec<(usize, Seed)>, Vec<crate::cac::FinalizedInstanceData>), String> {
         let finalized_set: std::collections::HashSet<usize> =
             finalized_indices.iter().copied().collect();
 
-        let opened: Vec<(usize, u64)> = (0..self.seeds.len())
+        let opened: Vec<(usize, Seed)> = (0..self.seeds.len())
             .filter(|i| !finalized_set.contains(i))
             .map(|i| (i, self.seeds[i]))
             .collect();
@@ -236,7 +237,7 @@ impl BABEVerifier {
         ls.compute_labels_from_bytes(raw)
     }
 
-    pub fn get_seeds(&self) -> Vec<u64> {
+    pub fn get_seeds(&self) -> Vec<Seed> {
         self.seeds.clone()
     }
 
@@ -256,6 +257,12 @@ mod tests {
     use crate::instance::commit::CACInstanceCommit;
     use crate::prover::GROTH_16_SEED;
     use crate::utils::pi1_xd_to_wots96_msg;
+
+    fn test_seed(b: u8) -> Seed {
+        let mut s = [0u8; 32];
+        s[0] = b;
+        s
+    }
 
     fn dummy_vk() -> Groth16VerifyingKey<ark_bn254::Bn254> {
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(GROTH_16_SEED);
@@ -283,7 +290,7 @@ mod tests {
     // Two independent bit-extraction paths (raw bytes vs. DvFq/DvFr::to_bits) must agree.
     #[test]
     fn test_compute_labels_from_bytes_matches_split_computation() {
-        let ls = InstanceLightSecrets::from_seed(7);
+        let ls = InstanceLightSecrets::from_seed(test_seed(7));
 
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(1);
         let pi1 = G1Affine::from(ark_bn254::G1Projective::rand(&mut rng));
@@ -308,15 +315,17 @@ mod tests {
         let vk = dummy_vk();
         let commits = CACSetupPackage { commits: vec![dummy_commit(), dummy_commit()] };
 
-        assert!(BABEVerifier::from_state(&[1, 2, 3], &commits, &vk, Fr::from(0u64)).is_none());
-        assert!(BABEVerifier::from_state(&[1, 2], &commits, &vk, Fr::from(0u64)).is_some());
+        let seeds3 = [test_seed(1), test_seed(2), test_seed(3)];
+        let seeds2 = [test_seed(1), test_seed(2)];
+        assert!(BABEVerifier::from_state(&seeds3, &commits, &vk, Fr::from(0u64)).is_none());
+        assert!(BABEVerifier::from_state(&seeds2, &commits, &vk, Fr::from(0u64)).is_some());
     }
 
     #[test]
     fn test_open_rejects_out_of_range_index() {
         let vk = dummy_vk();
         let commits = CACSetupPackage { commits: vec![dummy_commit()] };
-        let verifier = BABEVerifier::from_state(&[1], &commits, &vk, Fr::from(0u64)).unwrap();
+        let verifier = BABEVerifier::from_state(&[test_seed(1)], &commits, &vk, Fr::from(0u64)).unwrap();
 
         let err = verifier.open(&[5]).expect_err("index 5 is out of range for 1 seed");
         assert!(err.contains('5'), "error should reference the bad index: {err}");
