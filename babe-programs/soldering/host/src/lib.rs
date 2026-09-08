@@ -16,6 +16,7 @@ use verifiable_circuit_babe::transactions::{
     OnchainSize, TxAssertWitness, TxChallengeAssertWitness, TxDepositLock,
     TxWronglyChallengedWitness,
 };
+use verifiable_circuit_babe::instance::secret::Seed;
 use verifiable_circuit_babe::utils::derive_hashlock;
 use verifiable_circuit_babe::verifier::BABEVerifier;
 use zkm_sdk::{include_elf, ProverClient, ZKMProvingKey, ZKMStdin, ZKMVerifyingKey};
@@ -30,7 +31,7 @@ pub struct BabeBundleBuilder {
 }
 
 pub struct BabeBundle {
-    pub opened: Vec<(usize, u64)>,
+    pub opened: Vec<(usize, Seed)>,
     pub finalized: Vec<FinalizedInstanceData>,
     pub soldering: SolderingData,
 }

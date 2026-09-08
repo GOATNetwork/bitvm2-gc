@@ -6,6 +6,8 @@ use rand_chacha::ChaCha20Rng;
 use rand_chacha::rand_core::RngCore;
 use crate::dre::{N, N_PADDED, utils::sample_rhos};
 
+pub type Seed = [u8; 32];
+
 pub struct InstanceSecrets {
     /// 2 deltas for 2 garbled circuits
     pub delta:         [S; 2],
@@ -28,8 +30,8 @@ pub struct InstanceSecrets {
 }
 
 /// Cheaply derive only the two fields needed for label encoding
-pub fn derive_light_from_seed(seed: u64) -> ([S; 2], [Vec<S>; 2]) {
-    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+pub fn derive_light_from_seed(seed: Seed) -> ([S; 2], [Vec<S>; 2]) {
+    let mut rng = ChaCha20Rng::from_seed(seed);
     let delta = [gen_s(&mut rng, 1)[0], gen_s(&mut rng, 1)[0]];
     let _ = Fr::rand(&mut rng);          // advance past r
     rng.fill_bytes(&mut [0u8; 32]);      // advance past msg
@@ -38,8 +40,8 @@ pub fn derive_light_from_seed(seed: u64) -> ([S; 2], [Vec<S>; 2]) {
 }
 
 impl InstanceSecrets {
-    pub fn new_from_seed(seed: u64) -> Self {
-        let mut rng = ChaCha20Rng::seed_from_u64(seed);
+    pub fn new_from_seed(seed: Seed) -> Self {
+        let mut rng = ChaCha20Rng::from_seed(seed);
 
         let delta = [gen_s(&mut rng, 1)[0], gen_s(&mut rng, 1)[0]];
 
@@ -99,25 +101,32 @@ fn gen_fq_deltas<R: RngCore>(rng: &mut R, n: usize) -> Vec<Fq> {
 mod tests {
     use super::*;
 
+    fn test_seed(b: u8) -> Seed {
+        let mut s = [0u8; 32];
+        s[0] = b;
+        s
+    }
+
     // `derive_light_from_seed` replays the same RNG draw sequence as the prefix of
     // `InstanceSecrets::new_from_seed` (delta, then r, then msg, then input_0labels).
     // If the two ever drift out of sync, `BABEVerifier` would silently compute wrong
     // GC labels with nothing else catching it — so pin the equivalence directly.
     #[test]
     fn test_derive_light_matches_full_secrets() {
-        for seed in [0u64, 1, 42, u64::MAX] {
+        for b in [0u8, 1, 42, u8::MAX] {
+            let seed = test_seed(b);
             let (light_delta, light_labels) = derive_light_from_seed(seed);
             let full = InstanceSecrets::new_from_seed(seed);
 
-            assert_eq!(light_delta, full.delta, "delta mismatch for seed {seed}");
-            assert_eq!(light_labels, full.input_0labels, "input_0labels mismatch for seed {seed}");
+            assert_eq!(light_delta, full.delta, "delta mismatch for seed {b}");
+            assert_eq!(light_labels, full.input_0labels, "input_0labels mismatch for seed {b}");
         }
     }
 
     #[test]
     fn test_derive_light_differs_across_seeds() {
-        let (delta_a, labels_a) = derive_light_from_seed(1);
-        let (delta_b, labels_b) = derive_light_from_seed(2);
+        let (delta_a, labels_a) = derive_light_from_seed(test_seed(1));
+        let (delta_b, labels_b) = derive_light_from_seed(test_seed(2));
 
         assert_ne!(delta_a, delta_b);
         assert_ne!(labels_a, labels_b);

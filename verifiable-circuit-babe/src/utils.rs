@@ -32,9 +32,14 @@ pub fn g1_project_to_ser(p: ark_bn254::G1Projective) -> Vec<u8> {
     out
 }
 
+/// Non-identity, on-curve, correct-subgroup check for an already-parsed G1 point.
+pub fn g1affine_is_valid(a: &G1Affine) -> bool {
+    !a.is_zero() && a.is_on_curve() && a.is_in_correct_subgroup_assuming_on_curve()
+}
+
 pub fn g1_from_ser_checked(v: &[u8]) -> Option<ark_bn254::G1Projective> {
     let a = G1Affine::deserialize_compressed(v).ok()?;
-    if a.is_zero() || !a.is_on_curve() || !a.is_in_correct_subgroup_assuming_on_curve() {
+    if !g1affine_is_valid(&a) {
         return None;
     }
     Some(a.into_group())
